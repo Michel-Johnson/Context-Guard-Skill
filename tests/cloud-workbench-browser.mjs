@@ -28,6 +28,9 @@ const mainMap = {
     { id: 'N2', title: 'Tour two', purpose: 'second tour node', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] },
   ] },
 };
+// A valid legacy item may have no files field. Merely rendering it must not
+// normalize that field into a Main write (B142).
+mainMap.root.children[0].bugs=[{id:'B-readonly',title:'Readonly manual bug',status:'open',executionMode:'manual',sessions:[]}];
 const sessionMap = structuredClone(mainMap);
 sessionMap.root.title = 'Session map';
 sessionMap.root.purpose = 'private working state';
@@ -227,6 +230,24 @@ try {
   await page.waitForURL(`${service.url}/projects/context-guard`);
   await synchronized();
   record('Project page has a stable route back to the overview');
+
+  const readonlyBefore=await request(`${service.url}/v1/projects/context-guard/main`,{headers:headers('project-memory-token')});
+  assert.equal(readonlyBefore.body.snapshot.version,baselinePublication.body.snapshot.version,'Initial loading has not written a normalized Main');
+  const readonlyCommits=[];
+  const observeReadonlyCommit=req=>{if(req.method()==='POST'&&new URL(req.url()).pathname.endsWith('/api/commit'))readonlyCommits.push(req.url());};
+  page.on('request',observeReadonlyCommit);
+  await page.locator('.node[data-id="N1"]').click();
+  await page.locator('#detail').getByText('Readonly manual bug',{exact:true}).waitFor({state:'visible'});
+  await synchronized();
+  // Complete a real presence checkpoint and task-status refresh after render,
+  // not a fixed sleep that could finish before autosave gets a chance to run.
+  await page.evaluate(async()=>{await workbenchSync.presence('readonly-inspection');await workbenchSync.refreshTaskStatuses();});
+  await synchronized();
+  const readonlyAfter=await request(`${service.url}/v1/projects/context-guard/main`,{headers:headers('project-memory-token')});
+  assert.deepEqual(readonlyAfter.body.snapshot,readonlyBefore.body.snapshot,'Read-only inspection preserves Main version and every field');
+  assert.deepEqual(readonlyCommits,[],'Inspection and status refresh never submit a map commit');
+  page.off('request',observeReadonlyCommit);
+  record('Read-only manual Bug inspection keeps absent files and all Main fields unchanged');
 
   const relationPage = await context.newPage();
   await relationPage.goto(`${service.url}/projects/context-guard?relation=T0#cloud-relation-contract`);

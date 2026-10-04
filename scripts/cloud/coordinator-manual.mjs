@@ -4,8 +4,45 @@ import { entries, MapError } from '../shared/map-model.mjs';
 import { buildFilesystemV2 } from '../shared/filesystem-v2.mjs';
 
 export const MANUAL_DISABLED_TOOLS = Object.freeze(['dispatch_task', 'review_plan', 'request_ci', 'request_rework', 'resume_task', 'guide_task', 'complete_task']);
-export const filterManualTools = tools => tools.filter(tool => !MANUAL_DISABLED_TOOLS.includes(tool.name)).map(tool => tool.name === 'prepare_task'
-  ? { ...tool, description: 'Prepare a brief for human confirmation; confirmation creates or updates a Main TODO/Bug and a pasteable execution prompt. Execution is manual.' } : tool);
+export const filterManualTools = tools => tools.filter(tool => !MANUAL_DISABLED_TOOLS.includes(tool.name)).map(tool => {
+  if (tool.name === 'edit_map') {
+    const result = { ...tool, description: 'Create, update, move or delete Main nodes and TODO/Bug records at the observed mainVersion. For a memory update on an existing node, use read_map on that target node before editing; navigation and read_reference do not supply its current contents.' };
+    const actions = tool.input_schema?.properties?.actions, item = actions?.items, memory = item?.properties?.memoryDocument;
+    if (memory) result.input_schema = { ...tool.input_schema, properties: { ...tool.input_schema.properties,
+      actions: { ...actions, items: { ...item, properties: { ...item.properties,
+        memoryDocument: { ...memory, description: 'Full Markdown document: change only the requested sections and preserve all other sections verbatim. If there is no existing memory, write only applicable confirmed sections; do not fill six sections from guesses or task-local requirements. Use memoryDocument, not a filename such as memoryDocument.md.' },
+      } } },
+    } };
+    return result;
+  }
+  if (tool.name !== 'prepare_task') return tool;
+  const result = { ...tool, description: 'Prepare a brief for human confirmation; confirmation creates or updates a Main TODO/Bug and a pasteable execution prompt. Execution is manual.' };
+  if (tool.input_schema?.properties) {
+    const properties = { ...tool.input_schema.properties };
+    for (const [field, description] of [
+      ['taskId', 'Required task identifier; it does not set the saved Main item ID or title and does not associate an existing TODO/Bug. To reuse an item, provide itemId, nodeId and kind.'],
+      ['text', 'For a new TODO, the first line becomes the Main item title (up to 200 characters). Put the user-requested title there, followed by the complete requirements on subsequent lines. An existing TODO/Bug keeps its current title; do not claim this brief renames it.'],
+      ['itemId', 'To reuse an existing TODO/Bug, copy its exact Main item ID here and also provide nodeId and kind. Omit for a new TODO in a project conversation. An item-focused conversation may inherit its trusted item only when itemId, nodeId and kind are all omitted; partial routing is rejected.'],
+      ['nodeId', 'For an existing item, copy its owning Main node ID and include it in nodeIds. This is required with itemId.'],
+      ['kind', 'Existing item type: todo or bug. A bug brief requires itemId and nodeId; kind=bug alone must not create a TODO. New TODO briefs may omit this field.'],
+    ]) if (properties[field]) properties[field] = { ...properties[field], description };
+    result.input_schema = { ...tool.input_schema, properties };
+  }
+  return result;
+});
+export function coordinatorRolePrompt(source, { manual = false } = {}) {
+  const markers = [...source.matchAll(/^## 人工对话模式[ \t]*(?=\r?$)/gm)];
+  const heading = markers[0]?.index ?? -1;
+  // Older installations/custom role guides retain the existing compatibility
+  // behavior. A declared but empty/ambiguous profile is a configuration error.
+  if (heading < 0) return source + (manual ? '\n本对话采用人工执行模式：讨论、读取和编辑 Map；prepare_task 只生成待人工确认的 brief。人确认后保存 Main TODO/Bug 和可粘贴执行提示，不创建、派发或恢复执行 Session。保持当前对话继续讨论。' : '');
+  const profile = source.slice(heading + markers[0][0].length).trim();
+  if (!profile || markers.length !== 1) {
+    throw new MapError('INVALID_COORDINATOR_PROFILE', 'Coordinator manual role profile is empty or ambiguous', 503);
+  }
+  const boundary = heading - (source.slice(0, heading).endsWith('\r\n') ? 2 : heading ? 1 : 0);
+  return manual ? `# Coordinator\n\n${profile}\n` : source.slice(0, boundary);
+}
 const fail = (code, message, status = 400) => { throw new MapError(code, message, status); };
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(value);
 const workItemIdentity = item => item.instanceId || item.createdAt || item.id;
@@ -26,6 +63,7 @@ export function manualBriefInput(input) {
       new Set(input.nodeIds).size !== input.nodeIds.length || input.nodeId !== undefined && !identifier(input.nodeId) ||
       input.itemId !== undefined && !identifier(input.itemId) || input.kind !== undefined && !['todo', 'bug'].includes(input.kind)) fail('INVALID_ARGUMENT', 'Provide a brief, acceptance criteria, Main version and exact node IDs');
   if (input.itemId && (!input.nodeId || !input.kind)) fail('INVALID_ARGUMENT', 'An existing item requires its node and TODO/Bug kind');
+  if (input.kind === 'bug' && !input.itemId) fail('INVALID_ARGUMENT', 'A Bug brief requires the existing itemId and nodeId; taskId alone does not associate an item. Create a new Bug through edit_map before preparing its brief.');
   return { text: input.text.trim(), acceptance: input.acceptance.trim(), mainVersion: input.mainVersion, nodeIds: [...input.nodeIds],
     nodeId: input.nodeId || input.nodeIds[0], ...(input.itemId ? { itemId: input.itemId, kind: input.kind } : { kind: 'todo' }) };
 }

@@ -1,3 +1,5 @@
+import { isClosedBugStatus } from '../shared/map-model.mjs';
+
 const compact = (value, limit = 240) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 const treeText = value => String(value || '').replace(/[\\`*_\[\]]/g, character => `\\${character}`).replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const itemKinds = { todo: 'TODO', bug: 'Bug', idea: 'Idea' };
@@ -57,6 +59,24 @@ export function buildCoordinatorContext(snapshot, { conversation = null, nodeIds
   const tree = directory.map(({ depth, title, id, description }) =>
     `${'  '.repeat(depth)}- ${treeText(title)} [${id}]${description ? `：${treeText(description)}` : ''}`).join('\n');
   const details = [];
+  // Fresh Main metadata can answer an overview in one model round. It is not an
+  // execution-state oracle, and item conversations must not inherit other work.
+  if (!conversation?.itemId) {
+    const unfinished = directory.flatMap(({ id, title }) => {
+      if (Array.isArray(nodeIds) && !nodeIds.includes(id)) return [];
+      const node = index.get(id).node;
+      return ['todo', 'bug'].flatMap(kind => (node[`${kind}s`] || [])
+        .filter(item => item.id && !(kind === 'todo' ? item.status === 'done' : isClosedBugStatus(item.status)))
+        .map(item => ({ kind, nodeId: id, nodeTitle: title,
+          title: compact(item.title || item.text || item.desc || item.id, 120), status: compact(item.status || '未标记', 40) })));
+    });
+    details.push('## 当前 Main 未完成事项概览',
+      `TODO ${unfinished.filter(item => item.kind === 'todo').length} 条，Bug ${unfinished.filter(item => item.kind === 'bug').length} 条。`,
+      '这是本轮 Main 快照的记录状态，不是执行阶段或完成证据；询问概览可直接使用，核验执行阶段或证据时再读取任务。');
+    for (const item of unfinished.slice(0, 20)) details.push(
+      `- ${itemKinds[item.kind]}｜${treeText(item.nodeTitle)} [${item.nodeId}]｜${treeText(item.title)}（${treeText(item.status)}）`);
+    if (unfinished.length > 20) details.push(`另有 ${unfinished.length - 20} 条未展开；需要完整清单时调用 list_tasks。`);
+  }
   if (currentTask) {
     const location = index.get(currentTask.nodeId)?.row;
     details.push('## 当前事项',

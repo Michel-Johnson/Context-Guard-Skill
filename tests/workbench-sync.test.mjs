@@ -22,6 +22,95 @@ import { WorkbenchSync, reconcileRecoveryDraft, workbenchTimeoutMs } from '../pr
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
 
+// Exercise the actual classic-script status functions without starting a browser.
+// Function boundaries are checked explicitly; a missing function is a test failure.
+async function workItemProgressForTest(projectState = 'closed') {
+  const source = await fs.readFile(new URL('../prototype/workbench-app.js', import.meta.url), 'utf8');
+  const section = (name, next) => {
+    const start = source.indexOf(`function ${name}(`), end = source.indexOf(`function ${next}(`, start);
+    assert.ok(start >= 0 && end > start, `Actual UI function boundary: ${name}`);
+    return source.slice(start, end);
+  };
+  const sync = Object.create(WorkbenchSync.prototype);
+  sync.projectTaskStates = new Map([['bug:N1:B1', {state:projectState}], ['todo:N1:TD1', {state:projectState}]]);
+  sync.taskStates = new Map([['old-summary', {state:'completed'}]]);
+  const functions = new Function('workbenchSync', 't', 'uiLang',
+    section('humanReviewProgress', 'taskSummaryHtml') + section('bugProgress', 'bugProgressHtml') +
+    section('todoProgress', 'todoProgressHtml') + 'return {bugProgress,todoProgress};');
+  return functions(sync, key => key, 'zh');
+}
+test('Manual open Bug ignores a closed historical project task without changing Main', async () => {
+  const item = {id:'B1',status:'open',executionMode:'manual',approvedBrief:{ready:true}};
+  const before = structuredClone(item), progress = await workItemProgressForTest();
+  assert.deepEqual(progress.bugProgress(item,'N1'), {kind:'waiting',label:'bugWaiting',detail:''});
+  assert.deepEqual(item,before);
+});
+test('Manual pending TODO ignores a closed historical project task without changing Main', async () => {
+  const item = {id:'TD1',status:'pending',executionMode:'manual',approvedBrief:{ready:true}};
+  const before = structuredClone(item), progress = await workItemProgressForTest();
+  assert.deepEqual(progress.todoProgress(item,'N1'), {kind:'waiting',label:'todoPending',detail:''});
+  assert.deepEqual(item,before);
+});
+test('Manual status labels preserve Main states including readable legacy Bugs and ignore old review, summary and sessions', async () => {
+  const progress = await workItemProgressForTest();
+  for (const [kind,status,expectedKind,label] of [
+    ['bug','open','waiting','bugWaiting'], ['bug','fixed','fixed','bugFixed'],
+    ['bug','resolved','resolved','bugResolved'], ['bug','dormant','resolved','bugResolved'],
+    ['bug','unfixable','unfixable','bugUnfixable'], ['bug','deferred','unfixable','bugUnfixable'],
+    ['bug','wontfix','unfixable','bugUnfixable'], ['bug','pending','settling','bugSettling'],
+    ['bug','handling','processing','bugProcessing'], ['bug','inprogress','processing','bugProcessing'],
+    ['bug','recurred','processing','bugProcessing'], ['bug','unknown','waiting','bugWaiting'],
+    ['todo','pending','waiting','todoPending'], ['todo','processing','processing','todoProcessing'],
+    ['todo','done','resolved','todoDone'], ['todo','unknown','waiting','todoPending'],
+  ]) {
+    const item = Object.freeze({id:kind==='bug'?'B1':'TD1',status,executionMode:'manual',approvedBrief:{ready:true},
+      dispatch:{task_id:'old-task',status:'closed'},review:{taskId:'old-task',decision:'approved'},
+      resolution:{dispatch:{task_id:'old-summary',status:'completed'}},sessions:Object.freeze(['old-session'])});
+    const before = structuredClone(item);
+    assert.deepEqual(progress[`${kind}Progress`](item,'N1'), {kind:expectedKind,label,detail:''}, `${kind}/${status}`);
+    assert.deepEqual(item,before, `${kind}/${status} retains all stored history`);
+  }
+});
+test('Automatic work-item labels retain project-stage and human-review behavior; approvedBrief alone is not manual', async () => {
+  const closed = await workItemProgressForTest('closed'), running = await workItemProgressForTest('executing');
+  for (const [kind,id,status,label] of [['bug','B1','open','bugResolved'],['todo','TD1','pending','todoDone']]) {
+    assert.deepEqual(closed[`${kind}Progress`]({id,status,approvedBrief:{ready:true}},'N1'), {kind:'resolved',label,detail:''});
+    assert.deepEqual(running[`${kind}Progress`]({id,status},'N1'), {kind:'processing',label:'执行中',detail:''});
+    assert.deepEqual(running[`${kind}Progress`]({id,status,dispatch:{task_id:'current'},review:{taskId:'current',decision:'approved'}},'N1'),
+      {kind:'resolved',label:'验收通过',detail:''});
+  }
+});
+
+test('Attachment file display normalizes legacy paths without mutating the Map or creating a synchronization diff', async () => {
+  const source = await fs.readFile(new URL('../prototype/workbench-app.js',import.meta.url),'utf8');
+  const start = source.indexOf('function filePathOf('), end = source.indexOf('function normRepoPath(',start);
+  assert.ok(start>=0&&end>start,'Actual attachment display helper exists');
+  const fileList = new Function(source.slice(start,end)+'return fileList;')();
+  for(const owner of [{id:'B1'}, {id:'B1',files:'legacy-path'}, {id:'B1',files:[' docs/a.md ',{path:'img.png',name:'截图'},'  ']}]){
+    const before=structuredClone(owner), list=fileList(owner);
+    assert.deepEqual(owner,before,'Rendering retains the stored field shape and values');
+    assert.deepEqual(list,Array.isArray(before.files)?[{path:'docs/a.md'},{path:'img.png',name:'截图'}]:[]);
+    const sync=Object.create(WorkbenchSync.prototype);
+    sync.ready=true; sync.revision=0;
+    sync.baseTree={id:'T0',bugs:[before],children:[]};
+    sync.a={getRoot:()=>({id:'T0',bugs:[owner],children:[]})};
+    assert.deepEqual(sync.operations(),[],'Read-only rendering does not become a map write');
+  }
+  assert.deepEqual(fileList(null),[]);
+  assert.deepEqual(fileList(Object.freeze({files:Object.freeze(['a.md'])})),[{path:'a.md'}],'Frozen read snapshots are supported');
+});
+test('Explicit attachment addition still saves normalized paths and avoids duplicates', async () => {
+  const source=await fs.readFile(new URL('../prototype/workbench-app.js',import.meta.url),'utf8');
+  const section=(name,next)=>{const start=source.indexOf(`function ${name}(`),end=source.indexOf(`function ${next}(`,start);assert.ok(start>=0&&end>start);return source.slice(start,end);};
+  const owner={id:'B1',files:['a.md']};
+  const add=new Function('ownerOf',section('filePathOf','normRepoPath')+section('addFilePath','canFsAccess')+'return addFilePath;')(()=>owner);
+  assert.equal(add({},'bug','B1','b.md'),true);
+  assert.deepEqual(owner.files,[{path:'a.md'},{path:'b.md'}]);
+  assert.equal(add({},'bug','B1','b.md'),true);
+  assert.equal(owner.files.length,2);
+  assert.equal(add({},'bug','B1','   '),false);
+});
+
 test('stale browser drafts are cleared only without pending input or meaningful changes', () => {
   const base = { id: 'T0', title: 'Map', purpose: 'before', children: [] };
   const remote = { ...base, purpose: 'updated on Cloud' };

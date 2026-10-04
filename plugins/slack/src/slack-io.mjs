@@ -1,4 +1,7 @@
 import { digest } from './store.mjs';
+import { plainText } from './plain-text.mjs';
+
+const fallbackText = text => plainText(text).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').slice(0, 39000);
 
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 export const MAX_TOTAL_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -47,7 +50,7 @@ export class SlackIO {
     if (previous?.status === 'sending' || previous?.status === 'unknown') return this.reconcile(previous);
     await this.store.update(state => { state.outgoing[id] = { id, channel, threadTs, status: 'sending', hash: digest({ text, blocks }), at: Date.now() }; });
     try {
-      const result = await this.write(channel, () => this.call('chat.postMessage', { channel, thread_ts: threadTs, text: String(text).slice(0, 39000), ...(blocks ? { blocks } : {}),
+      const result = await this.write(channel, () => this.call('chat.postMessage', { channel, thread_ts: threadTs, text: fallbackText(text), mrkdwn: false, parse: 'none', link_names: false, ...(blocks ? { blocks } : {}),
         metadata: { event_type: 'context_guard', event_payload: { id } }, unfurl_links: false, unfurl_media: false }));
       await this.store.update(state => { state.outgoing[id].status = 'sent'; state.outgoing[id].ts = result.ts; });
       return result.ts;
@@ -59,7 +62,7 @@ export class SlackIO {
       throw error;
     }
   }
-  async update(channel, ts, text, blocks) { return this.write(channel, () => this.call('chat.update', { channel, ts, text: String(text).slice(0, 39000), ...(blocks ? { blocks } : {}) })); }
+  async update(channel, ts, text, blocks) { return this.write(channel, () => this.call('chat.update', { channel, ts, text: fallbackText(text), mrkdwn: false, parse: 'none', link_names: false, ...(blocks ? { blocks } : {}) })); }
   async uploadPrompt({ id, channel, threadTs, text, filename }) {
     let previous = this.store.data.outgoing[id];
     filename = `${digest(id).slice(0, 12)}-${String(filename || 'execution-prompt.md').split(/[\\/]/).at(-1)}`;

@@ -8,6 +8,14 @@ import { startCloudServer } from '../scripts/cloud/server.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
 import { legacyProjectMemoryFile } from '../scripts/cloud/memory-filesystem.mjs';
 import { hash, readJSON } from '../scripts/shared/io.mjs';
+import { CoordinatorMapIntake } from '../scripts/cloud/coordinator-service.mjs';
+import { coordinatorTools, selectCoordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
+import { filterManualTools } from '../scripts/cloud/coordinator-manual.mjs';
+import { coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
+import { publicMessages, CoordinatorConversations } from '../scripts/cloud/coordinator-service.mjs';
+import { createCoordinatorExecutor } from '../scripts/cloud/coordinator-tools.mjs';
+import { SlackPlugin } from '../plugins/slack/src/plugin.mjs';
+import { Store, threadKey } from '../plugins/slack/src/store.mjs';
 
 // These exercise real Cloud and loopback HTTP with isolated persistence. Only
 // the paid model provider is replaced; no Slack SDK/account/network is involved.
@@ -18,7 +26,45 @@ const browserCredential = 'fixture-browser-credential';
 const headers = { Authorization: `Bearer ${browserCredential}`, 'Content-Type': 'application/json' };
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN5kAAAAASUVORK5CYII=';
 
-async function fixture(t, { enabled = true, visionProvider } = {}) {
+// Projection regression: real Coordinator execution/public messages and plugin,
+// with in-memory provider/state and fake Slack IO; not a real Slack E2E case.
+test('Native Coordinator read_map projection produces no empty Slack reply before the actual answer', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-native-read-mirror-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = await new Store(directory).open(), key = threadKey(teamId, 'CTESTCHANNEL', '100.001');
+  await store.bind(key, { channel: 'CTESTCHANNEL', threadTs: '100.001', projectId, conversationId: 'chat-native-read', userId,
+    ownRequests: ['native-read-turn'] });
+  const posts = [], raw = { status: 'running', activeTurnId: 'native-read-turn', activeInput: { id: 'native-read-turn' },
+    messages: [{ role: 'user', requestId: 'native-read-turn', content: '只读分析这个模块' }], toolReceipts: {} };
+  const execute = createCoordinatorExecutor({ readMap: async () => ({ version: 'main-native-read', node: { id: 'T0', title: 'Fixture' } }) });
+  let modelStep = 0;
+  const model = { next: async () => ++modelStep === 1
+    ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'native-read-tool', name: 'read_map', input: { nodeId: 'T0' } }] }
+    : { stop: 'end_turn', content: [{ type: 'text', text: '已读取真实模块信息，本轮只读。' }] } };
+  const step = () => coordinatorStep({ turnId: 'native-read-turn', state: raw, model, system: 'native read projection test',
+    tools: filterManualTools(coordinatorTools), execute, save: async () => {} });
+  const plugin = new SlackPlugin({ store, teamId, cloudOrigin: 'https://map.example.com', botUserId: 'UBOTTEST',
+    gateway: { command: async () => ({ status: raw.status, activeTurnId: raw.activeTurnId,
+      messages: publicMessages(raw), approvals: [], acceptedRequestIds: ['native-read-turn'] }) },
+    io: { post: async input => { posts.push(input); return '101.001'; }, update: async () => assert.fail('No retained stream in this case') },
+    logger: { error(){}, warn(){} } });
+  await step();
+  const readMessage = publicMessages(raw).find(message => message.role === 'assistant');
+  assert.equal(readMessage.actions[0].kind, 'node-read', 'Use the actual public projection, not a renamed fixture action');
+  assert.equal(readMessage.text, '');
+  assert.equal(Object.keys(raw.toolReceipts).length, 1);
+  assert.equal(raw.messages.at(-1).content[0].type, 'tool_result');
+  await plugin.mirror(key);
+  assert.equal(posts.length, 0, 'The real native read projection must not create a blank Slack message');
+  await step(); raw.activeTurnId = null;
+  await plugin.mirror(key); await plugin.mirror(key);
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].text, /已读取真实模块信息/);
+  assert.ok(raw.messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === 'tool_result')),
+    'Cloud tool provenance remains complete');
+});
+
+async function fixture(t, { enabled = true, visionProvider, nodeIds, childNodes = [], prepareInput, initialMap } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-slack-cloud-'));
   let cloud;
   const held = new Set();
@@ -29,14 +75,14 @@ async function fixture(t, { enabled = true, visionProvider } = {}) {
   const visionProviderFile = path.join(directory, 'vision-provider.json');
   if (visionProvider) await fs.writeFile(visionProviderFile, JSON.stringify({ token: 'synthetic', baseUrl: 'https://fixture.invalid', ...visionProvider }));
   const projects = Object.fromEntries([projectId, otherProjectId].map(id => [id, { root: directory, ref: 'refs/heads/main',
-    coordinator: { enabled: true, providerFile, bindings: {}, mapWrite: true } }]));
+    coordinator: { enabled: true, providerFile, bindings: {}, mapWrite: true, ...(nodeIds ? { nodeIds } : {}) } }]));
   const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'fixture-memory-credential', projects };
   await fs.writeFile(path.join(directory, 'projects.json'), JSON.stringify({ v: 2, projects: [projectId, otherProjectId].map(id => ({ id, name: id, description: 'Isolated synthetic project' })) }));
   for (const id of Object.keys(projects)) {
     const file = legacyProjectMemoryFile(memoryConfig.dataDir, id);
     await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, JSON.stringify({ revision: 1, main: { version: 'main-initial', memory: { records: {}, map: {
-      project: 'Fixture', root: { id: 'T0', title: 'Fixture', kind: 'module', state: 'dirty', owns: ['src/'], memoryDocument: 'Current project facts', children: [],
+    await fs.writeFile(file, JSON.stringify({ revision: 1, main: { version: 'main-initial', memory: { records: {}, map: initialMap || {
+      project: 'Fixture', root: { id: 'T0', title: 'Fixture', kind: 'module', state: 'dirty', owns: ['src/'], memoryDocument: 'Current project facts', children: childNodes,
         todos: [{ id: 'TD-old', title: 'Existing original TODO', status: 'pending', createdAt: 'original-todo' }],
         bugs: [{ id: 'B1', title: 'Existing original Bug', status: 'open', createdAt: 'original-bug', attempts: [{ status: 'Confirmed', cause: 'Token expired' }] }] },
     } } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
@@ -48,7 +94,7 @@ async function fixture(t, { enabled = true, visionProvider } = {}) {
     ...(enabled ? { integrationConfig: { host: '127.0.0.1', port: 0, token: integrationCredential, teamId, projectIds: [projectId, otherProjectId],
       ...(visionProvider ? { visionProviderFile } : {}) } } : {}),
     coordinatorModelFactory: () => ({ model: 'fixture-model', next: async request => {
-      modelCalls.push({ messages: request.messages, tools: request.tools, maxTokens: request.maxTokens });
+      modelCalls.push({ system: request.system, messages: request.messages, tools: request.tools, maxTokens: request.maxTokens });
       if (request.system?.startsWith('你仅判断 Slack 消息')) {
         const input = JSON.parse(request.messages[0].content);
         if (input.message.text === 'relevance-tool') return { stop: 'tool_use', content: [{ type: 'tool_use', name: 'edit_map', id: 'forbidden-relevance-tool', input: {} }] };
@@ -56,15 +102,26 @@ async function fixture(t, { enabled = true, visionProvider } = {}) {
           ? 'not a decision' : JSON.stringify({ respond: input.message.text === '登录刷新 Bug，请分析。', reason: 'Controlled decision' }) }] };
       }
       const message = request.messages.at(-1), text = typeof message?.content === 'string' ? message.content : '';
+      if (text === 'show-node-complete') return { stop: 'tool_use', content: [
+        { type: 'text', text: 'This is the complete read-only answer.' },
+        { type: 'tool_use', id: 'tool-show-complete', name: 'show_nodes', input: { message: 'Project entry', nodeIds: ['T0'], replyComplete: true } },
+      ] };
+      if (text === 'list-scoped-tasks') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'list-scoped', name: 'list_tasks', input: {} }] };
       if (message?.role === 'user' && text === 'failure-then-browser-retry' && !failedTurns.has(text)) {
         failedTurns.add(text); throw Object.assign(new Error('Controlled provider failure'), { code: 'FIXTURE_PROVIDER_FAILURE' });
       }
       if (message?.role === 'user' && text === 'hold-busy-turn') await new Promise(resolve => held.add(resolve));
-      if (message?.role === 'user' && text === 'mount-bug') {
+      if (message?.role === 'user' && ['mount-bug', 'mount-todo'].includes(text)) {
         const version = (await readMemoryView(memoryConfig, projectId)).main.version;
         return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'tool-mount-bug', name: 'mount_conversation', input: {
-          mainVersion: version, nodeId: 'T0', kind: 'bug', title: 'Mounted refresh failure', description: 'Expired tokens produce a reproducible renewal failure',
+          mainVersion: version, nodeId: 'T0', kind: text === 'mount-bug' ? 'bug' : 'todo', title: 'Mounted refresh failure', description: 'Expired tokens produce a reproducible renewal failure',
         } }] };
+      }
+      if (message?.role === 'user' && text === 'prepare-explicit-routing' && prepareInput) {
+        const version = (await readMemoryView(memoryConfig, projectId)).main.version;
+        return { stop:'tool_use',content:[{type:'tool_use',id:'tool-explicit-routing',name:'prepare_task',input:{
+          text:'Fix existing B1 only',acceptance:'Keep the requested item identity',nodeIds:['T0'],mainVersion:version,...prepareInput,
+        }}] };
       }
       if (message?.role === 'user' && /^prepare-(new|bug|stale)$/.test(text)) {
         const version = (await readMemoryView(memoryConfig, projectId)).main.version;
@@ -121,6 +178,20 @@ test('Cloud integration listener is disabled by default and plugin credentials c
   assert.equal((await enabled.browser('main', { authorization: integrationCredential })).status, 401);
   const projects = await enabled.gateway('project.list');
   assert.equal(projects.status, 200); assert.deepEqual(projects.body.data.projects.map(item => item.id).sort(), [projectId, otherProjectId].sort());
+});
+
+test('list_tasks uses the same exact node scope as reads, not inherited access to children', async t => {
+  const f = await fixture(t, { nodeIds: ['T0'], childNodes: [{ id: 'N-private', title: 'Unassigned child', children: [],
+    todos: [{ id: 'TD-private', title: 'Unassigned child TODO', status: 'pending' }],
+    bugs: [{ id: 'B-private', title: 'Unassigned child Bug', status: 'open' }] }] });
+  const conversation = await f.newConversation('scope-list-chat');
+  assert.equal((await f.gateway('conversation.submit', { text: 'list-scoped-tasks' }, { id: 'scope-list-turn', conversationId: conversation })).status, 200);
+  await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId);
+  const reply = f.modelCalls.at(-1).messages.at(-1).content.find(block => block.type === 'tool_result');
+  const result = JSON.parse(reply.content);
+  assert.ok(JSON.stringify(result).includes('Existing original TODO'));
+  assert.ok(JSON.stringify(result).includes('Existing original Bug'));
+  assert.doesNotMatch(JSON.stringify(result), /TD-private|B-private|Unassigned child/);
 });
 
 test('relevance endpoint reads current Main but never creates conversations, work items or execution state', async t => {
@@ -183,6 +254,8 @@ test('Slack vision configuration cannot silently select a different model', asyn
 test('Slack-created and browser-bound conversations retain manual mode and shared history across restart', async t => {
   const f = await fixture(t), conversation = await f.newConversation('create-shared');
   assert.equal((await f.browser(conversation)).body.executionMode, 'manual');
+  assert.equal((await f.browser(conversation)).body.compaction.thresholdTokens, 8192, 'Manual chat uses the early compact profile');
+  assert.equal((await f.browser('main')).body.compaction.thresholdTokens, 500000, 'Normal execution profile remains unchanged');
   const created = await f.browser('main', { suffix: '/conversations/new', body: { id: 'browser-original-chat' } });
   assert.equal(created.status, 201); const boundId = created.body.id;
   const bind = await f.gateway('conversation.bind', { conversationId: boundId }, { id: 'bind-original-chat' });
@@ -204,6 +277,37 @@ test('Slack-created and browser-bound conversations retain manual mode and share
   assert.ok(after.messages.some(message => message.id === slackMessage.id));
   const repeated = await f.newConversation('create-shared'); assert.equal(repeated, conversation);
   assert.ok(f.modelCalls.length >= 2, 'Requests actually exercised the controlled model provider');
+});
+
+test('Public manual conversation uses lean role and unchanged native schemas without weakening normal execution', async t => {
+  const f = await fixture(t), conversation = await f.newConversation('role-manual');
+  assert.equal((await f.gateway('conversation.submit', { text: 'role-first' }, { id: 'role-first', conversationId: conversation })).status, 200);
+  await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId);
+  const manualCall = f.modelCalls.at(-1);
+  assert.match(manualCall.system, /不创建、派发或恢复执行 Session/);
+  assert.doesNotMatch(manualCall.system, /系统为新任务创建独立执行 Session|自动发起中断恢复/);
+  assert.match(manualCall.system, /Current project facts/);
+  assert.match(manualCall.system, /本轮答复发往 Slack/);
+  assert.deepEqual(manualCall.tools, selectCoordinatorTools(filterManualTools(coordinatorTools), { fileWrite: false }),
+    'Retain enabled manual native definitions, not a text-only substitute');
+  const callsBefore = f.modelCalls.length;
+  assert.equal((await f.gateway('conversation.submit', { text: 'show-node-complete' }, { id: 'role-show', conversationId: conversation })).status, 200);
+  const shown = await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId && value.acceptedRequestIds.includes('role-show'));
+  assert.equal(f.modelCalls.length, callsBefore + 1, 'Successful presentation of an existing answer needs no second model round');
+  const replies = shown.messages.filter(m => m.role === 'assistant' && m.requestId === 'role-show');
+  assert.equal(replies.length, 1); assert.equal(replies[0].text, 'This is the complete read-only answer.');
+  assert.equal(replies[0].actions[0].kind, 'node-references');
+  assert.equal((await f.browser('main', { body: { id: 'role-automatic', text: 'role-automatic' } })).status, 202);
+  await f.wait('main', value => value.status === 'waiting-for-user' && !value.activeTurnId);
+  const automaticCall = f.modelCalls.at(-1);
+  assert.match(automaticCall.system, /系统为新任务创建独立执行 Session/);
+  assert.doesNotMatch(automaticCall.system, /本轮答复发往 Slack|以下仅用于宿主已声明的人工执行对话/);
+  assert.deepEqual(automaticCall.tools, selectCoordinatorTools(coordinatorTools, { fileWrite: false }));
+  await f.restart();
+  assert.equal((await f.gateway('conversation.submit', { text: 'role-after-restart' }, { id: 'role-after-restart', conversationId: conversation })).status, 200);
+  await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId);
+  assert.doesNotMatch(f.modelCalls.at(-1).system, /系统为新任务创建独立执行 Session/);
+  assert.deepEqual(f.modelCalls.at(-1).tools, manualCall.tools);
 });
 
 test('Browser retries of a failed Slack turn retain verified Slack actor/source and reject caller-forged identity', async t => {
@@ -284,6 +388,35 @@ test('Stale brief confirmation fails without Main or Agent mutations after a con
     { id: 'stale-approval', conversationId: conversation });
   assert.equal(rejected.status, 409); assert.equal(rejected.body.error.code, 'VERSION_CONFLICT');
   const after = await f.main(); assert.equal(after.revision, changed.revision); assert.deepEqual(after.main.memory.map, changed.main.memory.map);
+  await assertNoDispatch(f);
+});
+
+for (const scenario of [
+  { name:'explicit Bug intent in a TODO-focused conversation', mount:'mount-todo', input:{taskId:'B1',kind:'bug'} },
+  { name:'explicit Bug intent in another Bug-focused conversation', mount:'mount-bug', input:{taskId:'B1',kind:'bug'} },
+  { name:'explicit other node in a Bug-focused conversation', mount:'mount-bug', input:{taskId:'B1',nodeId:'OTHER'} },
+  { name:'explicit TODO intent in a Bug-focused conversation', mount:'mount-bug', input:{taskId:'new-todo',kind:'todo'} },
+]) test(`Manual focus cannot replace ${scenario.name} when item identity is incomplete`, async t => {
+  const f = await fixture(t,{prepareInput:scenario.input}),conversation=await f.newConversation('partial-identity');
+  assert.equal((await f.gateway('conversation.submit',{text:scenario.mount},{id:'mount-focus',conversationId:conversation})).status,200);
+  const mounted=await f.wait(conversation,value=>value.status==='waiting-for-user'&&!value.activeTurnId&&value.acceptedRequestIds.includes('mount-focus'));
+  assert.equal(mounted.conversations.find(item=>item.id===conversation).itemId, undefined,
+    'Mounting focuses a node without creating a Main work item');
+  // Existing item conversations still need the routing protection after the
+  // mount-only flow stopped creating items. Seed a persisted legacy focus.
+  const registry=new CoordinatorConversations(path.join(f.directory,'coordinators',projectId));
+  await registry.setFocus(conversation, { nodeId:'T0', kind:scenario.mount==='mount-bug'?'bug':'todo',
+    itemId:scenario.mount==='mount-bug'?'B1':'TD-old' });
+  await f.restart();
+  const before=await f.main();
+  assert.equal((await f.gateway('conversation.submit',{text:'prepare-explicit-routing'},{id:'partial-prepare',conversationId:conversation})).status,200);
+  const settled=await f.wait(conversation,value=>value.status==='waiting-for-user'&&!value.activeTurnId&&value.acceptedRequestIds.includes('partial-prepare'));
+  assert.equal(settled.approvals.filter(x=>x.manual).length,0,'No brief may silently adopt the focus instead of the explicit routing');
+  const raw=await readJSON(registry.conversationFile(conversation));
+  const reply=raw.messages.flatMap(m=>Array.isArray(m.content)?m.content:[]).find(b=>b.type==='tool_result'&&b.tool_use_id==='tool-explicit-routing');
+  assert.equal(reply?.is_error,true);
+  assert.equal(JSON.parse(reply.content).error.code,'INVALID_ARGUMENT');
+  assert.deepEqual(await f.main(),before,'A failed proposal must not mutate any Main item');
   await assertNoDispatch(f);
 });
 
@@ -383,6 +516,63 @@ test('Slack map array writes require explicit manual mode for new items, preserv
   assert.equal((await f.main()).revision, after.revision); assert.equal((await f.main()).main.memory.map.root.todos.length, 2);
   assert.equal((await f.gateway('map.write', { baseVersion: before.main.version,
     operations: [{ type: 'update', id: 'T0', fields: { todos: [] } }] }, { id: 'stale-array-map-write' })).body.error.code, 'VERSION_CONFLICT');
+});
+
+test('Slack validates direct Bug operations and retains manual markers before committing Main', async t => {
+  const f = await fixture(t), before = await f.main();
+  const bug = { id: 'B99999', title: 'Slack Bug', status: 'open' };
+  const invalid = [
+    { type: 'attach-bug', id: 'T0', bug },
+    { type: 'attach-bug', id: 'T0', bug: { ...bug, executionMode: 'automatic' } },
+    { type: 'attach-bug', bug },
+    { type: 'recover-bug', id: 'T0', bug },
+    { type: 'document', fields: { unassigned_bugs: [bug] } },
+    { type: 'create', parentId: 'T0', node: { id: 'N1', title: 'New node', kind: 'module', state: 'dirty', owns: [], bugs: [bug] } },
+  ];
+  for (const [index, operation] of invalid.entries()) {
+    const result = await f.gateway('map.write', { baseVersion: before.main.version, operations: [operation] }, { id: `invalid-direct-bug-${index}` });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.equal(result.body.error.code, 'INVALID_ARGUMENT');
+    assert.deepEqual(await f.main(), before, 'Rejected operations must not change Main, receipts or events');
+  }
+  const manualBug = { ...bug, executionMode: 'manual' };
+  const payload = { baseVersion: before.main.version, operations: [{ type: 'attach-bug', id: 'T0', bug: manualBug }] };
+  const attached = await f.gateway('map.write', payload, { id: 'manual-direct-bug' });
+  assert.equal(attached.status, 200, JSON.stringify(attached.body));
+  const after = await f.main();
+  assert.deepEqual(after.main.memory.map.root.bugs.find(item => item.id === bug.id), manualBug);
+  assert.deepEqual((await f.gateway('map.write', payload, { id: 'manual-direct-bug' })).body, attached.body);
+  assert.deepEqual(await f.main(), after);
+  const intake = new CoordinatorMapIntake({ directory: path.join(f.directory, 'manual-bug-intake'), read: f.main,
+    service: { submit: async () => assert.fail('Slack work must not enter automatic intake') } });
+  assert.equal(intake.items(after.main.memory.map.root).some(entry => entry.item.id === bug.id), false);
+  for (const executionMode of [undefined, 'automatic']) {
+    const bugs = after.main.memory.map.root.bugs.map(item => item.id === bug.id ? { ...item, executionMode } : item);
+    const result = await f.gateway('map.write', { baseVersion: after.main.version,
+      operations: [{ type: 'update', id: 'T0', fields: { bugs } }] }, { id: `strip-marker-${executionMode || 'missing'}` });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.deepEqual(await f.main(), after);
+  }
+  const recovery = await f.gateway('map.write', { baseVersion: after.main.version,
+    operations: [{ type: 'recover-bug', id: 'T0', bug: manualBug }] }, { id: 'manual-recovery-still-forbidden' });
+  assert.equal(recovery.status, 403);
+  assert.equal(recovery.body.error.code, 'FORBIDDEN_RECOVERY');
+});
+
+test('A legacy unassigned Bug cannot bypass the marker check on a node without a Bug array', async t => {
+  const bug = { id: 'B7777', title: 'Existing unassigned Bug', status: 'open' };
+  const f = await fixture(t, { initialMap: { project: 'Fixture', root: {
+    id: 'T0', title: 'Legacy node', kind: 'module', state: 'dirty', owns: [], children: [],
+  }, unassigned_bugs: [bug] } });
+  const before = await f.main();
+  const rejected = await f.gateway('map.write', { baseVersion: before.main.version,
+    operations: [{ type: 'attach-bug', id: 'T0', bug }] }, { id: 'shadow-unassigned-bug' });
+  assert.equal(rejected.status, 400, JSON.stringify(rejected.body));
+  assert.deepEqual(await f.main(), before);
+  const unchanged = await f.gateway('map.write', { baseVersion: before.main.version,
+    operations: [{ type: 'attach-bug', bug }] }, { id: 'unchanged-unassigned-bug' });
+  assert.equal(unchanged.status, 200, JSON.stringify(unchanged.body));
+  assert.deepEqual((await f.main()).main.memory.map.unassigned_bugs, [bug]);
 });
 
 test('Coordinator attachments are shared with authenticated browser and isolated by project without Quark', async t => {

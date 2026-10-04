@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { CoordinatorModel, coordinatorInputTokens, coordinatorModelMessages, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
 import { buildCoordinatorContext } from '../scripts/cloud/coordinator-context.mjs';
 import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume,
-  coordinatorCompactBoundary, COORDINATOR_COMPACT_AT_TOKENS } from '../scripts/cloud/coordinator-service.mjs';
+  coordinatorCompactBoundary, COORDINATOR_COMPACT_AT_TOKENS, COORDINATOR_MANUAL_COMPACT_AT_TOKENS } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -865,6 +865,37 @@ test('Coordinator context carries the full static directory and only the mounted
   assert.doesNotMatch(limited.text, /reader memory|article memory/);
 });
 
+test('Main overview is fresh, bounded and never leaks ancestor or sibling items outside scope', () => {
+  const snapshot = { version: 'overview-v1', memory: { map: { root: { id: 'T0', title: 'Project',
+    todos: [{ id: 'root-secret', title: 'Private root item', status: 'pending' }], children: [
+      { id: 'N1', title: 'Reader', todos: [
+        { id: 'pending', title: 'Return to top', desc: 'Unneeded long requirement', status: 'pending' },
+        { id: 'done', title: 'Finished TODO', status: 'done' },
+      ], bugs: [{ id: 'open', title: 'Broken query', status: 'open' }, { id: 'fixed', title: 'Needs human review', status: 'fixed' },
+        ...['resolved', 'unfixable', 'dormant', 'wontfix', 'deferred'].map(status => ({ id: status, title: 'Finished Bug', status }))],
+      children: [{ id: 'N-private-child', title: 'Unassigned child', todos: [{ id: 'child-secret', title: 'Private child item', status: 'pending' }], children: [] }] },
+      { id: 'N2', title: 'Admin', todos: [{ id: 'sibling-secret', title: 'Private sibling item', status: 'pending' }], children: [] },
+    ] } } } };
+  const options = { nodeIds: ['N1'], conversation: { id: 'chat-overview', scope: 'project' } };
+  const result = buildCoordinatorContext(snapshot, options);
+  assert.match(result.text, /TODO 1 条，Bug 2 条/);
+  assert.match(result.text, /TODO｜Reader \[N1\]｜Return to top（pending）/);
+  assert.match(result.text, /Bug｜Reader \[N1\]｜Broken query（open）/);
+  assert.match(result.text, /Needs human review（fixed）/);
+  assert.match(result.text, /不是执行阶段或完成证据/);
+  assert.doesNotMatch(result.text, /Private root item|Private sibling item|Private child item|Finished TODO|Finished Bug|Unneeded long requirement/);
+  assert.doesNotMatch(buildCoordinatorContext(snapshot, { ...options,
+    conversation: { id: 'item-only', nodeId: 'N1', itemId: 'pending', kind: 'todo' } }).text, /未完成事项概览|Broken query/);
+  snapshot.memory.map.root.children[0].todos[0].status = 'done';
+  assert.match(buildCoordinatorContext(snapshot, options).text, /TODO 0 条，Bug 2 条/);
+  snapshot.memory.map.root.children[0].todos = Array.from({ length: 25 }, (_, i) => ({ id: `TD${i}`, title: `Task ${i}`, status: 'pending' }));
+  const bounded = buildCoordinatorContext(snapshot, options);
+  assert.match(bounded.text, /TODO 25 条，Bug 2 条/);
+  assert.match(bounded.text, /另有 7 条未展开；需要完整清单时调用 list_tasks/);
+  assert.doesNotMatch(bounded.text, /Task 20/);
+  assert.equal((bounded.text.match(/^- TODO｜/gm) || []).length, 20);
+});
+
 test('Coordinator loads project memory before dialogue and one relevant node document on focus', () => {
   const snapshot = { version: 'main-memory-1', memory: { map: { root: {
     id: 'T0', title: '实验博客', purpose: '验证博客', memoryDocument: '# 实验博客 · 项目记忆\n\n## 目标\n\n实验不得发布生产。',
@@ -900,6 +931,173 @@ test('Coordinator streams text deltas while retaining one complete assistant mes
   assert.deepEqual(deltas, ['先说', '先说结论']);
   assert.deepEqual(result.content, [{ type: 'text', text: '先说结论' }]);
   assert.equal(result.stop, 'end_turn');
+});
+
+test('Coordinator retains split thinking and signatures without exposing them as streamed text', async () => {
+  const thinking = { type: 'thinking', thinking: '私有测试推理：先核对，再回答。', signature: 'synthetic-signature-part-1-part-2' };
+  const redacted = { type: 'redacted_thinking', data: 'synthetic-opaque-redacted-data' };
+  const values = [
+    { type: 'message_start', message: { model: config.model } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '私有测试推理：' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: '先核对，' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: '再回答。' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'synthetic-signature-part-1' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: '-part-2' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'content_block_start', index: 1, content_block: redacted },
+    { type: 'content_block_stop', index: 1 },
+    { type: 'content_block_start', index: 2, content_block: { type: 'text', text: '可见' } },
+    { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: '答复' } },
+    { type: 'content_block_stop', index: 2 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+    { type: 'message_stop' },
+  ];
+  const bytes = Buffer.from(values.map(value => `event: ${value.type}\r\ndata: ${JSON.stringify(value)}\r\n\r\n`).join(''));
+  const observed = [];
+  const model = new CoordinatorModel({ ...config, fetch: async () => new Response(new ReadableStream({
+    start(controller) { for (let offset = 0; offset < bytes.length; offset += 7) controller.enqueue(bytes.subarray(offset, offset + 7)); controller.close(); }
+  }), { headers: { 'content-type': 'text/event-stream' } }) });
+  const result = await model.next({ system: 'role', messages: [], onText: text => observed.push(text) });
+  assert.deepEqual(result.content, [thinking, redacted, { type: 'text', text: '可见答复' }]);
+  assert.deepEqual(observed, ['可见', '可见答复']);
+  const body = JSON.parse(model.prepareRequest({ system: 'role', messages: [{ role: 'assistant', content: result.content }] }));
+  assert.deepEqual(body.messages[0].content, result.content, 'next request preserves the original completed blocks');
+});
+
+test('Coordinator tool continuation and restarted conversation return full private stream blocks only to the provider', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-thinking-stream-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const thinking = { type: 'thinking', thinking: 'synthetic-private-part-one-part-two', signature: 'synthetic-private-signature' };
+  let requests = 0, executions = 0;
+  const tools = [{ name: 'read_map', input_schema: { type: 'object' } }];
+  const model = new CoordinatorModel({ ...config, fetch: async (_url, options) => {
+    requests++;
+    const body = JSON.parse(options.body);
+    if (requests > 1) {
+      assert.deepEqual(body.messages[1].content[0], thinking);
+      assert.deepEqual(body.messages[1].content[1], { type: 'tool_use', id: 'synthetic-read-1', name: 'read_map', input: { nodeId: 'N1' } });
+      assert.equal(body.messages[2].content[0].tool_use_id, 'synthetic-read-1');
+      return Response.json(text);
+    }
+    const events = [
+      { type: 'message_start', message: { model: config.model } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'synthetic-private-part-one' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: '-part-two' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'synthetic-private-signature' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'synthetic-read-1', name: 'read_map', input: {} } },
+      { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"nodeId":"N1"}' } },
+      { type: 'content_block_stop', index: 1 },
+      { type: 'message_delta', delta: { stop_reason: 'tool_use' } },
+      { type: 'message_stop' },
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    return new Response(events, { headers: { 'content-type': 'text/event-stream' } });
+  } });
+  const settings = { directory, system: 'Coordinator', model, tools, execute: async () => { executions++; return { current: true }; } };
+  let service = new CoordinatorService(settings);
+  await service.submit({ id: 'synthetic-turn-1', text: '读取实际节点' });
+  await service.close();
+  assert.equal(requests, 2); assert.equal(executions, 1);
+  assert.equal((await service.state()).status, 'waiting-for-user');
+  assert.doesNotMatch(JSON.stringify(await service.state()), /synthetic-private/);
+  assert.deepEqual(JSON.parse(await fs.readFile(service.file, 'utf8')).messages[1].content[0], thinking);
+  service = new CoordinatorService(settings);
+  await service.submit({ id: 'synthetic-turn-2', text: '继续解释' });
+  await service.close();
+  assert.equal(requests, 3); assert.equal(executions, 1);
+  assert.doesNotMatch(JSON.stringify(await service.state()), /synthetic-private/);
+});
+
+test('Coordinator rejects malformed private stream deltas without leaking their values', async () => {
+  const privateMarker = 'synthetic-private-error-value';
+  const cases = [
+    [undefined, { type: 'thinking_delta', thinking: privateMarker }],
+    [{ type: 'text', text: '' }, { type: 'signature_delta', signature: privateMarker }],
+    [{ type: 'redacted_thinking', data: 'opaque' }, { type: 'thinking_delta', thinking: privateMarker }],
+    [{ type: 'thinking', thinking: '' }, { type: 'thinking_delta', thinking: { privateMarker } }],
+    [{ type: 'thinking', thinking: '' }, { type: 'signature_delta', signature: { privateMarker } }],
+    [{ type: 'thinking', thinking: 1 }, { type: 'thinking_delta', thinking: privateMarker }],
+    [{ type: 'thinking', signature: 1 }, { type: 'signature_delta', signature: privateMarker }],
+  ];
+  for (const [block, delta] of cases) {
+    const events = [
+      { type: 'message_start', message: { model: config.model } },
+      ...(block ? [{ type: 'content_block_start', index: 0, content_block: block }] : []),
+      { type: 'content_block_delta', index: 0, delta },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    const visible = [];
+    const model = new CoordinatorModel({ ...config, fetch: async () => new Response(events, { headers: { 'content-type': 'text/event-stream' } }) });
+    await assert.rejects(model.next({ system: '', messages: [], onText: value => visible.push(value) }),
+      cause => cause.code === 'MODEL_INVALID_RESPONSE' && !cause.message.includes(privateMarker));
+    assert.deepEqual(visible, []);
+  }
+});
+
+test('Coordinator does not accept an incomplete private stream as a successful assistant turn', async () => {
+  const events = [
+    { type: 'message_start', message: { model: config.model } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'synthetic-private-partial' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'synthetic-signature' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'max_tokens' } },
+  ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+  const visible = [];
+  const model = new CoordinatorModel({ ...config, fetch: async () => new Response(events, { headers: { 'content-type': 'text/event-stream' } }) });
+  await assert.rejects(model.next({ system: '', messages: [], onText: value => visible.push(value) }), { code: 'MODEL_INVALID_RESPONSE' });
+  assert.deepEqual(visible, []);
+});
+
+test('Coordinator validates both private block fields even without a matching delta or in JSON responses', async () => {
+  const blocks = [
+    [{ type: 'thinking', thinking: '', signature: { invalid: 'synthetic-private-start' } }, { type: 'thinking_delta', thinking: 'valid' }],
+    [{ type: 'thinking', thinking: { invalid: 'synthetic-private-start' }, signature: '' }, { type: 'signature_delta', signature: 'valid' }],
+    [{ type: 'thinking', thinking: '', signature: { invalid: 'synthetic-private-start' } }, null],
+    [{ type: 'thinking', thinking: { invalid: 'synthetic-private-start' } }, null],
+  ];
+  for (const [block, delta] of blocks) for (const streamed of [true, false]) {
+    const events = [
+      { type: 'message_start', message: { model: config.model } },
+      { type: 'content_block_start', index: 0, content_block: block },
+      ...(delta ? [{ type: 'content_block_delta', index: 0, delta }] : []),
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    const model = new CoordinatorModel({ ...config, fetch: async () => streamed
+      ? new Response(events, { headers: { 'content-type': 'text/event-stream' } })
+      : Response.json({ ...text, content: [block] }) });
+    await assert.rejects(model.next({ system: '', messages: [] }), cause =>
+      cause.code === 'MODEL_INVALID_RESPONSE' && !cause.message.includes('synthetic-private-start'));
+  }
+});
+
+test('Coordinator cancels an open invalid stream without waiting on cleanup or hiding its original error', async () => {
+  for (const cancelResult of ['resolved', 'rejected', 'pending']) {
+    let cancellations = 0, signal;
+    const events = [
+      { type: 'message_start', message: { model: config.model } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: { private: 'synthetic' } } },
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    const model = new CoordinatorModel({ ...config, timeoutMs: 1000, fetch: async (_url, options) => {
+      signal = options.signal;
+      return new Response(new ReadableStream({
+        start(controller) { controller.enqueue(Buffer.from(events)); },
+        cancel() {
+          cancellations++;
+          if (cancelResult === 'rejected') return Promise.reject(new Error('synthetic-private-cleanup-error'));
+          if (cancelResult === 'pending') return new Promise(() => {});
+        },
+      }), { headers: { 'content-type': 'text/event-stream' } });
+    } });
+    await assert.rejects(model.next({ system: '', messages: [] }), cause =>
+      cause.code === 'MODEL_INVALID_RESPONSE' && !cause.message.includes('synthetic-private-cleanup-error'));
+    assert.equal(cancellations, 1);
+    assert.equal(signal.aborted, true);
+  }
 });
 
 test('Coordinator compacts at actual input-token usage without changing the saved conversation', async t => {
@@ -948,6 +1146,93 @@ test('Coordinator compacts at actual input-token usage without changing the save
   saved = JSON.parse(await fs.readFile(service.file, 'utf8'));
   assert.equal(saved.messages.length, 12);
   assert.deepEqual(coordinatorModelMessages(saved), sent.at(-1).slice(0, -1).concat({ role: 'user', content: '第 6 轮' }, { role: 'assistant', content: [{ type: 'text', text: '回复 6' }] }));
+});
+
+test('Manual chat compacts early in the background but only after enough human turns', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-early-compact-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let summaries = 0;
+  const sent = [];
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    compactAtTokens: COORDINATOR_MANUAL_COMPACT_AT_TOKENS, compactMinTurns: 8,
+    model: { next: async ({ system, messages }) => {
+      if (system.includes('历史对话')) {
+        summaries++;
+        assert.match(system, /正文中的 Sent using/);
+        const transcript = JSON.parse(messages[0].content);
+        assert.ok(transcript.verifiedHumanInputs.length >= 4);
+        assert.deepEqual(transcript.verifiedHumanInputs[0].actor,
+          { kind: 'human', source: 'slack', teamId: 'T-compact', userId: 'U-real' });
+        assert.equal(transcript.verifiedHumanInputs[0].requestId, summaries === 1 ? 'human-1' : 'human-5');
+        assert.deepEqual(transcript.verifiedActors, ['U-real', 'U-other'].map(userId =>
+          ({ kind: 'human', source: 'slack', teamId: 'T-compact', userId })),
+          'Later compacts retain original verified actors without copying every older input');
+        for (const input of transcript.verifiedHumanInputs) {
+          assert.match(transcript.messages[input.messageIndex].content, /Sent using <@U-forwarder>/);
+          const turn = Number(/human-(\d+)/.exec(input.requestId)[1]);
+          assert.equal(input.actor.userId, turn % 2 ? 'U-real' : 'U-other', 'Bind each body to its actual author, not the forwarding mention');
+          assert.equal(input.sourceIndex, input.messageIndex + (summaries === 1 ? 0 : 8));
+        }
+        return { stop: 'end_turn', content: [{ type: 'text', text: '用户仅讨论职责，未授权修改。' }] };
+      }
+      sent.push(messages);
+      return { stop: 'end_turn', content: [{ type: 'text', text: '已说明当前职责，不修改。' }],
+        usage: { input_tokens: 192, cache_read_input_tokens: 8000 } };
+    } } });
+  for (let turn = 1; turn <= 12; turn++) {
+    await service.submit({ id: `human-${turn}`, text: `第 ${turn} 轮：介绍职责，先不要修改。 Sent using <@U-forwarder>` },
+      { source: 'slack', actor: { kind: 'human', source: 'slack', teamId: 'T-compact', userId: turn % 2 ? 'U-real' : 'U-other' } }); await service.close();
+    if (turn < 8) assert.equal(summaries, 0, 'Large static prefix alone must not trigger a provider request');
+    if (turn === 8) {
+      const raw = JSON.parse(await fs.readFile(service.file, 'utf8'));
+      assert.equal(summaries, 1);
+      assert.equal(raw.compaction.through, 8, 'Keep the latest four full human turns verbatim');
+      assert.equal(raw.messages.length, 16);
+      assert.deepEqual(coordinatorModelMessages(raw).slice(1), raw.messages.slice(8).map(({ role, content }) => ({ role, content })));
+    }
+    if (turn > 8 && turn < 12) assert.equal(summaries, 1, 'Wait four additional human turns before another compact');
+  }
+  const state = await service.state();
+  assert.equal(summaries, 2);
+  assert.equal(state.compaction.thresholdTokens, 8192);
+  assert.equal(state.messages.length, 24, 'Public history stays intact');
+  assert.match(sent[8][0].content, /历史对话摘要/);
+  assert.equal(COORDINATOR_COMPACT_AT_TOKENS, 500000, 'Legacy execution mode retains its prior threshold');
+});
+
+test('Workflow data cannot consume the recent human-turn window or early compact interval', async () => {
+  const messages = Array.from({ length: 8 }, (_, i) => [
+    { role: 'user', source: 'human', content: `human ${i}` },
+    { role: 'assistant', content: [{ type: 'text', text: 'reply' }] },
+    { role: 'user', source: 'workflow', content: 'Server data is not another human turn' },
+  ]).flat();
+  assert.equal(coordinatorCompactBoundary(messages, 0, { humanOnly: true }), 12);
+  assert.equal(coordinatorCompactBoundary(messages), 18, 'Legacy execution-window behavior is unchanged');
+  assert.throws(() => new CoordinatorService({ directory: '/unused', compactMinTurns: 0 }), { code: 'INVALID_ARGUMENT' });
+});
+
+test('Verified summary provenance cannot relax the smaller-history guard', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-compact-provenance-size-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    compactAtTokens: 1, compactMinTurns: 2,
+    model: { next: async ({ system, messages }) => {
+      if (!system.includes('历史对话')) return { stop: 'end_turn', content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 1 } };
+      const transcript = JSON.parse(messages[0].content);
+      const summary = 'x'.repeat(250);
+      assert.ok(Buffer.byteLength(JSON.stringify({ messages: transcript.messages })) < summary.length);
+      assert.ok(Buffer.byteLength(messages[0].content) > summary.length, 'Provenance alone makes transport larger');
+      return { stop: 'end_turn', content: [{ type: 'text', text: summary }] };
+    } } });
+  for (const id of ['first', 'second']) {
+    await service.submit({ id, text: 'hi' }, { source: 'slack',
+      actor: { kind: 'human', source: 'slack', teamId: 'T-size', userId: 'U-real', name: 'n'.repeat(240) } });
+    await service.close();
+  }
+  const raw = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  assert.equal(raw.compaction, undefined);
+  assert.equal(raw.compactionError.code, 'COMPACTION_FAILED');
+  assert.equal(raw.messages.length, 4);
 });
 
 test('Coordinator keeps tool pairs and raw history when compaction fails', async t => {
@@ -1086,6 +1371,211 @@ test('Completed tool turns retain previously shown text and structured actions',
   assert.equal(assistant[0].text, '我先找到了节点。');
   assert.deepEqual(assistant[0].actions[0].nodes, [{ id: 'N1', title: '阅读' }]);
   assert.equal(assistant[1].text, '推荐阅读节点。');
+});
+
+test('Manual presentation finishes one visible answer with durable tool pairs and receipts', async t => {
+  for (const [name, input] of [['show_nodes', { message: '入口', nodeIds: ['N1'] }],
+    ['open_node', { nodeId: 'N1' }], ['tour_nodes', { nodeIds: ['N1', 'N2'] }]]) {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-manual-presentation-'));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    let calls = 0;
+    const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, completePresentations: true,
+      execute: createCoordinatorExecutor({ resolveNodes: async ids => ids.map(id => ({ id, title: id })) }),
+      model: { next: async () => { calls++; return { stop: 'tool_use', content: [
+        { type: 'text', text: '首页提供文章入口，文章页提供正文阅读。' },
+        { type: 'tool_use', id: 'presentation', name, input: { ...input, replyComplete: true } },
+      ] }; } } });
+    await service.submit({ id: 'one-answer', text: '解释并展示相关节点' }); await service.close();
+    const state = await service.state(), raw = JSON.parse(await fs.readFile(service.file, 'utf8'));
+    assert.equal(calls, 1); assert.equal(state.activeTurnId, null); assert.equal(state.status, 'waiting-for-user');
+    assert.equal(state.messages.filter(m => m.role === 'assistant').length, 1);
+    assert.equal(raw.messages.length, 3); assert.equal(raw.messages.at(-1).content[0].type, 'tool_result');
+    assert.equal(Object.keys(raw.toolReceipts).length, 1); assert.equal(raw.pending, null);
+    assert.ok(state.messages.find(m => m.role === 'assistant').actions.length);
+    await service.submit({ id: 'one-answer', text: '解释并展示相关节点' }); await service.close();
+    assert.equal(calls, 1, 'Same human request never duplicates the model or presentation');
+    assert.equal(coordinatorModelMessages(raw).length, 3, 'Native tool pair remains available to a later turn');
+    const restored = structuredClone(raw);
+    restored.messages.pop();
+    restored.pending = { stop: 'tool_use', content: restored.messages.at(-1).content };
+    await coordinatorStep({ turnId: 'one-answer', state: restored, system: 'Coordinator', tools: coordinatorTools,
+      completePresentations: true, model: { next: () => assert.fail('Pending presentation must not request model again') },
+      execute: () => assert.fail('Persisted receipt must not run presentation again'), save: async () => {} });
+    assert.equal(restored.status, 'waiting-for-user'); assert.equal(restored.messages.length, 3);
+  }
+});
+
+test('Presentation shortcut excludes textless, failed, mixed, read/write and ordinary execution turns', async t => {
+  const cases = [
+    { name: 'progress-without-completion', names: ['show_nodes'], text: '我先展示登录入口，再核对最新Bug。', complete: true, mark: undefined },
+    { name: 'explicitly-incomplete', names: ['show_nodes'], text: '我先展示入口，再核对最新Bug。', complete: true, mark: false },
+    { name: 'partial-completion', names: ['show_nodes', 'open_node'], text: '核对中', complete: true, partial: true },
+    { name: 'textless', names: ['show_nodes'], text: '', complete: true },
+    { name: 'ordinary', names: ['show_nodes'], text: '已说明', complete: false },
+    { name: 'read', names: ['read_map'], text: '读取中', complete: true },
+    { name: 'write', names: ['edit_map'], text: '修改中', complete: true },
+    { name: 'mixed', names: ['show_nodes', 'list_tasks'], text: '查阅中', complete: true },
+    { name: 'failed', names: ['show_nodes'], text: '准备展示', complete: true, failed: true },
+    { name: 'missing-visible-result', names: ['show_nodes'], text: '准备展示', complete: true, missing: true },
+  ];
+  for (const scenario of cases) {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-presentation-excluded-'));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    let calls = 0;
+    const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, completePresentations: scenario.complete,
+      execute: async name => {
+        if (scenario.failed) throw Object.assign(new Error('No node'), { code: 'INVALID_ARGUMENT' });
+        return scenario.missing ? {} : name === 'show_nodes' ? { kind: 'node-references', nodes: [{ id: 'N1', title: '入口' }] }
+          : name === 'read_map' ? { kind: 'map-read', node: { id: 'N1', title: '入口' } } : name === 'edit_map' ? { kind: 'map-action' } : { tasks: [] };
+      },
+      model: { next: async () => ++calls === 1 ? { stop: 'tool_use', content: [
+        ...(scenario.text ? [{ type: 'text', text: scenario.text }] : []),
+        ...scenario.names.map((name, index) => ({ type: 'tool_use', id: `call-${index}`, name,
+          input: scenario.name === 'progress-without-completion' || scenario.partial && index ? {} :
+            { replyComplete: Object.hasOwn(scenario, 'mark') ? scenario.mark : true } })),
+      ] } : { stop: 'end_turn', content: [{ type: 'text', text: '已核对实际结果。' }] } } });
+    await service.submit({ id: 'requires-followup', text: '继续核对' }); await service.close();
+    assert.equal(calls, 2, `${scenario.name} must not skip the result-dependent model round`);
+    assert.equal((await service.state()).messages.filter(m => m.role === 'assistant').at(-1).text, '已核对实际结果。');
+  }
+});
+
+test('Presentation completion is a backward-compatible optional boolean and does not broaden tool writes', async () => {
+  let resolutions = 0;
+  const execute = createCoordinatorExecutor({ resolveNodes: async ids => { resolutions++; return ids.map(id => ({ id, title: id })); } });
+  for (const [name, input, required] of [['show_nodes', { message: '入口', nodeIds: ['N1'] }, ['message', 'nodeIds']],
+    ['open_node', { nodeId: 'N1' }, ['nodeId']], ['tour_nodes', { nodeIds: ['N1', 'N2'] }, ['nodeIds']]]) {
+    const schema = coordinatorTools.find(tool => tool.name === name).input_schema;
+    assert.deepEqual(schema.required, required); assert.equal(schema.properties.replyComplete.default, false);
+    const legacy = await execute(name, input, { operationId: 'legacy' });
+    assert.deepEqual(await execute(name, { ...input, replyComplete: true }, { operationId: 'legacy' }), legacy);
+    assert.deepEqual(await execute(name, { ...input, replyComplete: false }, { operationId: 'legacy' }), legacy);
+    const before = resolutions;
+    for (const flag of ['true', 1, null, {}, []]) await assert.rejects(
+      execute(name, { ...input, replyComplete: flag }, { operationId: 'invalid' }), { code: 'INVALID_ARGUMENT' });
+    assert.equal(resolutions, before, 'Invalid completion marker never resolves or displays nodes');
+  }
+  await assert.rejects(execute('read_map', { replyComplete: true }, { operationId: 'wrong-tool' }), { code: 'INVALID_ARGUMENT' });
+});
+
+test('Private turn metrics separate model rounds and tools without changing public state or replaying receipts', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-turn-metrics-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0, executions = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [{ name: 'probe' }],
+    execute: async () => { executions++; return { privateResult: 'not-in-metrics' }; },
+    model: { next: async ({ onText }) => {
+      if (++calls === 1) return { stop: 'tool_use', usage: { input_tokens: 40, cache_read_input_tokens: 200 },
+        content: [{ type: 'tool_use', id: 'probe', name: 'probe', input: { privateInput: 'not-in-metrics' } }] };
+      await onText('已读取。');
+      return { stop: 'end_turn', content: [{ type: 'text', text: '已读取。' }], usage: { input_tokens: 50, cache_read_input_tokens: 300 } };
+    } } });
+  await service.submit({ id: 'measured-turn', text: 'private-request-not-in-metrics' }); await service.close();
+  const file = path.join(directory, 'conversation.json');
+  const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(raw.performance.turnId, 'measured-turn');
+  assert.equal(raw.performance.models.length, 2);
+  assert.deepEqual(raw.performance.models.map(x => [x.stop, x.inputTokens, x.cacheReadTokens]),
+    [['tool_use', 240, 200], ['end_turn', 350, 300]]);
+  assert.equal(raw.performance.models[0].firstTextMs, null);
+  assert.ok(raw.performance.models[1].firstTextMs >= 0);
+  for (const timing of raw.performance.models) assert.ok(Number.isSafeInteger(timing.durationMs) && timing.durationMs >= 0);
+  assert.equal(raw.performance.tools.length, 1);
+  assert.equal(raw.performance.tools[0].name, 'probe');
+  assert.equal(executions, 1);
+  assert.doesNotMatch(JSON.stringify(raw.performance), /privateInput|privateResult|private-request|not-in-metrics/);
+  assert.equal((await service.state()).performance, undefined);
+  const resumed = structuredClone(raw);
+  resumed.activeTurnId = 'measured-turn';
+  resumed.pending = { stop: 'tool_use', content: [{ type: 'tool_use', id: 'probe', name: 'probe', input: { privateInput: 'not-in-metrics' } }] };
+  await coordinatorStep({ turnId: 'measured-turn', state: resumed, model: { next: () => assert.fail('Pending response must not call model') },
+    system: 'Coordinator', tools: [{ name: 'probe' }], save: async () => {}, execute: () => assert.fail('Receipt must not rerun tool') });
+  assert.equal(resumed.performance.models.length, 2);
+  assert.equal(resumed.performance.tools.length, 1);
+  const fresh = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    model: { next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: '新轮次。' }] }) } });
+  await fresh.submit({ id: 'fresh-turn', text: '下一轮' }); await fresh.close();
+  const freshRaw = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(freshRaw.performance.turnId, 'fresh-turn');
+  assert.equal(freshRaw.performance.models.length, 1);
+  assert.equal(freshRaw.performance.tools.length, 0);
+  assert.ok(freshRaw.messages.length > raw.messages.length, 'Metrics reset without deleting conversation history');
+});
+
+test('Private model metrics retain failed attempts without copying exception text', async () => {
+  const state = { activeTurnId: 'failed', messages: [], toolReceipts: {} };
+  await assert.rejects(coordinatorStep({ turnId: 'failed', state, system: 'role', tools: [], save: async () => {}, execute: async () => {},
+    model: { next: async () => { throw Object.assign(new Error('private-provider-body'), { code: 'MODEL_TIMEOUT' }); } } }), { code: 'MODEL_TIMEOUT' });
+  assert.equal(state.performance.models.length, 1);
+  assert.equal(state.performance.models[0].errorCode, 'MODEL_TIMEOUT');
+  assert.doesNotMatch(JSON.stringify(state.performance), /private-provider-body/);
+});
+
+test('Slack reply policy is supplied as system instructions without changing native tools or other sources', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-slack-reply-policy-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const calls = [];
+  const tools = [{ name: 'probe', input_schema: { type: 'object', properties: {} } }];
+  const service = new CoordinatorService({ directory, system: 'role', tools, context: async () => ({ text: '\nCurrent Main' }), execute: async () => {},
+    model: { next: async request => { calls.push(request); return { stop: 'end_turn', content: [{ type: 'text', text: '简短回复' }] }; } } });
+  await service.submit({ id: 'slack-query', text: '有哪些TODO' }, { source: 'slack', actor: {
+    kind: 'human', sessionId: 'slack-human', teamId: 'TTESTWORKSPACE', userId: 'UTESTUSER',
+  } });
+  await service.running;
+  assert.match(calls[0].system, /本轮答复发往 Slack：使用纯文本/);
+  assert.match(calls[0].system, /最多 200 字/);
+  assert.match(calls[0].system, /只问 TODO 就只列 TODO，不附 Bug/);
+  assert.deepEqual(calls[0].tools, tools, 'Delivery format does not replace JSON Schema tool definitions');
+  await service.submit({ id: 'browser-query', text: '浏览器接续' }); await service.close();
+  assert.equal(calls[1].system, 'role\nCurrent Main');
+  assert.ok(calls[1].messages.some(m => m.content === '有哪些TODO'), 'Cross-client history remains shared');
+});
+
+test('Private timing persists failures and resumes pending tools with their original operation ID', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-timing-recovery-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'conversation.json');
+  const failedModel = new CoordinatorService({ directory, system: 'role', tools: [], execute: async () => {}, maxModelRetries: 0,
+    model: { next: async () => { throw Object.assign(new Error('private-provider-failure'), { code: 'MODEL_TIMEOUT' }); } } });
+  await failedModel.submit({ id: 'model-recovery', text: 'Retry safely' }); await failedModel.close();
+  const failed = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(failed.status, 'error');
+  assert.equal(failed.performance.models[0].errorCode, 'MODEL_TIMEOUT');
+  const resumedModel = new CoordinatorService({ directory, system: 'role', tools: [], execute: async () => {}, retryDelayMs: 0,
+    model: { next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: 'Recovered' }] }) } });
+  resumedModel.kick(); await resumedModel.close();
+  const recovered = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(recovered.status, 'waiting-for-user');
+  assert.equal(recovered.performance.models.length, 2);
+  assert.equal(recovered.messages.filter(m => m.role === 'user').length, 1);
+  assert.doesNotMatch(JSON.stringify(recovered.performance), /private-provider-failure/);
+
+  let modelCalls = 0, executions = 0;
+  const operations = [];
+  const successfulEffects = new Set();
+  const options = { directory, system: 'role', tools: [{ name: 'probe' }],
+    execute: async (_name, _input, { operationId }) => {
+      operations.push(operationId); successfulEffects.add(operationId);
+      if (++executions === 1) throw Object.assign(new Error('private-tool-failure'), { code: 'TOOL_UNAVAILABLE' });
+      return { replayed: true };
+    }, model: { next: async () => ++modelCalls === 1
+      ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'original-probe', name: 'probe', input: {} }] }
+      : { stop: 'end_turn', content: [{ type: 'text', text: 'Tool recovered' }] } } };
+  const firstTool = new CoordinatorService(options);
+  await firstTool.submit({ id: 'tool-recovery', text: 'Use original receipt' }); await firstTool.close();
+  const toolFailure = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(toolFailure.performance.tools[0].errorCode, 'TOOL_UNAVAILABLE');
+  assert.ok(toolFailure.pending, 'Unknown tool result stays pending');
+  const restoredTool = new CoordinatorService(options);
+  await restoredTool.submit({ id: 'tool-recovery', text: 'Use original receipt', retry: true }); await restoredTool.close();
+  const toolRecovered = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(toolRecovered.status, 'waiting-for-user');
+  assert.equal(modelCalls, 2, 'Pending response is not requested from the model again');
+  assert.equal(successfulEffects.size, 1);
+  assert.equal(operations[0], operations[1]);
+  assert.equal(toolRecovered.performance.models.length, 2);
+  assert.equal(toolRecovered.performance.tools.length, 2);
+  assert.doesNotMatch(JSON.stringify(toolRecovered.performance), /private-tool-failure/);
 });
 
 test('Coordinator keeps streamed text visible while its next model call is pending', async t => {
@@ -2081,10 +2571,24 @@ test('An external device calls the same Coordinator tools as the built-in Coordi
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root: {
     id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], proposal: 'accepted',
   } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  const store = new ProtocolStore(path.join(directory, 'interface-v2', createHash('sha256').update('123').digest('hex')));
+  const owner = { repositoryId: '123', deviceId: 'owner-device', agentId: 'owner-agent', role: 'executor' };
+  const bound = await store.handle(owner, { v: 2, id: 'seed-session', type: 'session.bind', payload: {
+    sessionId: 'template', worktreeId: 'template-tree', agentId: owner.agentId, expectedBindingVersion: '',
+  } }, { verifyBinding: async () => true });
+  const session = bound.data.session;
+  const granted = { ...owner, role: 'coordinator', bindings: { template: 'template-tree' } };
+  await store.handle(granted, { v: 2, id: 'seed-brief', type: 'brief.submit', session,
+    payload: { taskId: 'existing-task', text: 'Existing execution' } });
+  await store.transaction(state => { for (const task of Object.values(state.tasks)) task.stage = 'assigned'; });
+  const manualConversation = await new CoordinatorConversations(path.join(directory, 'coordinators', projectId))
+    .createChat('external-manual', { executionMode: 'manual' });
   server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
     browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
     protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab', clients: {
       executor: { deviceId: 'exec-device', agentId: 'exec-agent', role: 'executor' },
+      restricted: { deviceId: 'limited-device', agentId: 'limited-agent', role: 'coordinator', bindings: {}, nodeIds: [] },
+      granted: { deviceId: 'granted-device', agentId: 'granted-agent', role: 'coordinator', bindings: { template: 'template-tree' } },
     } }] },
     coordinatorModelFactory: () => ({ next: async () => { throw new Error('external tool calls must not start a model turn'); } }),
   });
@@ -2097,6 +2601,7 @@ test('An external device calls the same Coordinator tools as the built-in Coordi
   };
   const deviceHeaders = await open('device');
   const executorHeaders = await open('executor');
+  const restrictedHeaders = await open('restricted'), grantedHeaders = await open('granted');
   const callTool = async (headers, body) => {
     const response = await fetch(`${server.url}/api/v2/coordinator-tools`, { method: 'POST', headers, body: JSON.stringify(body) });
     return { status: response.status, body: await response.json() };
@@ -2119,6 +2624,35 @@ test('An external device calls the same Coordinator tools as the built-in Coordi
   const sessions = await callTool(deviceHeaders, { operationId: 'external-sessions', name: 'list_sessions', input: {} });
   assert.equal(sessions.status, 200, JSON.stringify(sessions.body));
   assert.ok(Array.isArray(sessions.body.data.sessions));
+  assert.deepEqual(sessions.body.data.sessions, []); // This device does not own the seeded Session.
+  const permittedSessions = await callTool(grantedHeaders, { operationId: 'granted-sessions', name: 'list_sessions', input: {} });
+  assert.equal(permittedSessions.status, 200);
+  assert.deepEqual(permittedSessions.body.data.sessions.map(item => item.executionSessionId), ['template']);
+  const guidanceInput = { executionSessionId: 'template', taskId: 'existing-task', message: 'Continue existing execution' };
+  for (const authorization of [restrictedHeaders, deviceHeaders]) {
+    for (const name of ['guide_task', 'read_task']) {
+      const input = name === 'guide_task' ? guidanceInput : { executionSessionId: 'template', taskId: 'existing-task' };
+      const denied = await callTool(authorization, { operationId: `denied-${name}`, name, input });
+      assert.equal(denied.status, 403, JSON.stringify(denied.body));
+      assert.equal(denied.body.error.code, 'FORBIDDEN');
+    }
+  }
+  const deniedNode = await callTool(restrictedHeaders, { operationId: 'denied-root', name: 'read_map', input: {} });
+  assert.equal(deniedNode.status, 403, JSON.stringify(deniedNode.body));
+  const deniedEdit = await callTool(restrictedHeaders, { operationId: 'denied-edit', name: 'edit_map', input: {
+    mainVersion: memory.main.version, actions: [{ op: 'update', id: 'T0', title: 'Unauthorized' }],
+  } });
+  assert.equal(deniedEdit.status, 403, JSON.stringify(deniedEdit.body));
+  assert.equal((await readMemoryView(memoryConfig, projectId)).main.version, memory.main.version);
+  const guided = await callTool(grantedHeaders, { operationId: 'granted-guidance', name: 'guide_task', input: guidanceInput });
+  assert.equal(guided.status, 200, JSON.stringify(guided.body));
+  assert.ok(guided.body.data.notificationId);
+  for (const name of ['guide_task', 'resume_task']) {
+    const input = name === 'guide_task' ? guidanceInput : { executionSessionId: 'template', taskId: 'existing-task', reason: 'Resume' };
+    const denied = await callTool(grantedHeaders, { operationId: `manual-${name}`, conversationId: manualConversation, name, input });
+    assert.equal(denied.status, 403, JSON.stringify(denied.body));
+    assert.match(denied.body.error.message, /not enabled/);
+  }
   const forbidden = await callTool(executorHeaders, { operationId: 'executor-list', name: 'list_tasks', input: {} });
   assert.equal(forbidden.status, 403);
   assert.equal(forbidden.body.error.code, 'FORBIDDEN');
@@ -2173,6 +2707,20 @@ test('An external device writes one repository file through the Coordinator tool
   const again = await callTool({ operationId: 'feedback-file', name: 'write_file', input: { path: 'docs/feedback.md', content } });
   assert.equal(again.status, 200, JSON.stringify(again.body));
   assert.equal(again.body.data.sha256, written.body.data.sha256);
+  const receiptFile = path.join(directory, 'coordinators', projectId, 'file-writes.json');
+  const pending = JSON.parse(await fs.readFile(receiptFile, 'utf8'));
+  pending.operations['feedback-file'].committed = false;
+  pending.operations['feedback-file'].result = null;
+  await fs.writeFile(receiptFile, JSON.stringify(pending));
+  await fs.writeFile(path.join(checkout, 'docs/feedback.md'), 'Newer external edit');
+  const staleReplay = await callTool({ operationId: 'feedback-file', name: 'write_file', input: { path: 'docs/feedback.md', content } });
+  assert.equal(staleReplay.status, 409, JSON.stringify(staleReplay.body));
+  assert.equal(staleReplay.body.error.code, 'VERSION_CONFLICT');
+  assert.equal(await fs.readFile(path.join(checkout, 'docs/feedback.md'), 'utf8'), 'Newer external edit');
+  await fs.writeFile(path.join(checkout, 'docs/feedback.md'), content);
+  const recovered = await callTool({ operationId: 'feedback-file', name: 'write_file', input: { path: 'docs/feedback.md', content } });
+  assert.equal(recovered.status, 200, JSON.stringify(recovered.body));
+  assert.deepEqual(recovered.body.data, written.body.data);
   const conflict = await callTool({ operationId: 'feedback-replace', name: 'write_file', input: { path: 'docs/feedback.md', content: `${content}\n更多\n` } });
   assert.equal(conflict.status, 409);
   assert.equal(conflict.body.error.code, 'VERSION_CONFLICT');

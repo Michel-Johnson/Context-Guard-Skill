@@ -94,6 +94,13 @@ async function readBoundedJson(response, deadlineAt, abort) {
   catch { throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid JSON'); }
 }
 
+function validatePrivateBlock(block) {
+  if (block?.type === 'thinking' && ['thinking', 'signature'].some(field =>
+    block[field] !== undefined && typeof block[field] !== 'string')) {
+    throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid private stream data');
+  }
+}
+
 async function readEventStream(response, onText, onToolStart, deadlineAt, abort) {
   const reader = response.body.getReader(), decoder = new TextDecoder();
   let buffer = '', size = 0, model = '', stopReason = '', usage = {}, visibleText = '';
@@ -106,6 +113,7 @@ async function readEventStream(response, onText, onToolStart, deadlineAt, abort)
     if (value.type === 'message_start') { model = value.message?.model || ''; usage = value.message?.usage || {}; }
     if (value.type === 'content_block_start') {
       const block = value.content_block || {};
+      validatePrivateBlock(block);
       blocks[value.index] = block.type === 'tool_use' ? { type: 'tool_use', id: block.id, name: block.name, input: block.input || {}, _json: '' }
         : block.type === 'text' ? { type: 'text', text: block.text || '' } : { ...block };
       if (block.type === 'tool_use') await onToolStart?.(block.name);
@@ -115,6 +123,17 @@ async function readEventStream(response, onText, onToolStart, deadlineAt, abort)
       const block = blocks[value.index], delta = value.delta || {};
       if (block?.type === 'text' && delta.type === 'text_delta') { block.text += delta.text || ''; visibleText += delta.text || ''; await onText?.(visibleText); }
       if (block?.type === 'tool_use' && delta.type === 'input_json_delta') block._json += delta.partial_json || '';
+      // Thinking is private provider history, not visible streaming text. Keep
+      // both opaque signature and exact content for subsequent native tool
+      // rounds; dropping deltas silently corrupts the accepted assistant turn.
+      if (['thinking_delta', 'signature_delta'].includes(delta.type)) {
+        const field = delta.type === 'thinking_delta' ? 'thinking' : 'signature';
+        if (block?.type !== 'thinking' || typeof delta[field] !== 'string' ||
+            block[field] !== undefined && typeof block[field] !== 'string') {
+          throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid private stream data');
+        }
+        block[field] = (block[field] || '') + delta[field];
+      }
     }
     if (value.type === 'content_block_stop') {
       const block = blocks[value.index];
@@ -139,6 +158,12 @@ async function readEventStream(response, onText, onToolStart, deadlineAt, abort)
       }
     }
     buffer += decoder.decode(); if (buffer.trim()) await event(buffer);
+  } catch (cause) {
+    // Parsing failures must cancel the still-open response. Cleanup itself can
+    // stall or reject; initiate it without replacing or delaying the original
+    // failure. The outer transport also aborts its request signal.
+    void reader.cancel().catch(() => {});
+    throw cause;
   } finally { try { reader.releaseLock(); } catch {} }
   return { model, stop_reason: stopReason, content: blocks.filter(Boolean), usage };
 }
@@ -229,6 +254,7 @@ export class CoordinatorModel {
       if (result.model !== this.model || !Array.isArray(result.content) || !['end_turn', 'tool_use'].includes(result.stop_reason)) {
         throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned a different model or an incomplete turn');
       }
+      for (const block of result.content) validatePrivateBlock(block);
       const calls = result.content.filter(block => block.type === 'tool_use');
       if (new Set(calls.map(call => call.id)).size !== calls.length || calls.some(call => typeof call.id !== 'string' || !call.id || typeof call.name !== 'string' || !call.input || typeof call.input !== 'object' || Array.isArray(call.input))) {
         throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned malformed tool calls');
@@ -236,7 +262,9 @@ export class CoordinatorModel {
       if ((result.stop_reason === 'tool_use') !== Boolean(calls.length)) throw problem('MODEL_INVALID_RESPONSE', 'Coordinator stop reason does not match its tool calls');
       return { content: result.content, stop: result.stop_reason, usage: result.usage || {}, model: result.model, requestId: response.headers.get('request-id') || '' };
     } catch (error) {
-      if (abort.signal.aborted) throw problem('MODEL_TIMEOUT', 'Coordinator model timed out; no automatic retry was made');
+      const timedOut = abort.signal.aborted;
+      abort.abort();
+      if (timedOut) throw problem('MODEL_TIMEOUT', 'Coordinator model timed out; no automatic retry was made');
       if (String(error.code || '').startsWith('MODEL_') || error.code === 'CONTEXT_TOO_LARGE') throw error;
       throw problem('MODEL_UNAVAILABLE', 'Coordinator model connection failed; no automatic retry was made');
     } finally { clearTimeout(timer); }
@@ -245,12 +273,34 @@ export class CoordinatorModel {
 
 // Persist every assistant response and tool receipt through the caller. Stable
 // operation IDs let protocol-backed tools replay a lost response idempotently.
-export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, materializeMessages = null, onText = null, onToolStart = null }) {
+export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, materializeMessages = null, onText = null, onToolStart = null, completePresentations = false }) {
   if (state.promptVersion && state.promptVersion !== promptVersion) throw problem('PROMPT_CHANGED', 'Resume with the same Coordinator prompt version');
   state.promptVersion = promptVersion;
   state.messages ||= []; state.toolReceipts ||= {};
+  // Private operator diagnostics only; public timing and transcript contracts
+  // stay unchanged. No prompts, arguments, results or provider IDs are copied.
+  if (state.activeTurnId && state.performance?.turnId !== state.activeTurnId) state.performance = {
+    turnId: state.activeTurnId, models: [], tools: [],
+  };
   if (!state.pending) {
-    const next = await model.next({ system, messages: materializeMessages ? await materializeMessages(state) : coordinatorModelMessages(state), tools, onText, onToolStart });
+    const messages = materializeMessages ? await materializeMessages(state) : coordinatorModelMessages(state);
+    const measurement = state.performance && { startedAt: new Date().toISOString(), firstTextMs: null };
+    const started = Date.now();
+    let next;
+    try {
+      next = await model.next({ system, messages, tools, onText: measurement ? async text => {
+        if (text && measurement.firstTextMs === null) measurement.firstTextMs = Date.now() - started;
+        await onText?.(text);
+      } : onText, onToolStart });
+      if (measurement) Object.assign(measurement, { durationMs: Date.now() - started,
+        stop: next.stop, inputTokens: coordinatorInputTokens(next.usage),
+        cacheReadTokens: Number.isSafeInteger(next.usage?.cache_read_input_tokens) && next.usage.cache_read_input_tokens >= 0 ? next.usage.cache_read_input_tokens : null });
+    } catch (cause) {
+      if (measurement) Object.assign(measurement, { durationMs: Date.now() - started, errorCode: cause.code || 'MODEL_UNAVAILABLE' });
+      throw cause;
+    } finally {
+      if (measurement) state.performance.models = [...state.performance.models, measurement].slice(-60);
+    }
     if (next.content.some(block => ['image', 'image_url'].includes(block.type))) {
       throw problem('MODEL_INVALID_RESPONSE', 'Coordinator responses cannot persist raw image payloads');
     }
@@ -282,10 +332,16 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
       else if (!tools.some(tool => tool.name === call.name)) receipt = { fingerprint,
         ...failedTool('TOOL_FORBIDDEN', '工具名未注册；只能使用本轮提供的工具，不得猜测接口。') };
       else {
+        const started = Date.now();
+        let errorCode = null;
         try { receipt = { fingerprint, result: await execute(call.name, call.input, { operationId }) }; }
         catch (error) {
+          errorCode = error.code || 'TOOL_FAILED';
           if (!correctableToolError(error.code)) throw error;
           receipt = { fingerprint, ...failedTool(error.code, error.toolHint) };
+        } finally {
+          if (state.performance) state.performance.tools = [...state.performance.tools,
+            { name: call.name, durationMs: Date.now() - started, ...(errorCode ? { errorCode } : {}) }].slice(-120);
         }
       }
       state.toolReceipts[operationId] = receipt;
@@ -302,7 +358,15 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
   if (visible.length) state.messages.at(-1).actions = visible;
   state.messages.push({ role: 'user', content: responses });
   state.pending = null;
-  state.status = transferred || !failed && next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user') ? 'waiting-for-user' : 'running';
+  // Successful UI-only actions do not supply new business facts to explain.
+  // The model must explicitly mark the accompanying answer complete. Nonempty
+  // progress text alone cannot terminate pending reading/checking. Preserve the
+  // native tool pair and receipts even when no further model round is needed.
+  const presentationOnly = completePresentations && !failed && responses.length > 0 && visible.length === responses.length &&
+    next.content.some(block => block.type === 'text' && block.text?.trim()) &&
+    next.content.filter(block => block.type === 'tool_use').every(call =>
+      ['show_nodes', 'open_node', 'tour_nodes'].includes(call.name) && call.input?.replyComplete === true);
+  state.status = transferred || !failed && (presentationOnly || next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user')) ? 'waiting-for-user' : 'running';
   await save(state);
   return state;
 }

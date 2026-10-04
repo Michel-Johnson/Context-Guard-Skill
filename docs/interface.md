@@ -69,6 +69,7 @@ CLI 负责写和状态变化。
 | --- | --- | --- | --- |
 | map | `edit_map` | Coordinator | 创建、修改、移动、删除 Main 节点，也可按 Main 版本更新项目或节点记忆文档。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
 | file | `write_file` | Coordinator | 在项目仓库检出中新建或替换一个 UTF-8 文本文件。项目须显式允许。一次一个仓库相对路径。不提交、不推送、不改 Main。替换已有文件时必须带当前内容的 SHA-256；同一操作 ID 重试返回原回执 |
+| map | `show_nodes` / `open_node` / `tour_nodes` | Coordinator | 可选布尔值 `replyComplete`，默认 false；仅人工对话、文本已完整答复且本步全为成功展示时结束本轮，不再请求模型复述。进度说明、无文本、读写、混合调用或失败仍继续核验；不跳过审批。Slack 按已绑定项目生成节点链接，不采用模型提供的 URL |
 | map | 提议 Main 节点 | | 人同意前不写入。唯一的提议 |
 | map | 任务复查 | | 不写入 Main 节点 |
 | map | 挂载 | | 将 Coordinator 挂载到节点；执行 Session 仍须等该事项的 brief 获批后创建，不写入 Main 节点 |
@@ -87,6 +88,7 @@ CLI 负责写和状态变化。
 | bug | 写文件 | | 不因缺少 Plan 或缺少节点授权而阻止写入。另一任务可以更新同一份 Bug 记录 |
 | idea | `createIdea` `updateIdea` | human 或 coordinator | 创建、更新 Idea |
 | brief | 签发 brief | human | 人对指定 brief 版本批准或拒绝并取得服务端回执；对话回答不是签发 |
+| brief | `prepare_task`（人工模式） | Coordinator | 显式选择事项须提供 `itemId`、`nodeId`、`kind`；`taskId` 不关联事项。已关联事项对话仅三字段全缺省时继承可信焦点，显式局部身份返回 `INVALID_ARGUMENT`；无焦点时 `kind=bug` 缺 `itemId` 同样拒绝，不生成 TODO 提案。新 Bug 先通过 `edit_map` 创建。确认仍按指定版本，不自动派发 |
 | plan | `submitPlan` | C / E | 提交 Plan |
 | plan | `approvePlan` `rejectPlan` | Coordinator | Coordinator 签发 Plan。不能在本地自行批准 |
 | ask | 向人提问 | Coordinator | 提问不是批准，也不是签发 |
@@ -107,10 +109,10 @@ Workbench Frontend 对 Backend。
 | map | `getMap` `getNode` | | 读 |
 | map | `createNode` `updateNode` `moveNode` `deleteNode` | human | Cloud 路径改 Main。页面上的修改自动保存。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
 | map | 本地 Main | | 只读 |
-| todo | `listTodos` `getTodo` `updateTodo` | human | 查看、更新 TODO 事项记录 |
+| todo | `listTodos` `getTodo` `updateTodo` | human | 查看、更新 TODO 业务内容；普通工作台编辑既有事项时保留服务端 dispatch 回执，展示用任务投影不写回 Main。Coordinator 派发与验收入口不变 |
 | task | `listTasks` `getTask` | human | 查看 TODO/Bug 共用流程及投递状态；以事项类型、节点 ID、事项 ID 定位，不另建 Task 记录 |
 | task | `acceptTask` | human | 对指定 TODO/Bug 的当前 brief 版本批准或拒绝，取得服务端审核回执；普通对话回答不能代替签发 |
-| bug | `listBugs` `getBug` `updateBug` | human | 查看、更新 Bug 事项记录 |
+| bug | `listBugs` `getBug` `updateBug` | human | 查看、更新 Bug 业务内容；普通工作台编辑既有事项时保留服务端 dispatch 回执，展示用任务投影不写回 Main。Coordinator 派发与验收入口不变 |
 | idea | `listIdeas` `getIdea` `updateIdea` | | |
 | plan | `getPlan` | | 读 |
 | result | `getResult` | | 读 |

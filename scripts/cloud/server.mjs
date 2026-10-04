@@ -17,7 +17,8 @@ import { reviewInput, reviewOperations, pendingReviewFeedback } from './task-rev
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
 import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
 import { CoordinatorModel } from './coordinator-model.mjs';
-import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume } from './coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume,
+  COORDINATOR_MANUAL_COMPACT_AT_TOKENS } from './coordinator-service.mjs';
 import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor, selectCoordinatorTools } from './coordinator-tools.mjs';
 import { writeProjectFile } from './coordinator-file.mjs';
 import { buildCoordinatorContext } from './coordinator-context.mjs';
@@ -26,7 +27,7 @@ import { CloudAttachments, attachmentInput, attachmentPatch } from './attachment
 import { createQuarkProvider } from './quark-provider.mjs';
 import { startIntegrationGateway, validateIntegrationConfig, relevanceInput, relevanceOverview, classifyIntegrationMessage } from './integration-gateway.mjs';
 import { IntegrationAttachmentStore } from './integration-attachments.mjs';
-import { CoordinatorManualBriefs, filterManualTools } from './coordinator-manual.mjs';
+import { CoordinatorManualBriefs, filterManualTools, coordinatorRolePrompt } from './coordinator-manual.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -55,9 +56,9 @@ export function applyCoordinatorAssignments(document, assignments) {
     // so a stale `pending` receipt cannot mask an executing/awaiting-merge
     // task in the workbench.  This is a read-only projection; the source map
     // remains unchanged.
-    todos: (node.todos || []).map(item => assignments.has(`${node.id}:todo:${item.id}`)
+    todos: (node.todos || []).map(item => item.executionMode !== 'manual' && assignments.has(`${node.id}:todo:${item.id}`)
       ? { ...item, dispatch: { ...(item.dispatch || {}), ...assignments.get(`${node.id}:todo:${item.id}`) } } : item),
-    bugs: (node.bugs || []).map(item => assignments.has(`${node.id}:bug:${item.id}`)
+    bugs: (node.bugs || []).map(item => item.executionMode !== 'manual' && assignments.has(`${node.id}:bug:${item.id}`)
       ? { ...item, dispatch: { ...(item.dispatch || {}), ...assignments.get(`${node.id}:bug:${item.id}`) } } : item),
     children: (node.children || []).map(projectItems),
   });
@@ -554,6 +555,7 @@ export async function startCloudServer({
 
   const projectById = id => registry.projects.find(project => project.id === id);
   const coordinators = new Map();
+  let integrationGateway = null;
   const conversationsFor = project => new CoordinatorConversations(path.join(dataDir, 'coordinators', project.id));
   const normalizedSessions = item => (Array.isArray(item?.sessions) ? item.sessions : [])
     .map(value => String(value || '').trim()).filter(Boolean);
@@ -647,7 +649,58 @@ export async function startCloudServer({
           return { id, generation: binding.generation };
         };
         const references = new Set(coordinatorReferences);
+        const tools = selectCoordinatorTools(manual ? filterManualTools(coordinatorTools) : coordinatorTools, { fileWrite: config.fileWrite === true });
+        const callerBinding = async (caller, id) => {
+          try { return await store.registeredBinding(caller, id); }
+          catch (error) { if (error.code === 'FORBIDDEN') return null; throw error; }
+        };
+        const executionPrincipal = async (caller, id) => {
+          if (!caller) return principal;
+          const binding = await store.registeredBinding(caller, id);
+          if (!binding) protocolFail('FORBIDDEN', 'This Session is not assigned to the caller');
+          // Device credentials may delegate Coordinator actions only to their
+          // own current worktree. ProtocolStore rechecks this grant on commit.
+          return caller.role === 'device' ? { ...caller, role: 'coordinator', bindings: { [id]: binding.worktreeId } } : caller;
+        };
         const execute = createCoordinatorExecutor({
+          authorizeTool: async (name, input, { caller }) => {
+            if (!tools.some(tool => tool.name === name)) protocolFail('FORBIDDEN', 'Tool is not enabled for this conversation');
+            if (!caller) return;
+            if (input.executionSessionId && !await callerBinding(caller, input.executionSessionId)) {
+              protocolFail('FORBIDDEN', 'This Session is not assigned to the caller');
+            }
+            if (Array.isArray(caller.nodeIds)) {
+              const ids = [input.nodeId, input.parentId, ...(input.nodeIds || []),
+                ...((input.actions || []).flatMap(action => [action.op === 'create' ? null : action.nodeId || action.id, action.parentId]))].filter(Boolean);
+              if (name === 'read_map' && !input.nodeId) ids.push((await readMemoryProject(configuredMemory, project.id)).main?.memory?.map?.root?.id);
+              if (name === 'prepare_task' && conversation.nodeId) ids.push(conversation.nodeId);
+              if (ids.some(id => !caller.nodeIds.includes(id))) protocolFail('FORBIDDEN', 'Requested Main node is not in the caller scope');
+            }
+          },
+          filterResult: async (name, result, { caller }) => {
+            if (!caller) return result;
+            const inScope = id => !Array.isArray(caller.nodeIds) || caller.nodeIds.includes(id);
+            if (name === 'list_sessions') {
+              const sessions = [];
+              for (const item of result.sessions) if (await callerBinding(caller, item.executionSessionId)) sessions.push(item);
+              return { ...result, sessions };
+            }
+            if (name === 'list_tasks') {
+              const tasks = [];
+              for (const item of result.tasks) if ((!item.nodeId || inScope(item.nodeId)) &&
+                (!item.executionSessionId || await callerBinding(caller, item.executionSessionId))) tasks.push(item);
+              return { ...result, tasks };
+            }
+            if (name === 'list_conversations') {
+              const visible = [];
+              for (const item of result.conversations) if ((!item.nodeId || inScope(item.nodeId)) &&
+                (!item.conversationId.startsWith('session:') || await callerBinding(caller, item.conversationId.slice(8)))) visible.push(item);
+              return { ...result, conversations: visible };
+            }
+            if (name === 'read_map' && Array.isArray(caller.nodeIds)) return { ...result,
+              node: { ...result.node, children: result.node.children.filter(item => inScope(item.id)) } };
+            return result;
+          },
           listSessions: async () => {
             const sessions = [];
             for (const id of await refreshBindings()) {
@@ -713,8 +766,11 @@ export async function startCloudServer({
               const state = await service.state();
               const actor = [...state.messages].reverse().find(message => message.role === 'user' && message.actor)?.actor
                 || { kind: 'human', sessionId: 'cloud-workbench' };
-              const requirements = !input.itemId && conversation.itemId && ['todo', 'bug'].includes(conversation.kind)
-                ? { ...input, itemId: conversation.itemId, nodeId: conversation.nodeId, kind: conversation.kind } : input;
+              const focused = !input.itemId && conversation.itemId && ['todo', 'bug'].includes(conversation.kind);
+              if (focused && (input.nodeId !== undefined || input.kind !== undefined)) {
+                protocolFail('INVALID_ARGUMENT', 'Provide the complete itemId, nodeId and kind to select an existing item; only fully omitted routing may inherit this conversation focus.');
+              }
+              const requirements = focused ? { ...input, itemId: conversation.itemId, nodeId: conversation.nodeId, kind: conversation.kind } : input;
               return manualBriefsFor(project).prepare(requirements, { operationId, conversationId, actor });
             }
             const requirements = conversation?.itemId
@@ -822,10 +878,11 @@ export async function startCloudServer({
           // Conversation ownership is a UI routing hint, not an authorization
           // boundary. Every Coordinator conversation uses the same project
           // identity and may operate on tasks in explicitly assigned Sessions.
-          readTask: async (id, taskId) => {
+          readTask: async (id, taskId, { caller } = {}) => {
             const session = await sessionFor(id);
+            const identity = await executionPrincipal(caller, id);
             const [task, delivery, publication] = await Promise.all([
-              store.taskRecord(principal, session, taskId), store.taskStatus(principal, session, taskId),
+              store.taskRecord(identity, session, taskId), store.taskStatus(identity, session, taskId),
               publicationState(project, `session:${id}`),
             ]);
             const { status, reason, sessionVersion, sourceCommit, mainSha, publishedAt } = publication;
@@ -843,32 +900,34 @@ export async function startCloudServer({
             receiptFile: path.join(dataDir, 'coordinators', project.id, 'file-writes.json'),
             operationId, relativePath: input.path, content: input.content, expectedSha: input.expectedSha,
           }),
-          exchange: async (sessionId, id, type, payload) => {
+          exchange: async (sessionId, id, type, payload, { caller } = {}) => {
             const message = validateMessage({ v: 2, id, type, session: await sessionFor(sessionId), payload });
+            const identity = await executionPrincipal(caller, sessionId);
             if (type === 'brief.submit') {
-              const existing = (await store.workflowTasks(principal, message.session)).find(task => task.id === payload.taskId);
+              const existing = (await store.workflowTasks(identity, message.session)).find(task => task.id === payload.taskId);
               // Do not let a second conversation redefine an existing brief.
               // Later lifecycle operations remain available project-wide.
               if (existing && coordinatorTaskOwnerRequired(type)) await assertTaskOwner(sessionId, payload.taskId);
               await conversations.bind(conversationId, sessionId, payload.taskId);
             }
-            return (await store.handle(principal, message, { workflow: interfaceWorkflow })).data;
+            return (await store.handle(identity, message, { workflow: interfaceWorkflow })).data;
           },
         });
         const itemScoped = conversationId.startsWith('item-');
         const fileWriteNote = config.fileWrite === true
           ? '\n项目允许 write_file 写入一个仓库相对路径的 UTF-8 文本文件。用户明确要求新建或替换单个文件时使用它，一次一个路径；不提交、不推送、不修改 Main。文件已存在时传入当前内容的 expectedSha。多文件修改和代码开发仍使用 brief。'
           : '';
-        const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8') + (!itemScoped ? '' :
-          '\n本对话仅负责下方「当前事项」；先读取其所在节点的最新原文，不处理其他事项。') + (!manual ? '' :
-          '\n本对话采用人工执行模式：讨论、读取和编辑 Map；prepare_task 只生成待人工确认的 brief。人确认后保存 Main TODO/Bug 和可粘贴执行提示，不创建、派发或恢复执行 Session。保持当前对话继续讨论。') + fileWriteNote;
+        const system = coordinatorRolePrompt(await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8'), { manual }) + (!itemScoped ? '' :
+          '\n本对话仅负责下方「当前事项」；先读取其所在节点的最新原文，不处理其他事项。') + fileWriteNote;
         const directory = conversations.conversationDirectory(conversationId);
         const visionProvider = integrations?.visionProviderFile ? await readJson(integrations.visionProviderFile) : null;
         if (visionProvider && visionProvider.model !== 'glm-5.3-flash') throw new MapError('INVALID_VISION_PROVIDER', 'Slack image turns require glm-5.3-flash', 503);
         const service = new CoordinatorService({ directory, namespace: conversationId === 'legacy' ? '' : conversationId,
-          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: selectCoordinatorTools(manual ? filterManualTools(coordinatorTools) : coordinatorTools, { fileWrite: config.fileWrite === true }), execute,
+          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools, execute,
+          ...(manual ? { compactAtTokens: COORDINATOR_MANUAL_COMPACT_AT_TOKENS, compactMinTurns: 8, completePresentations: true } : {}),
           ...(visionProvider ? { visionModel: coordinatorModelFactory({ ...visionProvider, supportsImages: true }) } : {}),
           ...(integrationAttachments ? { resolveAttachment: (id, options) => integrationAttachments.resolve({ teamId: integrations.teamId, projectId: project.id, id, ...options }) } : {}),
+          ...(integrations ? { onStateChange: () => integrationGateway?.notify({ projectId: project.id, conversationId }) } : {}),
           context: async () => buildCoordinatorContext((await readMemoryProject(configuredMemory, project.id)).main,
             { conversation, nodeIds: config.nodeIds || null }), simulated: config.simulated === true });
         const intake = conversationId === 'legacy' ? mapIntakeFor(project, { submit: async (request, options) => {
@@ -1033,16 +1092,31 @@ export async function startCloudServer({
       const operations = payload.operations;
       if (!Array.isArray(operations)) protocolFail('INVALID_ARGUMENT', 'Provide Map operations');
       const memory = await readMemoryProject(configuredMemory, projectId);
-      const index = entries(memory.main.memory.map.root);
-      for (const operation of operations) {
-        for (const field of ['todos', 'bugs']) {
-          const list = operation.fields?.[field] || operation.node?.[field];
-          if (!Array.isArray(list)) continue;
-          const existing = index.get(operation.id || operation.node?.id)?.node?.[field] || [];
-          for (const item of list) if (!existing.some(old => old.id === item.id) && item.executionMode !== 'manual') {
-            protocolFail('INVALID_ARGUMENT', 'New integration work items require manual execution mode');
+      const document = memory.main.memory.map;
+      const index = document.root ? entries(document.root) : new Map();
+      const checkItems = (list, existing = []) => {
+        if (!Array.isArray(list)) return;
+        for (const item of list) {
+          if (!item || typeof item !== 'object') protocolFail('INVALID_ARGUMENT', 'Provide valid integration work items');
+          const previous = existing.find(old => old.id === item.id);
+          if ((!previous || previous.executionMode === 'manual') && item.executionMode !== 'manual') {
+            protocolFail('INVALID_ARGUMENT', 'New integration work items must retain manual execution mode');
           }
         }
+      };
+      for (const operation of operations) {
+        if (!operation || typeof operation !== 'object') protocolFail('INVALID_ARGUMENT', 'Provide valid Map operations');
+        for (const field of ['todos', 'bugs']) {
+          checkItems(operation.fields?.[field], index.get(operation.id)?.node?.[field]);
+          if (operation.node) for (const { node } of entries({ id: 'T0', ...operation.node }).values()) {
+            checkItems(node[field], index.get(node.id)?.node?.[field]);
+          }
+        }
+        if (operation.type === 'attach-bug' || operation.type === 'recover-bug') {
+          const target = index.get(operation.id)?.node;
+          checkItems([operation.bug], target ? target.bugs : document.unassigned_bugs);
+        }
+        checkItems(operation.fields?.unassigned_bugs, document.unassigned_bugs);
       }
       return commitMainMemoryMap(configuredMemory, projectId, { operationId, baseVersion: payload.baseVersion, operations }, actor);
     }
@@ -1810,9 +1884,12 @@ export async function startCloudServer({
         const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
         const project = repository?.projectId && projectById(repository.projectId);
         if (!project) protocolFail('NOT_FOUND', 'Project is not configured');
+        if (conversationId.startsWith('session:') && !await interfaceStorage(principal).store.registeredBinding(principal, conversationId.slice(8))) {
+          protocolFail('FORBIDDEN', 'This Session is not assigned to the caller');
+        }
         const service = await coordinatorFor(project, conversationId);
         try {
-          const data = await service.execute(body.name, body.input, { operationId: body.operationId });
+          const data = await service.execute(body.name, body.input, { operationId: body.operationId, caller: principal });
           return send(res, 200, { ok: true, data });
         } catch (error) {
           if (error.status && error.code) throw error;
@@ -2244,7 +2321,7 @@ export async function startCloudServer({
             // Persist intake's initial cursor without starting the model: a
             // provider failure must not prevent the human from saving work.
             if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) await mapIntakeFor(project).initialize();
-            const result = await commitMainMemoryMap(configuredMemory, project.id, input);
+            const result = await commitMainMemoryMap(configuredMemory, project.id, input, undefined, { preserveStoredDispatch: true });
             await broadcastWorkbench(scope, project, viewId);
             return send(res, 200, result);
           }
@@ -2465,7 +2542,7 @@ export async function startCloudServer({
   });
   server.requestTimeout = 10 * 60_000;
   server.headersTimeout = 15_000;
-  const integrationGateway = await startIntegrationGateway({ config: integrations,
+  integrationGateway = await startIntegrationGateway({ config: integrations,
     stateDir: path.join(dataDir, 'integration-gateway'), command: integrationCommand,
     state: async scope => {
       const project = integrationProject(scope.projectId);

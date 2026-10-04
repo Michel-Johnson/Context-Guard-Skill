@@ -338,7 +338,30 @@ export async function publishSessionMemory(configuration, projectId, input, acto
   return committed.result;
 }
 
-export async function commitMainMemoryMap(configuration, projectId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }) {
+// The browser submits whole work-item arrays when editing one field. Runtime
+// assignments displayed in those arrays are not new dispatch receipts.
+function retainStoredDispatch(document, operations) {
+  if (!Array.isArray(operations)) return operations; // Keep normal validation.
+  const index=document?.root?entries(document.root):new Map();
+  return operations.map(operation=>{
+    const op=structuredClone(operation), node=op&&index.get(op.id)?.node;
+    if(op?.type!=='update'||!node)return op;
+    for(const key of ['bugs','todos'])if(Array.isArray(op.fields?.[key])){
+      const stored=new Map((node[key]||[]).map(item=>[item.id,item]));
+      op.fields[key]=op.fields[key].map(item=>{
+        if(!item||typeof item!=='object'||Array.isArray(item))return item;
+        const previous=stored.get(item?.id);
+        if(!previous)return item;
+        const next={...item};
+        if(Object.hasOwn(previous,'dispatch'))next.dispatch=structuredClone(previous.dispatch);
+        else delete next.dispatch;
+        return next;
+      });
+    }
+    return op;
+  });
+}
+export async function commitMainMemoryMap(configuration, projectId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }, { preserveStoredDispatch = false } = {}) {
   validateOptions(configuration);
   if (!configuration.projects?.[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
   if (typeof input?.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
@@ -353,7 +376,8 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
     const current = state.main;
     if (!current) throw new MapError('MAIN_UNAVAILABLE', 'Published Main memory is not available', 409);
     if ((input.baseVersion ?? null) !== current.version) throw new MapError('VERSION_CONFLICT', 'Main Map changed; reload before committing', 409, { currentVersion: current.version });
-    const applied = applyOperations(current.memory.map, input.operations, actor);
+    const operations=preserveStoredDispatch?retainStoredDispatch(current.memory.map,input.operations):input.operations;
+    const applied = applyOperations(current.memory.map, operations, actor);
     validate(applied.doc);
     const updatedAt = new Date().toISOString();
     const reconciled = reconcileBugRecordDeletions(current, { ...current.memory, map: applied.doc }, current.deletedRecordKeys);
@@ -369,7 +393,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
     appendHistory(state, { scope: 'main', action: 'workbench.commit', snapshot, previousVersion: current.version, actor, at: updatedAt });
     const result = { committed: true, projectId, operationId: input.operationId, version: snapshot.version, revision: state.revision, nodeIds: applied.resultIds, persistedAt: updatedAt };
     state.receipts[receiptKey] = { fingerprint, result: compactReceiptResult(result) };
-    const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations: input.operations, actor, at: updatedAt });
+    const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations, actor, at: updatedAt });
     result.cursor = event.cursor;
     await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
     return { result, event };

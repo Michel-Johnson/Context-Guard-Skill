@@ -461,9 +461,8 @@ function filePathOf(f){
 }
 function fileList(owner){
   if(!owner) return [];
-  if(!Array.isArray(owner.files)) owner.files = [];
-  owner.files = owner.files.map(f=>typeof f==="string" ? {path:filePathOf(f)} : {...f,path:filePathOf(f)}).filter(f=>f.path);
-  return owner.files;
+  // Rendering is a read: preserve absent fields and legacy stored paths.
+  return (Array.isArray(owner.files)?owner.files:[]).map(f=>typeof f==="string" ? {path:filePathOf(f)} : {...f,path:filePathOf(f)}).filter(f=>f.path);
 }
 function normRepoPath(p){
   return String(p||"").replace(/\\/g,"/").replace(/^\.\//,"").replace(/^\/+/,"").trim();
@@ -520,7 +519,7 @@ function addFilePath(node, kind, key, path){
   if(!owner) return false;
   const files = fileList(owner);
   if(files.some(f=>f.path===p)) return true;
-  files.push({path:p});
+  owner.files = [...files,{path:p}];
   return true;
 }
 function canFsAccess(){ return typeof window.showDirectoryPicker==="function"; }
@@ -742,7 +741,10 @@ async function resumeAttachment(job){
     }
     const owner=valid();
     if(!owner) throw new Error("文件已保存，但原条目已不存在；未挂到其他条目");
-    if(!fileList(owner).some(file=>file.path===job.saved.path)) owner.files.push({path:job.saved.path,name:job.name});
+    const files=fileList(owner);
+    // This is an explicit upload operation, so persist canonical references
+    // even when the path was already present in legacy whitespace form.
+    owner.files=files.some(file=>file.path===job.saved.path)?files:[...files,{path:job.saved.path,name:job.name}];
     rememberPreview(job.saved.path,job.blob);
     job.stage="文件已保存，引用提交中"; renderAll();
     if(["offline","error","conflict"].includes(workbenchSync.status)) await workbenchSync.retry();
@@ -919,7 +921,8 @@ function bindFileUi(el, node){
       e.preventDefault();
       const owner = ownerOf(node, b.dataset.fk, b.dataset.fi);
       if(!owner) return;
-      const [removed] = fileList(owner).splice(+b.dataset.i, 1);
+      const files=fileList(owner), [removed] = files.splice(+b.dataset.i, 1);
+      owner.files=files;
       if(pendingWrite?.saved?.path===removed?.path && pendingWrite?.target && attachmentApi().attachmentOwner(data,pendingWrite.target)===owner) clearAttach();
       renderAll();
     };
@@ -2174,9 +2177,19 @@ function taskSummaryHtml(item){
   return result?.summary ? `<details><summary>${uiLang==="en"?"Agent result":"Agent 结果与经验"}</summary><p style="white-space:pre-wrap">${esc(result.summary)}</p></details>` : "";
 }
 function bugProgress(bug,nodeId=""){
+  const status = String(bug?.status||"open");
+  // Manual execution has no current automatic task. Keep historical receipts,
+  // but never let them replace the human-maintained Main status label.
+  if(bug?.executionMode==="manual"){
+    if(status==="fixed") return {kind:"fixed",label:t("bugFixed"),detail:""};
+    if(status==="resolved"||status==="dormant") return {kind:"resolved",label:t("bugResolved"),detail:""};
+    if(["unfixable","deferred","wontfix"].includes(status)) return {kind:"unfixable",label:t("bugUnfixable"),detail:""};
+    if(status==="pending") return {kind:"settling",label:t("bugSettling"),detail:""};
+    if(["handling","inprogress","recurred"].includes(status)) return {kind:"processing",label:t("bugProcessing"),detail:""};
+    return {kind:"waiting",label:t("bugWaiting"),detail:""};
+  }
   const human = humanReviewProgress(bug);
   if(human) return human;
-  const status = String(bug?.status||"open");
   const summaryId = bug?.resolution?.dispatch?.task_id;
   if(summaryId){
     const state = workbenchSync?.taskState(summaryId) || bug.resolution.dispatch.status;
@@ -2234,9 +2247,14 @@ function bugProgressHtml(bug,nodeId=""){
 }
 function todoSessionsOf(todo){ return bugSessionsOf(todo); }
 function todoProgress(todo,nodeId=""){
+  const status = String(todo?.status||"pending");
+  if(todo?.executionMode==="manual"){
+    if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
+    if(status==="processing") return {kind:"processing",label:t("todoProcessing"),detail:""};
+    return {kind:"waiting",label:t("todoPending"),detail:""};
+  }
   const human = humanReviewProgress(todo);
   if(human) return human;
-  const status = String(todo?.status||"pending");
   const projectTask = workbenchSync?.projectTaskState("todo",nodeId,todo?.id);
   if(status==="done"&&!projectTask) return {kind:"resolved",label:t("todoDone"),detail:""};
   const task = projectTask || workbenchSync?.taskStates.get(todo?.dispatch?.task_id);
