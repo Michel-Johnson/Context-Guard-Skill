@@ -70,6 +70,7 @@ export const installedFiles = [
   "scripts/shared/vendor/jsonparse.cjs",
   "scripts/shared/LICENSES/JSONParse-MIT.txt",
   "prototype/LICENSES/Marked-MIT.txt",
+  "prototype/LICENSES/Ready-redistribution.txt",
   "scripts/workbench/projections.mjs",
   "scripts/shared/protocol.mjs",
   "scripts/shared/protocol-store.mjs",

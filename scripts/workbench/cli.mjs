@@ -639,9 +639,15 @@ export async function stopServer(root) {
   // A stop acknowledgement is not a released project lock. Do not let the next
   // command race the old process while it flushes writes and closes sockets.
   for (;;) {
-    const current = await readJSON(sharedState, null);
-    const lock = await readJSON(projectLockPath(project), null);
-    if (current?.instance !== state.instance && lock?.instance !== state.instance) return { stopped: true };
+    try {
+      const current = await readJSON(sharedState, null);
+      const lock = await readJSON(projectLockPath(project), null);
+      if (current?.instance !== state.instance && lock?.instance !== state.instance) return { stopped: true };
+    } catch (error) {
+      // Only the acknowledged shutdown may retry delete-pending file contention.
+      // An unreadable state/lock is not evidence that this instance released it.
+      if (error.code !== 'EBUSY' && !(process.platform === 'win32' && error.code === 'EPERM')) throw error;
+    }
     if (Date.now() >= deadline) throw new MapError('STOP_FAILED', 'Workbench has not finished shutting down; project lock preserved', 503);
     await pause(25);
   }

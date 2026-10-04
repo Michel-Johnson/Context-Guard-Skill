@@ -432,3 +432,17 @@
 - [ ] Tester：Ubuntu/macOS/Windows 从准确 tarball 新装及升级，校验源码版本、生成运行时版本与安装文件一致；用户设置、项目 Map、未发队列及第三方 Hook 不变，用户关闭的 Hook 不被重新启用。
 - [ ] Tester：安装后的入口在无 Cloud 模式启动本地工作台、读取/编辑/刷新；在授权实验项目使用浏览器设备授权连接真实 Cloud，确认双向可见、Session 隔离和重启恢复，不把源码或替身测试当成真实联调。
 - [ ] Tester：安装入口的 `doctor`、宿主 Hook 信任与实际上下文投递分别记录；无法验证的宿主/场景标为 incomplete。完成后保留本节编号、打勾并关联准确测试和证据，不删除条目。
+
+### SPLIT-STOP-01 · 停止确认后的 Windows 文件删除竞争（2026-10-05）
+
+- [x] Executor：仅在 `/api/stop` 已确认后的原 12 秒等待窗口，重试 `EBUSY` 与 Windows `EPERM`；读取失败不等于实例已释放，不全局忽略权限异常、不删除锁、不延长截止时间。
+- [x] Executor 定向验证：`node --test --test-timeout=30000 --test-name-pattern="stop acknowledgement:" tests/named-workbench.test.mjs`，Windows 9/9 通过（3.09 秒）；覆盖正常释放、state/lock 短暂占用后释放、持续占用或同实例未释放仍失败、其他权限异常及确认前异常不重试。首轮夹具在已删除文件上拦截 readFile 未触发（readJSON 先 stat），修正为拦截实际文件检查入口后通过；未改变业务断言。此为故障注入，不代替安装 smoke。
+- [ ] Tester：对最终 SHA 重跑安装产物 `tests/ci-smoke.mjs` 的 Python `workbench --stop`，并在 Windows/Linux/macOS 复验上述正式回归。此前 367/367 Node 用例及 29 安装边界通过不代表整轮 `npm test` 成功：Windows smoke 的锁读取 `EPERM` 导致整体退出 1；现场锁/state 后来消失只支持删除竞争推断，不证明永远不存在权限问题。
+- [x] Tester 本地 Windows 定向验收（2026-10-05，Node 22.18.0）：基线 `efad812eda59a6b713d0b355e6b3ba2bfbeb4b7a` 加本节未提交修复；`cli.mjs` SHA256 `dc086c92ca3075588fa5cdd30ecaf9e2daaf0cdcc9c71204875365fb6771359c`，`named-workbench.test.mjs` SHA256 `43bdc659a0a11633c31b05f85660705747b748e1d2d6f21f3e5b4eaa59c0aa86`。独立审查未发现阻断；上述正式定向命令 9/9 passed（3.25 秒，运行输出 `543fad`）；`node tests/ci-smoke.mjs` passed（运行 `57163`，最终退出 0），29 安装边界通过，实际 npm tarball 安装后的工作台启动、复用及两处 Python `workbench --stop` 均完成。未重跑全量、未接触其他工作台；Linux/macOS 与最终提交 SHA 验证仍为 incomplete，故上一项保留未勾选。故障注入不证明前次失败瞬间的唯一成因。
+- 本次安装烟测打包后 Coordinator 另行补充 Ready 分发许可、重打 UI 包及更新锁文件；运行 `57163` 仅证明当次停止修复安装链路通过，不作为后续许可和包清单变更的最终产物证据。最终包冻结后另做必要安装验收。
+
+### SPLIT-LOCAL-CI-01 · 本地集中回归（2026-10-05）
+
+- 首轮 `efad812` Windows `npm test`：367/367 Node 用例、29/29 安装边界通过，安装烟测停止入口出现 `EPERM`，整体退出 1；修复与独立复验见 SPLIT-STOP-01，不把部分通过当作整轮成功。
+- 本地 `npm run security:test` 39 项通过，`npm run test:browser` 退出 0。共享 UI 增加经用户授权的 Ready 归属声明后重新生成，固定包 SHA256 为 `8590f3292c312e93b6db8c680b8943b7002df7103feff6b6660ce44d117472e9`；Core 包未变。新 Skill 包精确 100 文件清单及安全扫描通过。
+- [ ] Tester：最终提交的全量、干净安装与跨平台 CI、安装后的真实 Cloud 联调；本地结果不替代 Required 或生产验收。
