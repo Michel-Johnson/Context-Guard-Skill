@@ -145,7 +145,11 @@ test("workflow guards reject per-tag locks, invalid queue keys, cancellation, or
     ["release-checks.mjs verify dist", "release-checks.mjs missing dist"],
     ["smoke-upgrade-package.mjs", "missing-upgrade.mjs"],
     ["require-release-ci.mjs", "missing-ci-gate.mjs"],
-    ["actions: read", "actions: none"]
+    ["actions: read", "actions: none"],
+    ['mktemp -d "$RUNNER_TEMP/context-guard-registry-npx.XXXXXX"', 'mktemp -d "$GITHUB_WORKSPACE/context-guard-registry-npx.XXXXXX"'],
+    ['cd "$npx_workspace"', 'cd "$GITHUB_WORKSPACE"'],
+    ['--package "$PACKAGE_NAME@latest" context-guard install', '"$PACKAGE_NAME" install'],
+    ['--package "$PACKAGE_NAME@latest" context-guard install', '--package "$PACKAGE_NAME" context-guard install']
   ]) {
     const changed = publish.replaceAll("\r\n", "\n").replace(from, to);
     assert.notEqual(changed, publish.replaceAll("\r\n", "\n"), `Mutation did not apply: ${from}`);

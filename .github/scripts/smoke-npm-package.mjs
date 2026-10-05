@@ -26,7 +26,7 @@ function parseArgs(argv) {
   return options;
 }
 
-function run(command, args, env) {
+function run(command, args, env, cwd) {
   const useWindowsCommandShell = process.platform === "win32" && command.toLowerCase().endsWith(".cmd");
   const quote = value => {
     if (/["%!\r\n]/.test(value)) throw new Error('Unsafe Windows smoke argument');
@@ -34,6 +34,7 @@ function run(command, args, env) {
   };
   const result = spawnSync(useWindowsCommandShell ? [command, ...args].map(quote).join(' ') : command, useWindowsCommandShell ? [] : args, {
     env,
+    cwd,
     stdio: "inherit",
     windowsHide: true,
     shell: useWindowsCommandShell,
@@ -149,6 +150,8 @@ if (fs.lstatSync(skillTarget).isSymbolicLink()) {
 }
 fs.rmSync(skillTarget, { recursive: true });
 
+// Never resolve npm exec against a same-name package in the source checkout.
+const npxWorkspace = fs.mkdtempSync(path.join(workspace, "npx-empty-"));
 run(npm.command, [
   ...npm.args,
   "exec",
@@ -158,7 +161,7 @@ run(npm.command, [
   "--",
   "context-guard",
   "install"
-], testEnv);
+], testEnv, npxWorkspace);
 verifyInstalledSkill(skillTarget);
 
 const projectTarget = path.join(workspace, "project");

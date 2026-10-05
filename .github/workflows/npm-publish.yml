@@ -381,6 +381,10 @@ jobs:
           unset CODEX_HOME
           default_skill="$HOME/.codex/skills/context-guard/SKILL.md"
           test ! -e "$default_skill"
-          npx --yes --prefer-online "$PACKAGE_NAME" install
+          npx_workspace="$(mktemp -d "$RUNNER_TEMP/context-guard-registry-npx.XXXXXX")"
+          (
+            cd "$npx_workspace"
+            npx --yes --prefer-online --package "$PACKAGE_NAME@latest" context-guard install
+          )
           test -f "$default_skill"
           node .github/scripts/smoke-installed-runtime.mjs "$HOME/.codex/skills/context-guard" "$project_target"

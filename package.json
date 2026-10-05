@@ -1,6 +1,6 @@
 {
   "name": "@michelj/context-guard",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Next-generation collaboration layer for humans and coding agents on Codex, Cursor, and Claude.",
   "repository": {
     "type": "git",

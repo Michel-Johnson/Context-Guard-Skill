@@ -71,6 +71,12 @@ export function verifyReleaseHardening(publishContent) {
   const verifyJob = publishContent.slice(publishContent.indexOf("  verify-published:"));
   requireMatch(verifyJob, /actions\/download-artifact@/, "Post-publish verification must download the validated artifact.");
   requireMatch(verifyJob, /release-checks\.mjs verify dist/, "Post-publish verification must compare npm bytes with the validated artifact.");
+  requireMatch(verifyJob, /npx_workspace="\$\(mktemp -d "\$RUNNER_TEMP\/context-guard-registry-npx\.XXXXXX"\)"\s+\(\s+cd "\$npx_workspace"\s+npx --yes --prefer-online --package "\$PACKAGE_NAME@latest" context-guard install\s+\)/,
+    "Post-publish npx must select registry latest explicitly from an empty runner-temp directory, outside the checkout.");
+  requireMatch(smoke, /const npxWorkspace = fs\.mkdtempSync\(path\.join\(workspace, "npx-empty-"\)\);[\s\S]*?"exec",[\s\S]*?"--package", tarball,[\s\S]*?\], testEnv, npxWorkspace\);/,
+    "CD rehearsal npm exec must select the exact tarball from an empty workspace outside the checkout.");
+  requireMatch(smoke, /function run\(command, args, env, cwd\)[\s\S]*?env,\s+cwd,/,
+    "CD rehearsal must pass its isolated npm exec directory to the child process.");
 }
 
 for (const [name, content] of Object.entries(workflows)) {
