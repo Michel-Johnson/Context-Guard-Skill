@@ -1,5 +1,32 @@
 # CI TODO
 
+## Independent immutable-package follow-up (2026-10-05)
+
+- Public Core/UI 1.1.0 and Skill 0.6.0 were downloaded anonymously; exact
+  SHA-256 values match their release evidence. The actual Skill tarball passed
+  the 100-file package/security contract. Node 24.19.0 isolated global and npx
+  installs, startup/health, packaged assets, authorized state and denial passed;
+  the installed launcher exposes `memory complete`, and installed memory/CLI/UI
+  hashes match the reviewed runtime. Real user homes and disabled Hooks were
+  not modified by these disposable-home tests.
+- Windows Node 18.20.8 installation of that same 0.6.0 tarball failed: the
+  `fs.cpSync` bin filter received a namespaced path, rejected its source root,
+  and omitted the installed launcher. npm reported postinstall exit 0. This is
+  a real installer defect, not a passing minimum-runtime acceptance; 0.6.1
+  artifact retesting remains pending. Logs: `temp/tester-release-node18-20261005.log`
+  and `temp/tester-release-node24-20261005.log`.
+- Remote run 37267153672 failed at the obsolete editable-memory accordion.
+  Updating that assertion exposed a second old fixture that attached files to
+  now-read-only historical memory cards. Both fixtures now assert the current
+  node document/readonly history and exercise the same drop, upload, held-receipt
+  removal and paste boundaries on editable Idea attachments; legacy evidence
+  remains unchanged. No product UI was modified to satisfy the fixture.
+- Final `node tests/workbench-browser.mjs` exited 0: 55 checks, no page errors,
+  existing timeouts unchanged. Evidence: `temp/tester-memory-doc-attachment-final-20261005.log`
+  and `output/playwright/browser-ci/1791178389914-08f29371-d3bf-4418-bc3a-3e057e0123c7`.
+  Earlier failing logs remain available. These checks cover the repaired source
+  fixture, not publication of 0.6.1, production deployment or live Slack.
+
 ## Session completion source acceptance (2026-10-05)
 
 - [x] Independent Tester, Windows / Node 24.19.0, working tree based on

@@ -226,7 +226,8 @@ function copySkill(target) {
       ? {
           recursive: true,
           filter(source) {
-            const relative = path.relative(from, source);
+            // Node 18 may pass a namespaced Windows path to this callback.
+            const relative = path.relative(path.toNamespacedPath(from), path.toNamespacedPath(source));
             if (relative === "") return true;
             const parts = relative.split(path.sep);
             return parts[0] !== "cloud"
@@ -236,7 +237,10 @@ function copySkill(target) {
           }
         }
       : entry === "bin"
-        ? { recursive: true, filter(source) { const relative = path.relative(from, source); return relative === "" || relative === "context-guard-skill.js"; } }
+        ? { recursive: true, filter(source) {
+            const relative = path.relative(path.toNamespacedPath(from), path.toNamespacedPath(source));
+            return relative === "" || relative === "context-guard-skill.js";
+          } }
         : { recursive: true };
     fs.cpSync(from, to, options);
   }

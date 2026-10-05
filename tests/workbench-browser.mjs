@@ -364,7 +364,10 @@ try {
   await page.locator(`#session-menu [data-session="${session}"]`).click();
   await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
   await page.locator('.node[data-id="N1"]').click();
-  assert.equal(await page.locator('#detail [data-fold="mem"]').getAttribute('open'), null);
+  assert.equal(await page.locator('#detail [data-fold="memory-doc"]').getAttribute('open'), null);
+  assert.equal(await page.locator('#detail [data-memory-document]').inputValue(), '');
+  assert.equal(await page.locator('#detail [data-act="add-mem"]').count(), 0, 'memory cards cannot be created after the two-document migration');
+  assert.equal(await page.locator('#detail [data-fold="legacy-memory-preview"]').count(), 0, 'an empty legacy history does not create another memory editor');
   await page.locator('#detail [data-act="add-bug"]').click();
   const createBug = page.locator('#detail [data-ed="bug-title"]').last();
   await createBug.fill('处理状态测试');
@@ -693,21 +696,18 @@ try {
   await fs.mkdir(path.join(root, 'docs'), { recursive: true });
   await fs.writeFile(path.join(root, 'docs/attachment.txt'), 'Attachment fixture');
   await fs.writeFile(mapPath, encode(attachmentFixture));
-  await page.waitForFunction(() => document.querySelector('#detail [data-ed="mem"]')?.textContent === '附件回归记忆'); await synchronized();
-  for (const kind of ['mem', 'idea']) {
-    const fold = page.locator(`[data-fold="${kind}"]`);
-    if (await fold.evaluate(el => el.tagName === 'DETAILS') && await fold.getAttribute('open') === null) {
-      await fold.locator(':scope > summary').click();
-    }
-  }
+  await page.waitForFunction(() => document.querySelector('#detail [data-fold="legacy-memory-preview"]')?.textContent.includes('附件回归记忆')); await synchronized();
+  const legacyHistory = page.locator('#detail [data-fold="legacy-memory-preview"]');
+  await legacyHistory.locator(':scope > summary').click();
+  assert.equal(await legacyHistory.locator('[contenteditable="true"], textarea, [data-act="ask-file"], [data-act="rm-file"]').count(), 0, 'legacy attachment evidence remains read-only');
   assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="node"]').count(), 1);
-  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="mem"], #detail .files').count(), 0);
+  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="idea"], #detail .files').count(), 0);
   const transfer = await page.evaluateHandle(() => { const data = new DataTransfer(); data.setData('text/plain', 'docs/attachment.txt'); return data; });
-  await page.locator('#detail [data-ed="mem"]').dispatchEvent('drop', { dataTransfer: transfer });
-  await until(async () => (await read()).root.children[0].memories[0].files.length === 1); await synchronized();
+  await page.locator('#detail [data-ed="idea"]').dispatchEvent('drop', { dataTransfer: transfer });
+  await until(async () => (await read()).root.children[0].ideas[0].files.length === 1); await synchronized();
   assert.equal(await page.locator('#detail [data-act="ask-file"]').count(), 2);
-  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="mem"]').count(), 1);
-  assert.deepEqual((await read()).root.children[0].ideas[0].files, []);
+  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="idea"]').count(), 1);
+  assert.deepEqual((await read()).root.children[0].memories, attachmentFixture.root.children[0].memories, 'editing current attachments does not rewrite historical evidence');
   const uploadFixture = path.join(sandbox, 'uploaded-through-node.txt');
   await fs.writeFile(uploadFixture, 'Node-managed attachment');
   await page.evaluate(() => {
@@ -715,30 +715,30 @@ try {
     Object.defineProperty(window, 'showOpenFilePicker', { configurable: true, value: undefined });
   });
   const chooserPromise = page.waitForEvent('filechooser');
-  await page.locator('#detail [data-act="ask-file"][data-fk="mem"]').click();
+  await page.locator('#detail [data-act="ask-file"][data-fk="idea"]').click();
   const chooser = await chooserPromise;
   let releaseUploadReceipt;
   const uploadReceiptGate = new Promise(resolve => { releaseUploadReceipt=resolve; });
   const holdUploadReceipt = async route => {
     const response = await route.fetch();
-    if(route.request().postDataJSON()?.operations?.some(op=>op.fields?.memories?.[0]?.files?.length===2)) await uploadReceiptGate;
+    if(route.request().postDataJSON()?.operations?.some(op=>op.fields?.ideas?.[0]?.files?.length===2)) await uploadReceiptGate;
     await route.fulfill({response});
   };
   await page.route('**/api/commit*', holdUploadReceipt);
   await chooser.setFiles(uploadFixture);
-  await until(async () => (await read()).root.children[0].memories[0].files.length === 2);
-  const uploaded = (await read()).root.children[0].memories[0].files.find(file => file.name === 'uploaded-through-node.txt');
+  await until(async () => (await read()).root.children[0].ideas[0].files.length === 2);
+  const uploaded = (await read()).root.children[0].ideas[0].files.find(file => file.name === 'uploaded-through-node.txt');
   assert.ok(uploaded?.path.startsWith('docs/shots/'));
   assert.equal(await fs.readFile(path.join(root, uploaded.path), 'utf8'), 'Node-managed attachment');
   await page.locator('#detail [data-act="rm-file"]').nth(1).click();
   releaseUploadReceipt();
-  await until(async () => (await read()).root.children[0].memories[0].files.length === 1);
+  await until(async () => (await read()).root.children[0].ideas[0].files.length === 1);
   await synchronized();
   await page.unroute('**/api/commit*', holdUploadReceipt);
   assert.equal(await page.evaluate(()=>pendingWrite===null), true, 'removing the uploaded reference cancels its pending confirmation');
   await page.locator('#detail [data-act="rm-file"]').click();
-  await until(async () => (await read()).root.children[0].memories[0].files.length === 0); await synchronized();
-  await until(async () => (await page.locator('#detail [data-act="ask-file"][data-fk="mem"], #detail .files').count()) === 0);
+  await until(async () => (await read()).root.children[0].ideas[0].files.length === 0); await synchronized();
+  await until(async () => (await page.locator('#detail [data-act="ask-file"][data-fk="idea"], #detail .files').count()) === 0);
   assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="node"]').count(), 1);
   await page.locator('.node[data-id="N2"]').click(); await page.locator('.node[data-id="N1"]').click();
   await page.locator('#detail [data-ed="idea"]').evaluate(el => {
