@@ -1,5 +1,42 @@
 # CI TODO
 
+## Independent CD4 registry-npx acceptance (2026-10-05)
+
+- Original release run `37269736295` published 0.6.1 successfully but its final
+  npx check failed with exit 127 inside the same-name package checkout. That
+  failure remains recorded; this acceptance does not declare a new remote CD
+  run or 0.6.2 publication successful.
+- Independent review of the frozen six-file patch on `codex/npm-published-npx`
+  (base `3773aa9`) confirms only isolated npm-exec cwd, explicit registry latest,
+  corresponding mutation guards and the 0.6.2 metadata bump. Exact artifact
+  hash checks, same-commit Required CI, OIDC, three-platform installation and
+  pinned-baseline upgrade gates remain unchanged. Core/UI remain fixed at 1.1.0.
+- `node --test .github/scripts/cd-checks.test.mjs`: 24/24 passed, including
+  checkout-cwd, implicit-package and missing-latest mutations. Workflow verifier
+  exited 0. Logs: `temp/tester-cd4-checks-20261005.log` and
+  `temp/tester-cd4-workflows-20261005.log`.
+- Anonymous npm 0.6.1 tarball SHA-256 is
+  `a39b2c9010991a84d184d671435b43076c1b90c2f475d0805911b8be10c72a89`;
+  its bytes exactly match the validated artifact downloaded from the original
+  release run. This registry artifact is not the earlier GitHub fixture tarball.
+  From an empty OS-temp directory outside the checkout, real registry
+  `npm exec --yes --prefer-online --package @michelj/context-guard@latest -- context-guard install --no-hooks`
+  succeeded using Node 24.19.0. The installed launcher/help, `memory complete`
+  help and installed Workbench startup/health/assets/authentication-denial probe
+  passed. Logs: `temp/tester-registry-npx-outside-20261005.log` and
+  `temp/tester-cd4-npx-installed-runtime-20261005.log`.
+- The changed official `smoke-npm-package.mjs` ran against that exact downloaded
+  registry tarball with an OS-temp workspace and disposable Codex home. Global
+  and fresh npx installation, required/forbidden file contract, init and both
+  installed runtime probes passed. Log: `temp/tester-cd4-fixed-smoke-20261005.log`.
+  Real user homes, disabled Hooks, production data and immutable release assets
+  were not modified. No unrelated full product regression was repeated.
+- Reviewed input SHA-256: npm-publish workflow
+  `13a0dd2226bd5b3058e30927e192ed2ce91deb3192227f5ce36908eda3c18c4f`;
+  package-smoke `0608dc7156c889472990328ae7a73c771e8aa267529aa06c4b66154eb748e5ec`;
+  workflow verifier `4f16ecab795d26ca316351cb071915e2f9af5da32d8708eb50627397394d9e65`;
+  CD checks `e2344051262bf3e83c98362aab7a91a7ed3b7045a9207598dd51146603e35ab7`.
+
 ## Independent immutable-package follow-up (2026-10-05)
 
 - Public Core/UI 1.1.0 and Skill 0.6.0 were downloaded anonymously; exact
