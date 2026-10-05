@@ -19,6 +19,15 @@
 - MIT license and upstream copyright notices: [licenses/Marked-MIT.txt](licenses/Marked-MIT.txt).
 - Used only as a Markdown lexer. Context Guard builds restricted DOM nodes instead of inserting generated HTML; remote images are not fetched.
 
+## Ready-derived loading animation
+
+- Source: `Michel-Johnson/Ready@d0771a1c8dc8086f49fbe924c2b5cbb621d0fd8b`,
+  `platform/frontend/src/components/WorkingBlot.tsx` and its atlas asset.
+- Distributed files: `prototype/coordinator-working-blot.mjs` and
+  `prototype/working-blot-atlas.png`, materialized from the fixed Cloud UI package.
+- Public redistribution was explicitly authorized by the project maintainer;
+  see [prototype/LICENSES/Ready-redistribution.txt](prototype/LICENSES/Ready-redistribution.txt).
+
 ## Portless
 
 - Upstream: https://github.com/vercel-labs/portless

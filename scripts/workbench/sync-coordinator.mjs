@@ -311,8 +311,12 @@ export class MemorySyncCoordinator extends EventEmitter {
       await fs.unlink(this.outboxFile).catch(() => {});
       return this.persist({ serverVersion: remote.version, cursor, status: 'synced', pending: 0, error: null, conflict: null, lastSyncedAt: remote.updatedAt });
     }
-    if (operationsOverlap(localOperations, remoteOperations)) return this.saveConflict('REMOTE_AND_LOCAL_CHANGED', base, local, remote.memory.map, { cursor, serverVersion: remote.version });
-    const merged = applyOperations(local, remoteOperations, { kind: 'human', sessionId: 'cloud-sync' }).doc;
+    let merged;
+    try { merged = mergeSessionDocuments(base, local, remote.memory.map); }
+    catch (error) {
+      if (error.code !== 'MEMORY_CONFLICT') throw error;
+      return this.saveConflict('REMOTE_AND_LOCAL_CHANGED', base, local, remote.memory.map, { cursor, serverVersion: remote.version });
+    }
     await this.applyRemoteDocument(merged, `remote-rebase:${remote.version}`);
     await atomicWrite(this.baseFile, encode(remote.memory.map));
     await fs.unlink(this.outboxFile).catch(() => {});

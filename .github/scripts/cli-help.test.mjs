@@ -132,7 +132,8 @@ test("help flags are not consumed when they are option values", () => {
     assert.notEqual(result.status, 0, result.stdout + result.stderr);
     assert.doesNotMatch(result.stdout, /Usage:/);
     const payload = parseJson(result.stdout);
-    assert.equal(payload?.error?.code, "USAGE");
+    assert.equal(payload?.error?.code, "UPGRADE_REQUIRED");
+    assert.equal(payload?.error?.reason, "legacy-sync-command");
     assert.equal(fs.existsSync(path.join(directory, ".codex")), false);
   });
 });

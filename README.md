@@ -150,7 +150,7 @@ Codex installs eleven lifecycle hooks (excluding `SessionEnd`). At reasoning bou
 
 When Cloud is configured it is the only human-facing workbench. Sync is event-based (project SSE), not a periodic full Map replace. `sync prepare` before development, `sync finish` after verification. Disjoint changes rebase; overlapping node, field, or file scopes return `WORK_IMPACT` and stay unverified.
 
-Server install, project credentials, and host moves: [Cloud deployment](references/cloud-deployment.md). Protocol: [Cloud Sync](references/cloud-sync-interface.md). Memory authority: [server memory](references/server-memory.md).
+Server and Slack source/deployment live in [Context Guard Cloud](https://github.com/Michel-Johnson/Context-Guard-Cloud). This repository maintains the Skill, local backend and host adapters. Shared runtime/UI/role references are generated from pinned Cloud release packages: run `npm ci --ignore-scripts` then `npm run build:runtime` before developing or packing. Do not edit generated files. Connection: [Cloud Sync](references/cloud-sync-interface.md). Memory authority: [server memory](references/server-memory.md).
 
 ## Documentation
 

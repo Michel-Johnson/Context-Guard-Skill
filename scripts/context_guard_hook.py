@@ -275,14 +275,12 @@ def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
             owners = bug.get("sessions") if isinstance(bug, dict) else []
             if isinstance(bug, dict) and current_session_id in (owners or []):
                 assigned_bugs.append({"id": str(bug.get("id") or ""), "title": str(bug.get("title") or ""), "status": str(bug.get("status") or "open"), "node": node_id, "node_title": node_title})
-    sync_state = read_json(ctx / "private" / "cloud-sync" / "state.json", {})
     raw = map_file.read_bytes() if map_file.is_file() else b""
     local_version = hashlib.sha256(raw).hexdigest() if raw else "missing"
-    version = str((sync_state.get("version") or local_version) if isinstance(sync_state, dict) else local_version)
     return {
         "role": role,
-        "version": version,
-        "cloud_cursor": sync_state.get("receivedCursor") if isinstance(sync_state, dict) else None,
+        "version": local_version,
+        "cloud_cursor": None,
         "grants": [str(item) for item in grants],
         "grant_nodes": [{"id": node_id, "title": str(by_id.get(node_id, {}).get("title") or node_id)} for node_id in grants[:20]],
         "todos": assigned_todos[:20],
@@ -645,7 +643,7 @@ def lifecycle_context(root: Path, workbench_url: str | None, current_session_id:
 
 def frontend_workbench_url(ctx: Path, local_url: str | None, current_session_id: str) -> str | None:
     """Expose one human UI: Cloud when configured, otherwise the local fallback."""
-    config = read_json(ctx / "private" / "cloud-sync" / "config.json", {})
+    config = sync_command(ctx.parent.parent, "status", current_session_id)
     cloud_url = str(config.get("url") or "") if isinstance(config, dict) else ""
     project_id = str(config.get("projectId") or "") if isinstance(config, dict) else ""
     try:
@@ -702,15 +700,18 @@ def append_user_message(ctx: Path, text: str, current_session_id: str) -> str:
     return "recorded" if recorded else "duplicate"
 
 
-def sync_configured(ctx: Path) -> bool:
-    return (ctx / "private" / "cloud-sync" / "config.json").is_file()
+def sync_configured(root: Path, current_session_id: str) -> bool:
+    result = sync_command(root, "status", current_session_id)
+    if result.get("error"):
+        raise ValueError(f"Cloud sync status failed: {json.dumps(result, ensure_ascii=False)}")
+    return result.get("configured") is True
 
 
 def sync_command(root: Path, action: str, current_session_id: str = "", paths: list[str] | None = None) -> dict[str, object]:
-    script = Path(__file__).resolve().parent / "sync" / "client.mjs"
+    script = Path(__file__).resolve().parent / "workbench" / "cli.mjs"
     if not script.is_file():
         return {"error": {"code": "SYNC_TOOL_MISSING", "message": str(script)}}
-    command = ["node", str(script), action, "--root", str(root)]
+    command = ["node", str(script), "sync", action, "--root", str(root)]
     if current_session_id:
         command.extend(["--session", current_session_id])
     clean_paths = [item for item in (paths or []) if item]
@@ -1150,7 +1151,8 @@ def inspection_protocol_words(words: list[str]) -> bool:
 
 def node_eval_read_only(script: str) -> bool:
     stripped = script.strip()
-    return bool(re.fullmatch(r"console\.log\((['\"]).*?\1\)\s*;?", stripped))
+    # Only a literal diagnostic is safe; concatenation can evaluate arbitrary code.
+    return bool(re.fullmatch(r"""console\.log\((?:'[^'\\\r\n]*'|"[^"\\\r\n]*")\)\s*;?""", stripped))
 
 
 def python_c_read_only(script: str) -> bool:
@@ -1170,8 +1172,13 @@ def interpreter_read_only(words: list[str]) -> bool:
         return False
     if args in (["--version"], ["-V"], ["-v"], ["--version"]):
         return True
-    if executable.startswith("node") and len(args) >= 2 and args[0] == "-e":
-        return node_eval_read_only(args[1])
+    if executable.startswith("node") and len(args) == 2 and args[0] == "-e":
+        script = args[1]
+        # Non-POSIX shlex retains the shell quoting used on Windows. Unwrap only
+        # the complete script argument, not paths or arbitrary command segments.
+        if os.name == "nt" and len(script) >= 2 and script[0] == script[-1] and script[0] in {"'", '"'}:
+            script = script[1:-1]
+        return node_eval_read_only(script)
     if len(args) >= 2 and args[0] == "-m" and args[1] == "json.tool":
         return True
     if args[0] == "-c" and len(args) >= 2:
@@ -1571,8 +1578,8 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
                     plan["baseline"].setdefault(file, digest)
             plan["paths"] = sorted(set(old_paths + paths))
             plan["node_ids"] = sorted(set(plan["node_ids"] + nodes))
-            if sync_configured(ctx):
-                checked_sync(root, session, "track", plan["paths"])
+            if sync_configured(root, session):
+                checked_sync(root, session, "checkpoint")
             plan.setdefault("amendments", []).append({"at": utc_now(), "summary": data["summary"], "paths": paths, "node_ids": nodes})
             plan["revision"] += 1
             plan.pop("archive", None)
@@ -1580,7 +1587,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
             append_session_event(root, "plan-extend", "cli", session, {"plan_id": plan["id"], "occurred_at": utc_now()})
             return plan
         baseline = scope_snapshot(root, paths)
-        sync = prepare_plan_sync(root, session, paths) if sync_configured(ctx) else {}
+        sync = prepare_plan_sync(root, session, paths) if sync_configured(root, session) else {}
         plan = {"id": "plan-" + hashlib.sha256(f"{session}:{utc_now()}".encode()).hexdigest()[:20],
                 "summary": data["summary"], "status": "working", "started_at": utc_now(),
                 "node_ids": sorted(set(nodes)), "paths": paths, "actual_paths": [],
@@ -1601,27 +1608,13 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
         inbox = run_node_workbench(["map", "inbox", "--root", str(root), "--session", session])
         if inbox.get("pending"):
             raise ValueError("Other Map changes need review and acknowledgement before plan-finish")
-        if sync_configured(ctx):
+        if sync_configured(root, session):
             if (plan.get("sync") or {}).get("pending"):
                 plan["sync"] = checked_sync(root, session, "prepare", plan["paths"])
                 write_hook_runtime(root, session, runtime)
-            checked_sync(root, session, "track", plan["paths"])
             checked_sync(root, session, "checkpoint")
             finished = checked_sync(root, session, "finish")
-            if finished.get("active") is False:
-                # Retry a crash after remote completion but before the local
-                # plan flush, only for this exact work and committed Map.
-                status = checked_sync(root, session, "status")
-                work_id = (plan.get("sync") or {}).get("workId")
-                work = next((item for item in status.get("works", []) if item.get("workId") == work_id and item.get("status") == "completed"), {})
-                result = work.get("result") or {}
-                # Local protocol versions hash file bytes; Cloud versions hash
-                # compact JSON. Compare documents, not incompatible hashes.
-                base = read_json(ctx / "private/cloud-sync/base-map.json", None)
-                local = read_json(ctx / "map.json", None)
-                if base is not None and local == base and result.get("version") == (status.get("state") or {}).get("version") and result.get("status") == "completed":
-                    finished = result
-            if finished.get("status") != "completed":
+            if finished.get("confirmed") is not True:
                 raise ValueError("Cloud did not confirm completion")
         plan["status"] = "completed"
         plan["delivery"] = {"source": "verified", "memory": "confirmed"}
@@ -1805,7 +1798,7 @@ def main() -> int:
                     url = start_workbench(root, open_browser=False, raise_errors=True, session_id=current_session_id)
                 except (OSError, RuntimeError, subprocess.TimeoutExpired):
                     return hook_response(platform, event, f"Context Guard could not start or verify the bound project workbench. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}; no replacement service was started and the binding was preserved.")
-            if sync_configured(ctx):
+            if sync_configured(root, current_session_id):
                 sync_command(root, "ensure", current_session_id)
         synchronized_memory = session_memory_sync(root, current_session_id, event, payload)
         if isinstance(synchronized_memory.get("error"), dict):

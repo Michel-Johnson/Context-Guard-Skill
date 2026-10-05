@@ -209,7 +209,7 @@ try {
   });
   check("approved Cloud tests pass the product branch guard", () => {
     const product = createRepository("cloud-product-tests");
-    for (const name of ["tests/cloud-sync-client.test.mjs", "tests/cloud-workbench.test.mjs"]) {
+    for (const name of ["tests/cloud-sync-client.test.mjs", "tests/workbench-sync.test.mjs"]) {
       write(product, name, "// approved product test\n");
     }
     git(product, "add", "tests");

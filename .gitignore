@@ -38,3 +38,14 @@ workbench-global.png
 node_modules/
 output/
 .cloud-data/
+
+# Generated from fixed Cloud release packages, never a second source.
+/.runtime-generated.json
+/scripts/shared/
+/prototype/
+/roles.md
+/Coordinator.md
+/Executor.md
+/Tester.md
+/references/*
+!/references/cloud-sync-interface.md

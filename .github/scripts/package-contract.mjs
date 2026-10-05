@@ -1,4 +1,4 @@
-// Shared install contents are listed once; npm adds only server/release files.
+// Exact standalone Skill payload; generated Cloud packages are materialized before packing.
 export const installedFiles = [
   "references/claude-runtime.md",
   "scripts/workbench/claude-runtime.mjs",
@@ -34,7 +34,6 @@ export const installedFiles = [
   "prototype/vendor/marked.mjs",
   "references/workbench-interface.md",
   "references/cloud-sync-interface.md",
-  "references/cloud-deployment.md",
   "references/server-memory.md",
   "references/design-current.md",
   "references/memory-filesystem-v2/README.md",
@@ -61,7 +60,7 @@ export const installedFiles = [
   "references/memory-definition.md",
   "scripts/workbench/runtime.mjs",
   "scripts/workbench/registry.mjs",
-  "scripts/sync/client.mjs",
+  "scripts/workbench/sync.mjs",
   "scripts/workbench/access.mjs",
   "scripts/workbench/attachments.mjs",
   "scripts/workbench/cli.mjs",
@@ -69,6 +68,9 @@ export const installedFiles = [
   "scripts/workbench/journal.mjs",
   "scripts/shared/io.mjs",
   "scripts/shared/vendor/jsonparse.cjs",
+  "scripts/shared/LICENSES/JSONParse-MIT.txt",
+  "prototype/LICENSES/Marked-MIT.txt",
+  "prototype/LICENSES/Ready-redistribution.txt",
   "scripts/workbench/projections.mjs",
   "scripts/shared/protocol.mjs",
   "scripts/shared/protocol-store.mjs",
@@ -93,39 +95,17 @@ export const installedFiles = [
   "scripts/context_guard.py",
   "scripts/context_guard_hook.py",
   "scripts/map_owns.py",
-  "scripts/shared/sync-paths.mjs",
-  "scripts/legacy/map-sync.mjs"
+  "scripts/shared/filesystem-v2.mjs"
 ];
 
-export const packedFiles = [...installedFiles, ...[
-  "references/slack-integration.md",
-  "scripts/cloud/device-authorization.mjs",
-  "scripts/shared/filesystem-v2.mjs",
-  "scripts/cloud/migrate-memory-filesystem.mjs",
-  "scripts/cloud/memory-filesystem.mjs",
-  "scripts/cloud/attachments.mjs",
-  "scripts/cloud/quark-provider.mjs",
-  "scripts/cloud/coordinator-context.mjs",
-  "scripts/cloud/coordinator-file.mjs",
-  "scripts/cloud/coordinator-tools.mjs",
-  "scripts/cloud/coordinator-service.mjs",
-  "scripts/cloud/coordinator-model.mjs",
-  "scripts/cloud/coordinator-manual.mjs",
-  "scripts/cloud/integration-gateway.mjs",
-  "scripts/cloud/integration-attachments.mjs",
-  "scripts/cloud/completion.mjs",
-  "scripts/cloud/task-review.mjs",
-  "scripts/cloud/protocol-auth.mjs",
-  "scripts/cloud/memory.mjs",
-  "scripts/cloud/memory-read-view.mjs",
-  "bin/postinstall.js",
-  "hooks.json",
-  "package.json",
-  "scripts/cloud/server.mjs"
-]];
+export const packedFiles = [...installedFiles, "bin/build-runtime.mjs", "bin/postinstall.js", "hooks.json", "package.json"];
 
 export const forbiddenInstalledPaths = [
   "scripts/cloud",
+  "scripts/legacy",
+  "scripts/sync",
+  "plugins",
+  "deploy",
   "scripts/branch_guard.py",
   "scripts/__pycache__",
   "tests",

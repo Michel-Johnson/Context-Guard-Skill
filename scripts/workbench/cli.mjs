@@ -12,7 +12,7 @@ import { validateMessage } from '../shared/protocol.mjs';
 import { hostAttestedPlatform, recordHostAttestedSession } from './access.mjs';
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
-import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
+import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, completeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
 import { atomicWrite, encode } from '../shared/io.mjs';
 import { resolveProjectRoot, bindProject } from './project.mjs';
 import { namedWorkbench, readWorkbenchHealth, verifyWorkbenchUrl } from './named.mjs';
@@ -84,6 +84,11 @@ export function wantsHelp(args) {
 }
 const HELP_EXIT_NOTE = '  -h, --help             Print usage and exit. Does not init, start a service, or write .codex/context.';
 function commandHelp(command, parts = []) {
+  if (command === 'sync') return `Usage: context-guard sync [status|ensure|prepare|pull|checkpoint|finish] --root <project> --session <id>
+
+Uses the project workbench and current Session memory protocol. Authentication:
+context-guard workbench connect --url <cloud-origin> --root <project> --session <id> --wait
+${HELP_EXIT_NOTE}`;
   if (command === 'workbench' && parts[0] === 'connect') return `Usage: context-guard workbench connect --root <project> --url <https-origin> --session <id> [--wait]
 
 Default: browser authorization. Show the verification URL/code to the human.
@@ -164,7 +169,7 @@ Only explicitly allowlisted project clients can create, rename, update or move n
 ${HELP_EXIT_NOTE}`;
   }
   if (command === 'memory') {
-    return `Usage: context-guard memory [status|sync|prepare|rebase|configure|publish|history|restore|file] [options]
+    return `Usage: context-guard memory [status|sync|prepare|rebase|configure|complete|publish|history|restore|file] [options]
 
 Options:
   --root <dir>        Project root (default: current directory)
@@ -545,7 +550,12 @@ async function stateForWorkbenchUrl(project, value) {
 const directoryFailureLog = /EACCES|EPERM|ENOTDIR|EROFS|EEXIST|permission denied|not a directory|read-only file system/i;
 export function logMentionsDirectoryFailure(log, directory) {
   const text = String(log || '');
-  return !!directory && text.includes(directory) && directoryFailureLog.test(text);
+  // CLI failures are JSON lines: Windows backslashes are escaped on disk.
+  // Compare decoded messages as well as plain logs, keeping the exact path gate.
+  const messages = [text, ...text.split(/\r?\n/).map(line => {
+    try { return JSON.parse(line)?.error?.message; } catch { return null; }
+  })];
+  return !!directory && messages.some(message => typeof message === 'string' && message.includes(directory) && directoryFailureLog.test(message));
 }
 export function startFailedMessage({ log = '', directory } = {}) {
   const base = 'Node workbench did not become healthy; inspect private/node-workbench.log';
@@ -629,9 +639,15 @@ export async function stopServer(root) {
   // A stop acknowledgement is not a released project lock. Do not let the next
   // command race the old process while it flushes writes and closes sockets.
   for (;;) {
-    const current = await readJSON(sharedState, null);
-    const lock = await readJSON(projectLockPath(project), null);
-    if (current?.instance !== state.instance && lock?.instance !== state.instance) return { stopped: true };
+    try {
+      const current = await readJSON(sharedState, null);
+      const lock = await readJSON(projectLockPath(project), null);
+      if (current?.instance !== state.instance && lock?.instance !== state.instance) return { stopped: true };
+    } catch (error) {
+      // Only the acknowledged shutdown may retry delete-pending file contention.
+      // An unreadable state/lock is not evidence that this instance released it.
+      if (error.code !== 'EBUSY' && !(process.platform === 'win32' && error.code === 'EPERM')) throw error;
+    }
     if (Date.now() >= deadline) throw new MapError('STOP_FAILED', 'Workbench has not finished shutting down; project lock preserved', 503);
     await pause(25);
   }
@@ -682,6 +698,17 @@ async function main(args) {
     return;
   }
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  if (command === 'sync') {
+    const { sessionSync, syncStatus } = await import('./sync.mjs');
+    const session = String(opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '');
+    const action = opt._[0] || 'status';
+    if (action === 'ensure') {
+      if (!session) throw new MapError('SESSION_REQUIRED', 'Pass the actual --session before synchronization');
+      await syncStatus(root, session);
+      return main(['workbench', '--root', root, '--session', session]);
+    }
+    return sessionSync(root, session, action);
+  }
   if (command === 'workbench' && (opt.list || opt._[0] === 'list')) {
     return globalWorkbenchInventory({ currentRoot: root });
   }
@@ -700,6 +727,10 @@ async function main(args) {
   if (command === 'preferences') return projectPreferences(await resolveProject(root), opt.language);
   if (command === 'memory') {
     const project = await resolveProject(root), session = String(opt.session || process.env.CODEX_THREAD_ID || '');
+    if (['sync', 'prepare'].includes(opt._[0])) {
+      const { inspectRetiredSync } = await import('./sync.mjs');
+      await inspectRetiredSync(project);
+    }
     if (opt._[0] === 'configure') {
       const config = await inputJSON(opt.input);
       if (!config.url || !config.token || !config.projectId) throw new MapError('INVALID_MEMORY_CONFIG', 'Provide url, projectId, and token in the private input file');
@@ -717,6 +748,7 @@ async function main(args) {
     if (opt._[0] === 'prepare') return prepareMemory(project, session);
     if (opt._[0] === 'rebase') return rebaseMemory(project, session, { adoptMain: !!opt['adopt-main'] });
     if (opt._[0] === 'publish') return memoryRequest(project, 'publish', await inputJSON(opt.input));
+    if (opt._[0] === 'complete') return completeMemory(project, session, await inputJSON(opt.input));
     if (opt._[0] === 'history') {
       const scope = String(opt.scope || (session ? `session:${session}` : 'main'));
       return memoryRequest(project, `history?scope=${encodeURIComponent(scope)}&after=${encodeURIComponent(opt.after || 0)}&limit=${encodeURIComponent(opt.limit || 100)}`);

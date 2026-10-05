@@ -22,24 +22,9 @@
       "purpose": "Exercises the packaged CLI and cross-runtime smoke contract."
     },
     {
-      "path": "tests/browser-device-login-runner.mjs",
-      "command": "npm run test:browser",
-      "purpose": "Runs real Chromium password login and device approval against an isolated Cloud, then verifies backend Main access."
-    },
-    {
       "path": "tests/workbench-browser.mjs",
       "command": "npm run test:browser",
       "purpose": "Runs the local workbench end-to-end browser acceptance suite."
-    },
-    {
-      "path": "tests/cloud-workbench-browser.mjs",
-      "command": "npm run test:browser",
-      "purpose": "Runs the Cloud workbench end-to-end browser acceptance suite."
-    },
-    {
-      "path": "tests/cloud-sync-browser.mjs",
-      "command": "npm run test:browser",
-      "purpose": "Runs the two-way local and Cloud Session Map synchronization browser suite."
     },
     {
       "path": "tests/workbench-journal-recovery-browser.mjs",
@@ -61,40 +46,17 @@
       "usedBy": "tests/workbench-browser.mjs"
     }
   ],
-  "separatePackages": [{ "root": "plugins/slack" }],
+  "separatePackages": [],
   "productFiles": [
-    "tests/browser-device-login.test.mjs",
-    "tests/browser-device-login-runner.mjs",
-    "tests/attachments.test.mjs",
-    "tests/cloud-attachments.test.mjs",
-    "tests/cloud-backup-retention.test.mjs",
-    "tests/quark-provider.test.mjs",
+    "tests/build-runtime.test.mjs",
     "tests/claude-runtime.test.mjs",
-    "tests/cloud-coordinator.test.mjs",
-    "tests/coordinator-file.test.mjs",
-    "tests/coordinator-multimodal.test.mjs",
-    "tests/integration-gateway.test.mjs",
-    "tests/slack-cloud.test.mjs",
-    "tests/interface-auth.test.mjs",
-    "tests/interface-blobs.test.mjs",
     "tests/interface-delivery.test.mjs",
-    "tests/interface-device.test.mjs",
-    "tests/interface-events.test.mjs",
     "tests/interface-map.test.mjs",
-    "tests/interface-memory-errors.test.mjs",
     "tests/interface-protocol.test.mjs",
     "tests/interface-repository.test.mjs",
-    "tests/interface-snapshots.test.mjs",
-    "tests/interface-store.test.mjs",
     "tests/interface-transport.test.mjs",
-    "tests/interface-workflow.test.mjs",
-    "tests/memory-filesystem-migration.test.mjs",
     "tests/ci-smoke.mjs",
     "tests/cloud-sync-client.test.mjs",
-    "tests/cloud-memory-filesystem.test.mjs",
-    "tests/cloud-sync-browser.mjs",
-    "tests/cloud-workbench.test.mjs",
-    "tests/cloud-workbench-browser.mjs",
     "tests/workbench-sync.test.mjs",
     "tests/workbench-inbox.test.mjs",
     "tests/workbench-dead-peer.test.mjs",

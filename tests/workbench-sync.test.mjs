@@ -10,8 +10,7 @@ import http from 'node:http';
 import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, updateBugWithRecovery } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
-import { definitiveMemoryRejection, memoryRequest } from '../scripts/workbench/memory.mjs';
-import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
+import { definitiveMemoryRejection } from '../scripts/workbench/memory.mjs';
 import { prepareSessionCommit, startServer } from '../scripts/workbench/server.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
@@ -21,6 +20,95 @@ import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/r
 import { WorkbenchSync, reconcileRecoveryDraft, workbenchTimeoutMs } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
+
+// Exercise the actual classic-script status functions without starting a browser.
+// Function boundaries are checked explicitly; a missing function is a test failure.
+async function workItemProgressForTest(projectState = 'closed') {
+  const source = await fs.readFile(new URL('../prototype/workbench-app.js', import.meta.url), 'utf8');
+  const section = (name, next) => {
+    const start = source.indexOf(`function ${name}(`), end = source.indexOf(`function ${next}(`, start);
+    assert.ok(start >= 0 && end > start, `Actual UI function boundary: ${name}`);
+    return source.slice(start, end);
+  };
+  const sync = Object.create(WorkbenchSync.prototype);
+  sync.projectTaskStates = new Map([['bug:N1:B1', {state:projectState}], ['todo:N1:TD1', {state:projectState}]]);
+  sync.taskStates = new Map([['old-summary', {state:'completed'}]]);
+  const functions = new Function('workbenchSync', 't', 'uiLang',
+    section('humanReviewProgress', 'taskSummaryHtml') + section('bugProgress', 'bugProgressHtml') +
+    section('todoProgress', 'todoProgressHtml') + 'return {bugProgress,todoProgress};');
+  return functions(sync, key => key, 'zh');
+}
+test('Manual open Bug ignores a closed historical project task without changing Main', async () => {
+  const item = {id:'B1',status:'open',executionMode:'manual',approvedBrief:{ready:true}};
+  const before = structuredClone(item), progress = await workItemProgressForTest();
+  assert.deepEqual(progress.bugProgress(item,'N1'), {kind:'waiting',label:'bugWaiting',detail:''});
+  assert.deepEqual(item,before);
+});
+test('Manual pending TODO ignores a closed historical project task without changing Main', async () => {
+  const item = {id:'TD1',status:'pending',executionMode:'manual',approvedBrief:{ready:true}};
+  const before = structuredClone(item), progress = await workItemProgressForTest();
+  assert.deepEqual(progress.todoProgress(item,'N1'), {kind:'waiting',label:'todoPending',detail:''});
+  assert.deepEqual(item,before);
+});
+test('Manual status labels preserve Main states including readable legacy Bugs and ignore old review, summary and sessions', async () => {
+  const progress = await workItemProgressForTest();
+  for (const [kind,status,expectedKind,label] of [
+    ['bug','open','waiting','bugWaiting'], ['bug','fixed','fixed','bugFixed'],
+    ['bug','resolved','resolved','bugResolved'], ['bug','dormant','resolved','bugResolved'],
+    ['bug','unfixable','unfixable','bugUnfixable'], ['bug','deferred','unfixable','bugUnfixable'],
+    ['bug','wontfix','unfixable','bugUnfixable'], ['bug','pending','settling','bugSettling'],
+    ['bug','handling','processing','bugProcessing'], ['bug','inprogress','processing','bugProcessing'],
+    ['bug','recurred','processing','bugProcessing'], ['bug','unknown','waiting','bugWaiting'],
+    ['todo','pending','waiting','todoPending'], ['todo','processing','processing','todoProcessing'],
+    ['todo','done','resolved','todoDone'], ['todo','unknown','waiting','todoPending'],
+  ]) {
+    const item = Object.freeze({id:kind==='bug'?'B1':'TD1',status,executionMode:'manual',approvedBrief:{ready:true},
+      dispatch:{task_id:'old-task',status:'closed'},review:{taskId:'old-task',decision:'approved'},
+      resolution:{dispatch:{task_id:'old-summary',status:'completed'}},sessions:Object.freeze(['old-session'])});
+    const before = structuredClone(item);
+    assert.deepEqual(progress[`${kind}Progress`](item,'N1'), {kind:expectedKind,label,detail:''}, `${kind}/${status}`);
+    assert.deepEqual(item,before, `${kind}/${status} retains all stored history`);
+  }
+});
+test('Automatic work-item labels retain project-stage and human-review behavior; approvedBrief alone is not manual', async () => {
+  const closed = await workItemProgressForTest('closed'), running = await workItemProgressForTest('executing');
+  for (const [kind,id,status,label] of [['bug','B1','open','bugResolved'],['todo','TD1','pending','todoDone']]) {
+    assert.deepEqual(closed[`${kind}Progress`]({id,status,approvedBrief:{ready:true}},'N1'), {kind:'resolved',label,detail:''});
+    assert.deepEqual(running[`${kind}Progress`]({id,status},'N1'), {kind:'processing',label:'执行中',detail:''});
+    assert.deepEqual(running[`${kind}Progress`]({id,status,dispatch:{task_id:'current'},review:{taskId:'current',decision:'approved'}},'N1'),
+      {kind:'resolved',label:'验收通过',detail:''});
+  }
+});
+
+test('Attachment file display normalizes legacy paths without mutating the Map or creating a synchronization diff', async () => {
+  const source = await fs.readFile(new URL('../prototype/workbench-app.js',import.meta.url),'utf8');
+  const start = source.indexOf('function filePathOf('), end = source.indexOf('function normRepoPath(',start);
+  assert.ok(start>=0&&end>start,'Actual attachment display helper exists');
+  const fileList = new Function(source.slice(start,end)+'return fileList;')();
+  for(const owner of [{id:'B1'}, {id:'B1',files:'legacy-path'}, {id:'B1',files:[' docs/a.md ',{path:'img.png',name:'截图'},'  ']}]){
+    const before=structuredClone(owner), list=fileList(owner);
+    assert.deepEqual(owner,before,'Rendering retains the stored field shape and values');
+    assert.deepEqual(list,Array.isArray(before.files)?[{path:'docs/a.md'},{path:'img.png',name:'截图'}]:[]);
+    const sync=Object.create(WorkbenchSync.prototype);
+    sync.ready=true; sync.revision=0;
+    sync.baseTree={id:'T0',bugs:[before],children:[]};
+    sync.a={getRoot:()=>({id:'T0',bugs:[owner],children:[]})};
+    assert.deepEqual(sync.operations(),[],'Read-only rendering does not become a map write');
+  }
+  assert.deepEqual(fileList(null),[]);
+  assert.deepEqual(fileList(Object.freeze({files:Object.freeze(['a.md'])})),[{path:'a.md'}],'Frozen read snapshots are supported');
+});
+test('Explicit attachment addition still saves normalized paths and avoids duplicates', async () => {
+  const source=await fs.readFile(new URL('../prototype/workbench-app.js',import.meta.url),'utf8');
+  const section=(name,next)=>{const start=source.indexOf(`function ${name}(`),end=source.indexOf(`function ${next}(`,start);assert.ok(start>=0&&end>start);return source.slice(start,end);};
+  const owner={id:'B1',files:['a.md']};
+  const add=new Function('ownerOf',section('filePathOf','normRepoPath')+section('addFilePath','canFsAccess')+'return addFilePath;')(()=>owner);
+  assert.equal(add({},'bug','B1','b.md'),true);
+  assert.deepEqual(owner.files,[{path:'a.md'},{path:'b.md'}]);
+  assert.equal(add({},'bug','B1','b.md'),true);
+  assert.equal(owner.files.length,2);
+  assert.equal(add({},'bug','B1','   '),false);
+});
 
 test('stale browser drafts are cleared only without pending input or meaningful changes', () => {
   const base = { id: 'T0', title: 'Map', purpose: 'before', children: [] };
@@ -178,6 +266,93 @@ test('Session reopen merge preserves disjoint append-only records and rejects co
     { ...main, root: { ...main.root, title: 'Main title' } }), { code: 'MEMORY_CONFLICT' });
 });
 
+for (const localTail of [false, true]) test(`Session reconcile merges the same title and remote-only fields${localTail ? ' while replaying a local tail receipt' : ''}`, async t => {
+  const f = await fixture(), base = structuredClone(f.doc);
+  base.bootstrap = 'ready'; base.root.purpose = 'before'; base.root.memories = [];
+  const local = structuredClone(base); local.root.title = 'shared edit';
+  if (localTail) local.root.memories.push({ archiveKey: 'local-only', text: 'preserve local tail' });
+  const remote = structuredClone(base); remote.root.title = 'shared edit'; remote.root.purpose = 'remote-only';
+  await atomicWrite(path.join(f.ctx, 'map.json'), encode(local));
+  const store = await new MapStore(f.root).init();
+  let uploaded = structuredClone(remote), applied = 0;
+  const requests = [], receipts = new Map();
+  const coordinator = new MemorySyncCoordinator({ project: {}, sessionId: 'merge-session', store, directory: f.root, managed: true,
+    request: async (_project, scope, input) => {
+      assert.equal(scope, 'sessions/merge-session/map'); requests.push(structuredClone(input));
+      if (receipts.has(input.operationId)) return receipts.get(input.operationId);
+      assert.equal(input.baseVersion, 'remote-v1');
+      assert.deepEqual(await readJSON(coordinator.baseFile), remote, 'tail upload starts from the confirmed remote ancestor');
+      uploaded = applyOperations(uploaded, input.operations, human).doc; applied++;
+      const receipt = { version: 'remote-v2', cursor: 2, persistedAt: '2026-10-05T00:00:00Z' };
+      receipts.set(input.operationId, receipt);
+      throw new Error('receipt lost after server commit');
+    },
+  });
+  t.after(async () => { await coordinator.close(); await store.close(); });
+  coordinator.configuration = {};
+  coordinator.status.serverVersion = 'old-version';
+  await atomicWrite(coordinator.baseFile, encode(base));
+  await atomicWrite(coordinator.outboxFile, encode({ operationId: 'superseded-request', baseVersion: 'old-version', operations: diffTrees(base.root, local.root) }));
+  await coordinator.reconcileRemote({ version: 'remote-v1', memory: { map: remote } }, 1);
+  const expected = structuredClone(local); expected.root.purpose = 'remote-only';
+  assert.deepEqual(store.doc, expected);
+  assert.equal(coordinator.snapshot().conflict, null);
+  if (localTail) {
+    assert.equal(coordinator.snapshot().pending, 1);
+    const pending = await readJSON(coordinator.outboxFile);
+    assert.notEqual(pending.operationId, 'superseded-request');
+    assert.deepEqual(pending.operations, [{ type: 'update', id: 'T0', fields: { memories: local.root.memories } }]);
+    assert.deepEqual(await readJSON(coordinator.baseFile), remote, 'unknown receipt cannot advance the ancestor');
+    await coordinator.flush();
+    assert.deepEqual(requests[1], requests[0], 'lost receipt replays the exact operation ID, base and payload');
+    assert.equal(applied, 1);
+    assert.deepEqual(uploaded, expected);
+  } else assert.equal(requests.length, 0, 'identical local edits are already present remotely');
+  assert.equal(coordinator.snapshot().status, 'synced');
+  assert.deepEqual(await readJSON(coordinator.baseFile), expected);
+  assert.equal(await readJSON(coordinator.outboxFile, null), null);
+  await coordinator.reconcileRemote({ version: localTail ? 'remote-v2' : 'remote-v1', memory: { map: expected } }, localTail ? 2 : 1);
+  assert.equal(requests.length, localTail ? 2 : 0, 'duplicate remote delivery never repeats the local tail');
+});
+
+for (const kind of ['different-title', 'delete-vs-edit', 'duplicate-record-id']) test(`Session reconcile preserves evidence for ${kind}`, async t => {
+  const f = await fixture(), base = structuredClone(f.doc);
+  base.root.todos = [{ id: 'TD1', title: 'before', status: 'pending' }];
+  const local = structuredClone(base), remote = structuredClone(base);
+  if (kind === 'different-title') { local.root.title = 'local'; remote.root.title = 'remote'; }
+  else {
+    local.root.todos = kind === 'delete-vs-edit' ? [] : [...local.root.todos, { id: 'TD1', title: 'ambiguous', status: 'pending' }];
+    remote.root.todos[0].title = 'remote edit';
+  }
+  const store = { doc: local, off() {} };
+  const coordinator = new MemorySyncCoordinator({ directory: f.root, sessionId: 'conflict-session', store });
+  t.after(() => coordinator.close());
+  const pending = { operationId: 'unconfirmed-local', baseVersion: 'old', operations: diffTrees(base.root, local.root) };
+  await atomicWrite(coordinator.baseFile, encode(base));
+  await atomicWrite(coordinator.outboxFile, encode(pending));
+  await coordinator.reconcileRemote({ version: 'remote', memory: { map: remote } }, 3);
+  assert.equal(coordinator.snapshot().conflict.code, 'REMOTE_AND_LOCAL_CHANGED');
+  assert.deepEqual(await readJSON(coordinator.baseFile), base);
+  assert.deepEqual(await readJSON(coordinator.outboxFile), pending);
+  assert.deepEqual(store.doc, local);
+  const conflict = await readJSON(coordinator.conflictFile);
+  assert.deepEqual([conflict.base, conflict.local, conflict.remote], [base, local, remote]);
+});
+
+test('Session reconcile propagates commit permission errors without replacing the base or outbox', async t => {
+  const f = await fixture(), base = f.doc, local = structuredClone(base), remote = structuredClone(base);
+  local.root.title = remote.root.title = 'shared edit'; remote.root.purpose = 'remote-only';
+  const store = { doc: local, version: 'local', off() {}, commit: async () => { throw Object.assign(new Error('permission denied'), { code: 'FORBIDDEN' }); } };
+  const coordinator = new MemorySyncCoordinator({ directory: f.root, sessionId: 'permission-session', store });
+  t.after(() => coordinator.close());
+  const pending = { operationId: 'keep-permission-pending' };
+  await atomicWrite(coordinator.baseFile, encode(base)); await atomicWrite(coordinator.outboxFile, encode(pending));
+  await assert.rejects(coordinator.reconcileRemote({ version: 'remote', memory: { map: remote } }, 1), { code: 'FORBIDDEN' });
+  assert.deepEqual(await readJSON(coordinator.baseFile), base);
+  assert.deepEqual(await readJSON(coordinator.outboxFile), pending);
+  assert.equal(await readJSON(coordinator.conflictFile, null), null);
+});
+
 test('journal recovery retries a bootstrap blocked by a Session reopen conflict', async () => {
   const store = { on() {}, off() {} };
   const coordinator = new MemorySyncCoordinator({ project: {}, sessionId: 'recovery-session', store, directory: '/unused' });
@@ -241,7 +416,7 @@ after(async () => {
     const resolved = await fs.realpath(root);
     assert.equal(path.dirname(resolved), temporary);
     assert.ok(path.basename(resolved).startsWith('cg-sync-'));
-    await fs.rm(resolved, { recursive: true, force: true });
+    await fs.rm(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
 async function fixture() {
@@ -708,473 +883,6 @@ test('Legacy heartbeat is single-flight, write-free while idle, and stops on v2 
   const stoppedAt = calls;
   await pause(80);
   assert.equal(calls, stoppedAt, 'v2 takeover stops the legacy poller');
-});
-
-for (const stalledHeaders of [false, true]) test(`Legacy sync recovers silent ${stalledHeaders ? 'headers' : 'body'} and polls Cloud-only changes`, { timeout: 25000 }, async t => {
-  const f = await fixture(), sharedDir = path.join(f.root, 'shared');
-  await fs.mkdir(sharedDir, { recursive: true });
-  const service = await startMemoryServer({ dataDir: path.join(f.root, 'cloud'), adminToken: 'admin', projects: { project: { token: 'token' } }, host: '127.0.0.1', port: 0 });
-  let connections = 0;
-  const stalled = http.createServer((_req, res) => {
-    connections++;
-    if (!stalledHeaders) { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write(': connected\n\n'); }
-  });
-  const sockets = new Set();
-  stalled.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
-  await new Promise(resolve => stalled.listen(0, '127.0.0.1', resolve));
-  const config = { url: service.url, projectId: 'project', token: 'token' }, project = { sharedDir, head: 'a'.repeat(40) };
-  const request = (project, scope, input) => memoryRequest(project, scope, input, config);
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ ...config, url: `http://127.0.0.1:${stalled.address().port}` }));
-  await request(project, 'sessions/silent', { operationId: 'seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head, memory: { map: f.doc, records: {} } });
-  const store = await new MapStore(f.root, { file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'runtime'), eventsFile: path.join(f.root, 'events.jsonl') }).init();
-  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'silent', store, directory: path.join(f.root, 'sync'), request, heartbeatMs: 30, streamIdleMs: 5000, retryMin: 25, retryMax: 100 });
-  let initializations = 0;
-  const initialize = coordinator.initialize.bind(coordinator);
-  coordinator.initialize = async () => { initializations++; return initialize(); };
-  t.after(async () => {
-    await coordinator.close(); await store.close();
-    const stopped = new Promise(resolve => stalled.close(resolve));
-    // Aborted fetches may open replacement TCP sockets without sending HTTP.
-    // closeAllConnections alone does not cover these pre-request sockets.
-    for (const socket of sockets) socket.destroy();
-    await stopped; await service.close();
-  });
-  await coordinator.start();
-  await until(() => connections === 1);
-  const remote = (await request(project, 'sessions/silent')).snapshot;
-  await request(project, 'sessions/silent/map', { operationId: 'cloud-only', baseVersion: remote.version, operations: [{ type: 'update', id: 'N1', fields: { title: 'Cloud-only update' } }] });
-  await until(() => store.doc.root.children[0].title === 'Cloud-only update', 3000);
-  assert.equal(connections, 1, 'heartbeat repairs a missed notification without waiting for reconnect');
-  const highWater = (await request(project, 'sessions/silent/changes?after=0')).highWater;
-  await until(() => coordinator.snapshot().cursor === highWater);
-  await coordinator.serial;
-  const stateStamp = (await fs.stat(coordinator.stateFile)).mtimeMs;
-  const reported = [];
-  coordinator.on('change', state => reported.push(state.status));
-  await until(() => connections >= 2, 10000);
-  assert.ok(initializations >= 2, 'reconnect still initializes missing sessions and unqueued local edits');
-  assert.equal(reported.includes('offline'), false, 'healthy polling must not flash offline when only SSE stalls');
-  assert.equal((await fs.stat(coordinator.stateFile)).mtimeMs, stateStamp, 'healthy fallback reconnect must not rewrite idle state');
-  assert.equal(coordinator.managed, false, 'legacy repair must not enable unsupported v2 mode');
-});
-
-test('Workbench coordinator automatically syncs one Session in both directions and survives an outage', async t => {
-  const f = await fixture();
-  const sharedDir = path.join(f.root, 'shared');
-  const dataDir = path.join(f.root, 'memory-data');
-  await fs.mkdir(sharedDir, { recursive: true });
-  const configuration = { dataDir, adminToken: 'memory-admin', projects: { project: { token: 'project-token' } } };
-  let service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port: 0 });
-  let store, coordinator;
-  t.after(async () => {
-    await coordinator?.close().catch(() => {});
-    await store?.close().catch(() => {});
-    await service.close().catch(() => {});
-  });
-  const port = Number(new URL(service.url).port);
-  const project = { sharedDir, head: 'a'.repeat(40) };
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
-  await memoryRequest(project, 'sessions/session-sync', {
-    operationId: 'coordinator-seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head,
-    memory: { map: f.doc, records: {} },
-  });
-  store = await new MapStore(f.root, {
-    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'store-runtime'), eventsFile: path.join(f.root, 'store-events.jsonl'),
-  }).init();
-  const syncDir = path.join(f.root, 'session-sync');
-  let holdAcknowledgement = false, releaseAcknowledgement = null;
-  const request = async (...args) => {
-    const result = await memoryRequest(...args);
-    if (holdAcknowledgement && String(args[1]).endsWith('/map')) await new Promise(resolve => { releaseAcknowledgement = resolve; });
-    return result;
-  };
-  coordinator = new MemorySyncCoordinator({ project, sessionId: 'session-sync', store, directory: syncDir, request, retryMin: 25, retryMax: 100 });
-  await coordinator.start();
-  await until(() => coordinator.snapshot().status === 'synced');
-
-  holdAcknowledgement = true;
-  await store.commit({ baseVersion: store.version, operationId: 'local-session-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '本地自动上传' } }] }, human);
-  await until(async () => (await memoryRequest(project, 'sessions/session-sync')).snapshot.memory.map.root.children[0].title === '本地自动上传');
-  await until(() => !!releaseAcknowledgement);
-  assert.equal(coordinator.snapshot().status, 'syncing', 'server persistence without an acknowledged response is not synced');
-  assert.equal(coordinator.snapshot().pending, 1);
-  holdAcknowledgement = false; releaseAcknowledgement();
-  await until(() => coordinator.snapshot().status === 'synced');
-
-  const remote = (await memoryRequest(project, 'sessions/session-sync')).snapshot;
-  await memoryRequest(project, 'sessions/session-sync/map', {
-    operationId: 'remote-session-edit', baseVersion: remote.version,
-    operations: [{ type: 'update', id: 'N1', fields: { purpose: '云端自动下发' } }],
-  });
-  await until(() => store.doc.root.children[0].purpose === '云端自动下发');
-
-  await service.close();
-  await store.commit({ baseVersion: store.version, operationId: 'offline-session-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '断网期间保留' } }] }, human);
-  await until(async () => !!await readJSON(path.join(syncDir, 'remote-sync/outbox.json'), null));
-  await until(() => coordinator.snapshot().pending === 1);
-  service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port });
-  await until(async () => (await memoryRequest(project, 'sessions/session-sync')).snapshot.memory.map.root.children[0].title === '断网期间保留', 6000);
-  await until(() => coordinator.snapshot().status === 'synced');
-
-  // A process that starts while Cloud is unavailable must retry initialization,
-  // not wait forever for an SSE event that may never be emitted.
-  await coordinator.close(); await service.close();
-  await store.commit({ baseVersion: store.version, operationId: 'cold-offline-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '冷启动断网保留' } }] }, human);
-  coordinator = new MemorySyncCoordinator({ project, sessionId: 'session-sync', store, directory: syncDir, request, retryMin: 25, retryMax: 100 });
-  await coordinator.start();
-  await until(() => coordinator.snapshot().status === 'offline');
-  service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port });
-  await until(async () => (await memoryRequest(project, 'sessions/session-sync')).snapshot.memory.map.root.children[0].title === '冷启动断网保留', 6000);
-  await until(() => coordinator.snapshot().status === 'synced');
-  await coordinator.close(); await store.close();
-});
-
-test('Workbench coordinator automatically reopens the same Session after its prior generation is published', async t => {
-  const f = await fixture();
-  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
-  git('init', '-b', 'main');
-  git('config', 'user.email', 'fixture@example.invalid');
-  git('config', 'user.name', 'Fixture');
-  git('add', '.codex/context/map.json');
-  git('commit', '-m', 'baseline');
-  const head = git('rev-parse', 'HEAD');
-  const sharedDir = path.join(f.root, 'generation-shared');
-  const configuration = {
-    dataDir: path.join(f.root, 'generation-memory'),
-    adminToken: 'memory-admin',
-    projects: { project: { token: 'project-token', root: f.root, ref: 'refs/heads/main' } },
-  };
-  await fs.mkdir(sharedDir, { recursive: true });
-  const service = await startMemoryServer(configuration);
-  const project = { sharedDir, head };
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
-  const seeded = await memoryRequest(project, 'sessions/reusable-session', {
-    operationId: 'reusable-seed', baseVersion: null, baseMainVersion: null, sourceCommit: head,
-    memory: { map: f.doc, records: {} },
-  });
-  const store = await new MapStore(f.root, {
-    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'generation-store-runtime'), eventsFile: path.join(f.root, 'generation-store-events.jsonl'),
-  }).init();
-  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'reusable-session', store, directory: path.join(f.root, 'generation-sync'), retryMin: 25, retryMax: 100 });
-  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
-  await coordinator.start();
-  await until(() => coordinator.snapshot().status === 'synced');
-  const published = await memoryRequest(project, 'publish', {
-    operationId: 'reusable-publish', baseVersion: null, sessionId: 'reusable-session', sessionVersion: seeded.snapshot.version, expectedMainSha: head,
-  });
-  assert.equal((await memoryPublicationStatus(configuration, 'project', 'reusable-session')).status, 'published');
-  await store.commit({ baseVersion: store.version, operationId: 'second-round-local-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '第二轮开发' } }] }, human);
-  await until(async () => (await memoryRequest(project, 'sessions/reusable-session')).snapshot?.memory.map.root.children[0].title === '第二轮开发', 6000);
-  await until(() => coordinator.snapshot().status === 'synced');
-  const reopened = (await memoryRequest(project, 'sessions/reusable-session')).snapshot;
-  assert.equal(reopened.generation, 2);
-  assert.equal(reopened.reopenedFrom, published.snapshot.version);
-  assert.equal((await memoryPublicationStatus(configuration, 'project', 'reusable-session')).status, 'ready');
-  assert.equal((await readMemoryProject(configuration, 'project')).closedSessions['reusable-session'].publications.length, 1);
-});
-
-test('Workbench coordinator rebases append-only Session and Main changes and clears the preserved reopen conflict', async t => {
-  const f = await fixture();
-  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
-  git('init', '-b', 'main');
-  git('config', 'user.email', 'fixture@example.invalid');
-  git('config', 'user.name', 'Fixture');
-  git('add', '.codex/context/map.json');
-  git('commit', '-m', 'baseline');
-  const firstHead = git('rev-parse', 'HEAD');
-  const sharedDir = path.join(f.root, 'advanced-generation-shared');
-  const syncDir = path.join(f.root, 'advanced-generation-sync');
-  const configuration = {
-    dataDir: path.join(f.root, 'advanced-generation-memory'),
-    adminToken: 'memory-admin',
-    projects: { project: { token: 'project-token', root: f.root, ref: 'refs/heads/main' } },
-  };
-  await fs.mkdir(path.join(syncDir, 'remote-sync'), { recursive: true });
-  await fs.mkdir(sharedDir, { recursive: true });
-  const service = await startMemoryServer(configuration);
-  const project = { sharedDir, head: firstHead };
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
-
-  const first = await memoryRequest(project, 'sessions/reopen-session', {
-    operationId: 'reopen-first', baseVersion: null, baseMainVersion: null, sourceCommit: firstHead,
-    memory: { map: f.doc, records: {} },
-  });
-  const firstMain = await memoryRequest(project, 'publish', {
-    operationId: 'reopen-first-publish', baseVersion: null, sessionId: 'reopen-session',
-    sessionVersion: first.snapshot.version, expectedMainSha: firstHead,
-  });
-
-  const mainDoc = structuredClone(f.doc);
-  mainDoc.root.children[0].memories.push({ archiveKey: 'main-memory', text: 'Main append' });
-  await fs.writeFile(path.join(f.ctx, 'map.json'), encode(mainDoc));
-  git('add', '.codex/context/map.json');
-  git('commit', '-m', 'advance main');
-  project.head = git('rev-parse', 'HEAD');
-  const advancing = await memoryRequest(project, 'sessions/main-advance-session', {
-    operationId: 'main-advance', baseVersion: null, baseMainVersion: firstMain.snapshot.version, sourceCommit: project.head,
-    memory: { map: mainDoc, records: {} },
-  });
-  const advancedMain = await memoryRequest(project, 'publish', {
-    operationId: 'main-advance-publish', baseVersion: firstMain.snapshot.version, sessionId: 'main-advance-session',
-    sessionVersion: advancing.snapshot.version, expectedMainSha: project.head,
-  });
-
-  const localDoc = structuredClone(f.doc);
-  localDoc.root.children[0].memories.push({ archiveKey: 'local-memory', text: 'Local append' });
-  await fs.writeFile(path.join(f.ctx, 'map.json'), encode(localDoc));
-  const store = await new MapStore(f.root, {
-    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'advanced-generation-store-runtime'), eventsFile: path.join(f.root, 'advanced-generation-events.jsonl'),
-  }).init();
-  await atomicWrite(path.join(syncDir, 'remote-sync/server-base.json'), encode(f.doc));
-  await atomicWrite(path.join(syncDir, 'remote-sync/conflict.json'), encode({
-    code: 'MAIN_ADVANCED_BEFORE_SESSION_REOPEN', base: f.doc, local: localDoc, remote: mainDoc, at: new Date().toISOString(),
-  }));
-  await atomicWrite(path.join(syncDir, 'remote-sync/state.json'), encode({
-    configured: true, status: 'conflict', pending: 0, cursor: 0, serverVersion: null,
-    error: null, conflict: { code: 'MAIN_ADVANCED_BEFORE_SESSION_REOPEN', at: new Date().toISOString() },
-  }));
-  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'reopen-session', store, directory: syncDir, managed: true, retryMin: 25, retryMax: 100 });
-  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
-  await coordinator.start();
-  await until(async () => (await memoryRequest(project, 'sessions/reopen-session')).snapshot?.generation === 2
-    && coordinator.snapshot().status === 'synced', 6000);
-  const reopened = (await memoryRequest(project, 'sessions/reopen-session')).snapshot;
-  assert.equal(reopened.baseMainVersion, advancedMain.snapshot.version);
-  assert.deepEqual(reopened.memory.map.root.children[0].memories.map(item => item.archiveKey), ['local-memory', 'main-memory']);
-  assert.equal(await readJSON(path.join(syncDir, 'remote-sync/conflict.json'), null), null);
-  assert.equal(coordinator.snapshot().conflict, null);
-});
-
-test('Managed coordinator bootstraps a closed Session and accepts changes already present on Main', async t => {
-  const f = await fixture();
-  const oldDoc = structuredClone(f.doc);
-  const publishedDoc = structuredClone(f.doc);
-  publishedDoc.root.children[0].title = '已经进入 Main';
-  await fs.writeFile(path.join(f.ctx, 'map.json'), encode(publishedDoc));
-  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
-  git('init', '-b', 'main');
-  git('config', 'user.email', 'fixture@example.invalid');
-  git('config', 'user.name', 'Fixture');
-  git('add', '.codex/context/map.json');
-  git('commit', '-m', 'published baseline');
-  const head = git('rev-parse', 'HEAD');
-  const sharedDir = path.join(f.root, 'managed-shared');
-  const syncDir = path.join(f.root, 'managed-session-sync');
-  const configuration = {
-    dataDir: path.join(f.root, 'managed-memory'),
-    adminToken: 'memory-admin',
-    projects: { project: { token: 'project-token', root: f.root, ref: 'refs/heads/main' } },
-  };
-  await fs.mkdir(path.join(syncDir, 'remote-sync'), { recursive: true });
-  const service = await startMemoryServer(configuration);
-  const project = { sharedDir, head };
-  await fs.mkdir(sharedDir, { recursive: true });
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
-  const seeded = await memoryRequest(project, 'sessions/managed-session', {
-    operationId: 'managed-seed', baseVersion: null, baseMainVersion: null, sourceCommit: head,
-    memory: { map: publishedDoc, records: {} },
-  });
-  await memoryRequest(project, 'publish', {
-    operationId: 'managed-publish', baseVersion: null, sessionId: 'managed-session',
-    sessionVersion: seeded.snapshot.version, expectedMainSha: head,
-  });
-  await atomicWrite(path.join(syncDir, 'remote-sync/server-base.json'), encode(oldDoc));
-  const store = await new MapStore(f.root, {
-    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'managed-store-runtime'), eventsFile: path.join(f.root, 'managed-store-events.jsonl'),
-  }).init();
-  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'managed-session', store, directory: syncDir, managed: true,
-    display: async () => ({ name: '真实 Codex 任务', platform: 'codex' }), retryMin: 25, retryMax: 100 });
-  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
-  await coordinator.start();
-  await until(async () => (await memoryRequest(project, 'sessions/managed-session')).snapshot?.generation === 2
-    && coordinator.snapshot().status === 'synced' && !coordinator.snapshot().conflict, 6000);
-  const reopened = (await memoryRequest(project, 'sessions/managed-session')).snapshot;
-  assert.equal(reopened.memory.map.root.children[0].title, '已经进入 Main');
-  assert.deepEqual(reopened.memory.display, { name: '真实 Codex 任务', platform: 'codex' });
-  // Bootstrap can start another upload/reconcile after the first synced snapshot.
-  await until(() => coordinator.snapshot().status === 'synced' && coordinator.snapshot().conflict === null, 2000);
-  assert.equal(coordinator.abort, null, 'managed mode must not open a per-Session event stream');
-});
-
-test('Managed coordinator adds display metadata to an existing Session without changing its source commit', async t => {
-  const f = await fixture();
-  const sharedDir = path.join(f.root, 'display-shared');
-  await fs.mkdir(sharedDir, { recursive: true });
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({
-    url: 'http://127.0.0.1:1', projectId: 'project', token: 'test-token',
-  }));
-  const originalSource = 'a'.repeat(40);
-  let remote = { version: 'session-v1', baseMainVersion: 'main-v1', sourceCommit: originalSource, memory: { map: f.doc, records: { 'sessions/s.md': 'preserve' } } };
-  const request = async (_project, scope, input) => {
-    if (scope === 'sessions/existing-session' && !input) return { snapshot: structuredClone(remote) };
-    if (scope === 'sessions/existing-session' && input) {
-      assert.equal(input.operationId.startsWith('session-display:existing-session:'), true);
-      assert.equal(input.baseVersion, remote.version);
-      remote = { ...input, version: 'session-v2' };
-      return { snapshot: structuredClone(remote) };
-    }
-    throw new Error(`Unexpected scope ${scope}`);
-  };
-  const store = await new MapStore(f.root, {
-    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'display-store-runtime'), eventsFile: path.join(f.root, 'display-store-events.jsonl'),
-  }).init();
-  const coordinator = new MemorySyncCoordinator({ project: { sharedDir, head: 'b'.repeat(40) }, sessionId: 'existing-session', store,
-    directory: path.join(f.root, 'display-session-sync'), request, managed: true,
-    display: async () => ({ name: 'CI', platform: 'codex' }), retryMin: 25, retryMax: 100 });
-  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); });
-  await coordinator.start();
-  await until(() => coordinator.snapshot().status === 'synced');
-  assert.deepEqual(remote.memory.display, { name: 'CI', platform: 'codex' });
-  assert.deepEqual(remote.memory.records, { 'sessions/s.md': 'preserve' });
-  assert.equal(remote.sourceCommit, originalSource);
-});
-
-test('Workbench coordinator migrates a confirmed legacy main baseline before reopening a Session', async t => {
-  const f = await fixture();
-  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
-  git('init', '-b', 'main');
-  git('config', 'user.email', 'fixture@example.invalid');
-  git('config', 'user.name', 'Fixture');
-  git('add', '.codex/context/map.json');
-  git('commit', '-m', 'baseline');
-  const head = git('rev-parse', 'HEAD');
-  const sharedDir = path.join(f.root, 'legacy-shared');
-  const syncDir = path.join(f.root, 'legacy-session-sync');
-  const configuration = {
-    dataDir: path.join(f.root, 'legacy-memory'),
-    adminToken: 'memory-admin',
-    projects: { project: { token: 'project-token', root: f.root, ref: 'refs/heads/main' } },
-  };
-  await fs.mkdir(sharedDir, { recursive: true });
-  const service = await startMemoryServer(configuration);
-  const project = { sharedDir, head };
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
-  const seeded = await memoryRequest(project, 'sessions/legacy-session', {
-    operationId: 'legacy-seed', baseVersion: null, baseMainVersion: null, sourceCommit: head,
-    memory: { map: f.doc, records: {} },
-  });
-  const published = await memoryRequest(project, 'publish', {
-    operationId: 'legacy-publish', baseVersion: null, sessionId: 'legacy-session',
-    sessionVersion: seeded.snapshot.version, expectedMainSha: head,
-  });
-  const store = await new MapStore(f.root, {
-    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'legacy-store-runtime'), eventsFile: path.join(f.root, 'legacy-store-events.jsonl'),
-  }).init();
-  await store.commit({
-    baseVersion: store.version, operationId: 'legacy-local-edit',
-    operations: [{ type: 'update', id: 'N1', fields: { title: '保留的本地开发' } }],
-  }, human);
-  await fs.mkdir(path.join(syncDir, 'remote-sync'), { recursive: true });
-  await atomicWrite(path.join(syncDir, 'base-main.json'), encode({ version: published.snapshot.version, map: f.doc }));
-  await atomicWrite(path.join(syncDir, 'remote-sync/conflict.json'), encode({
-    code: 'SESSION_MAIN_BASELINE_REQUIRED', base: null, local: store.doc, remote: f.doc,
-    at: new Date().toISOString(),
-  }));
-  await atomicWrite(path.join(syncDir, 'remote-sync/state.json'), encode({
-    configured: true, status: 'conflict', pending: 0, cursor: 0, serverVersion: null,
-    error: null, conflict: { code: 'SESSION_MAIN_BASELINE_REQUIRED', at: new Date().toISOString() },
-  }));
-  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'legacy-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
-  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
-  await coordinator.start();
-  await until(() => coordinator.snapshot().status === 'synced');
-  const reopened = (await memoryRequest(project, 'sessions/legacy-session')).snapshot;
-  assert.equal(reopened.generation, 2);
-  assert.equal(reopened.memory.map.root.children[0].title, '保留的本地开发');
-  assert.equal(coordinator.snapshot().conflict, null);
-  assert.equal(await readJSON(path.join(syncDir, 'remote-sync/conflict.json'), null), null);
-  assert.deepEqual(await readJSON(path.join(syncDir, 'remote-sync/server-base.json')), reopened.memory.map);
-});
-
-test('Workbench coordinator clears a stale baseline conflict when the Session generation already exists', async t => {
-  const f = await fixture();
-  const sharedDir = path.join(f.root, 'legacy-active-shared');
-  const syncDir = path.join(f.root, 'legacy-active-session-sync');
-  const configuration = {
-    dataDir: path.join(f.root, 'legacy-active-memory'),
-    adminToken: 'memory-admin',
-    projects: { project: { token: 'project-token' } },
-  };
-  await fs.mkdir(sharedDir, { recursive: true });
-  const service = await startMemoryServer(configuration);
-  const project = { sharedDir, head: 'a'.repeat(40) };
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
-  const remote = await memoryRequest(project, 'sessions/legacy-active-session', {
-    operationId: 'legacy-active-seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head,
-    memory: { map: f.doc, records: {} },
-  });
-  const store = await new MapStore(f.root, {
-    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'legacy-active-store-runtime'), eventsFile: path.join(f.root, 'legacy-active-store-events.jsonl'),
-  }).init();
-  await fs.mkdir(path.join(syncDir, 'remote-sync'), { recursive: true });
-  await atomicWrite(path.join(syncDir, 'base-main.json'), encode({ version: remote.snapshot.version, map: f.doc }));
-  await atomicWrite(path.join(syncDir, 'remote-sync/conflict.json'), encode({
-    code: 'SESSION_MAIN_BASELINE_REQUIRED', base: null, local: store.doc, remote: f.doc,
-    at: new Date().toISOString(),
-  }));
-  await atomicWrite(path.join(syncDir, 'remote-sync/state.json'), encode({
-    configured: true, status: 'conflict', pending: 0, cursor: 0, serverVersion: null,
-    error: null, conflict: { code: 'SESSION_MAIN_BASELINE_REQUIRED', at: new Date().toISOString() },
-  }));
-  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'legacy-active-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
-  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
-  await coordinator.start();
-  await until(() => coordinator.snapshot().status === 'synced');
-  assert.equal(coordinator.snapshot().serverVersion, remote.snapshot.version);
-  assert.equal(coordinator.snapshot().conflict, null);
-  assert.equal(await readJSON(path.join(syncDir, 'remote-sync/conflict.json'), null), null);
-  assert.deepEqual(await readJSON(path.join(syncDir, 'remote-sync/server-base.json')), f.doc);
-});
-
-test('Workbench coordinator preserves local, remote, and base documents on a same-field conflict', async t => {
-  const f = await fixture();
-  const sharedDir = path.join(f.root, 'conflict-shared'), dataDir = path.join(f.root, 'conflict-memory');
-  await fs.mkdir(sharedDir, { recursive: true });
-  const configuration = { dataDir, adminToken: 'memory-admin', projects: { project: { token: 'project-token' } } };
-  const service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port: 0 });
-  t.after(async () => { await service.close().catch(() => {}); });
-  const project = { sharedDir, head: 'b'.repeat(40) };
-  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
-  await memoryRequest(project, 'sessions/conflict-session', {
-    operationId: 'conflict-seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head,
-    memory: { map: f.doc, records: {} },
-  });
-  const store = await new MapStore(f.root, {
-    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'conflict-store-runtime'), eventsFile: path.join(f.root, 'conflict-store-events.jsonl'),
-  }).init();
-  const syncDir = path.join(f.root, 'conflict-session-sync');
-  let coordinator = new MemorySyncCoordinator({ project, sessionId: 'conflict-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
-  await coordinator.start(); await until(() => coordinator.snapshot().status === 'synced'); await coordinator.close();
-
-  await store.commit({ baseVersion: store.version, operationId: 'conflict-local', operations: [{ type: 'update', id: 'N1', fields: { title: '本地标题' } }] }, human);
-  const remote = (await memoryRequest(project, 'sessions/conflict-session')).snapshot;
-  await memoryRequest(project, 'sessions/conflict-session/map', {
-    operationId: 'disjoint-remote', baseVersion: remote.version,
-    operations: [{ type: 'update', id: 'N1', fields: { purpose: '云端用途' } }],
-  });
-  coordinator = new MemorySyncCoordinator({ project, sessionId: 'conflict-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
-  await coordinator.start(); await until(() => coordinator.snapshot().status === 'synced');
-  let mergedRemote = (await memoryRequest(project, 'sessions/conflict-session')).snapshot;
-  assert.equal(store.doc.root.children[0].title, '本地标题');
-  assert.equal(store.doc.root.children[0].purpose, '云端用途');
-  assert.equal(mergedRemote.memory.map.root.children[0].title, '本地标题');
-  assert.equal(mergedRemote.memory.map.root.children[0].purpose, '云端用途');
-  await coordinator.close();
-
-  await store.commit({ baseVersion: store.version, operationId: 'same-field-local', operations: [{ type: 'update', id: 'N1', fields: { title: '本地冲突标题' } }] }, human);
-  mergedRemote = (await memoryRequest(project, 'sessions/conflict-session')).snapshot;
-  await memoryRequest(project, 'sessions/conflict-session/map', {
-    operationId: 'same-field-remote', baseVersion: mergedRemote.version,
-    operations: [{ type: 'update', id: 'N1', fields: { title: '云端标题' } }],
-  });
-  coordinator = new MemorySyncCoordinator({ project, sessionId: 'conflict-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
-  await coordinator.start(); await until(() => coordinator.snapshot().status === 'conflict');
-  const conflict = await readJSON(path.join(syncDir, 'remote-sync/conflict.json'));
-  assert.equal(conflict.base.root.children[0].title, '本地标题');
-  assert.equal(conflict.local.root.children[0].title, '本地冲突标题');
-  assert.equal(conflict.remote.root.children[0].title, '云端标题');
-  assert.equal(store.doc.root.children[0].title, '本地冲突标题', 'conflict must not overwrite the local draft');
-  await coordinator.close(); await store.close();
 });
 
 test('assignment scope includes the node, ancestors and direct flow/also relations', () => {

@@ -6,8 +6,9 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
-import { startServer } from '../scripts/workbench/server.mjs';
-import { WORKBENCH_BUILD } from '../scripts/workbench/runtime.mjs';
+import { pathToFileURL } from 'node:url';
+import { startServer, projectStatePath, projectLockPath } from '../scripts/workbench/server.mjs';
+import { WORKBENCH_BUILD, runtimeIdentity } from '../scripts/workbench/runtime.mjs';
 import { diagnoseWorkbench, ensureServer, globalWorkbenchInventory, startFailedMessage, stopServer, request } from '../scripts/workbench/cli.mjs';
 import { startNamedProxy } from '../scripts/workbench/named-proxy.mjs';
 import { namedWorkbench, ensureNamedProxy } from '../scripts/workbench/named.mjs';
@@ -94,6 +95,55 @@ test('named HTTP entry preserves authentication, Origin/Host checks, session reg
   assert.equal((await call(otherName.url, '/__context_guard/health')).status, 200);
   assert.equal((await call(named.url, '/__context_guard/health')).status, 200);
   assert.equal((await call(proxy.state.base, '/__cg_proxy/routes', { method: 'POST', body: {} })).status, 401);
+});
+
+for (const scenario of [
+  { name: 'normal final release' },
+  { name: 'temporary lock EBUSY then release', code: 'EBUSY' },
+  { name: 'temporary state EBUSY then release', code: 'EBUSY', state: true },
+  { name: 'persistent EBUSY fails at the existing deadline', code: 'EBUSY', expires: true, expected: 'STOP_FAILED' },
+  { name: 'same instance lock still present fails at the existing deadline', retained: true, expires: true, expected: 'STOP_FAILED' },
+  { name: 'EACCES is not retried', code: 'EACCES', expected: 'EACCES' },
+  { name: 'unconfirmed stop cannot retry EBUSY', code: 'EBUSY', beforeAck: true, state: true, expected: 'EBUSY' },
+  { name: 'platform-scoped temporary EPERM', code: 'EPERM', expected: process.platform === 'win32' ? undefined : 'EPERM' },
+  ...(process.platform === 'win32' ? [{ name: 'persistent EPERM fails at the existing deadline', code: 'EPERM', expires: true, expected: 'STOP_FAILED' }] : []),
+]) test(`stop acknowledgement: ${scenario.name}`, async t => {
+  const root = await fixture(t, 'Stop Contention'), project = await resolveProject(root);
+  const stateFile = projectStatePath(project), lockFile = projectLockPath(project);
+  const instance = 'stop-fixture', adminToken = 'stop-capability';
+  let acknowledged = false, probes = 0, elapsed = 0;
+  const server = http.createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
+    if (req.url === '/api/stop') {
+      assert.equal(req.method, 'POST');
+      assert.equal(req.headers.authorization, `Bearer ${adminToken}`);
+      if (!scenario.retained) await Promise.all([fs.unlink(stateFile), fs.unlink(lockFile)]);
+      acknowledged = true;
+      res.end('{}');
+    } else res.end(JSON.stringify({ ...runtimeIdentity(), instance }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await fs.mkdir(path.dirname(stateFile), { recursive: true });
+  await fs.writeFile(stateFile, JSON.stringify({ url: `http://127.0.0.1:${server.address().port}`, instance, adminToken }));
+  await fs.writeFile(lockFile, JSON.stringify({ instance }));
+  const stat = fs.stat.bind(fs), now = Date.now;
+  t.mock.method(Date, 'now', () => now() + elapsed);
+  t.mock.method(fs, 'stat', async (file, ...args) => {
+    if (String(file) === (scenario.state ? stateFile : lockFile) && (acknowledged || scenario.beforeAck)) {
+      probes++;
+      // Advance the clock, not the production timeout, to exercise its exact bound.
+      if (scenario.expires) elapsed = 12000;
+      if (scenario.code && (scenario.expires || probes <= 2)) throw Object.assign(new Error('fixture file contention'), { code: scenario.code });
+    }
+    return stat(file, ...args);
+  });
+  if (scenario.expected) await assert.rejects(stopServer(root), { code: scenario.expected });
+  else assert.deepEqual(await stopServer(root), { stopped: true });
+  assert.equal(acknowledged, !scenario.beforeAck);
+  if (scenario.code && !scenario.expected) assert.ok(probes >= 3, 'do not report success while state or lock is unreadable');
+  if (scenario.expires || scenario.beforeAck || (scenario.code && scenario.expected === scenario.code)) assert.equal(probes, 1, 'do not retry past the deadline or outside the shutdown allowance');
+  if (scenario.retained) assert.equal(JSON.parse(await fs.readFile(lockFile, 'utf8')).instance, instance, 'never delete a retained lock to force success');
 });
 
 test('an explicit local Coordinator role persists without granting Main write authority', async t => {
@@ -406,8 +456,10 @@ test('explicit linked-worktree binding reuses server and hook context without ov
   await bindProject(source, root, { keepLocal: true });
   assert.equal(await resolveProjectRoot(source), root);
   assert.equal(await fs.readFile(mapFile, 'utf8'), '{"local":"preserved"}');
-  const cloud = spawnSync(process.execPath, [path.join(cwd, 'scripts/sync/client.mjs'), 'status', '--root', source], { encoding: 'utf8', windowsHide: true });
-  assert.equal(cloud.status, 1); assert.match(cloud.stdout, /BOUND_SYNC_UNSUPPORTED/);
+  const cloud = spawnSync(process.execPath, [path.join(cwd, 'scripts/workbench/cli.mjs'), 'sync', 'status', '--root', source], { encoding: 'utf8', windowsHide: true });
+  assert.equal(cloud.status, 0, cloud.stderr);
+  assert.equal(JSON.parse(cloud.stdout).managedBy, 'workbench');
+  assert.equal(JSON.parse(cloud.stdout).configured, false);
   const results = await Promise.all([ensureServer(root, 0), ensureServer(source, 0)]); t.after(() => stopServer(root));
   assert.equal(results[0].instance, results[1].instance);
   const python = process.platform === 'win32' ? 'python' : 'python3';
@@ -499,6 +551,10 @@ test('START_FAILED mentions the default directory only when that directory cause
   assert.match(named, new RegExp(`The default directory ${dir} is unavailable`));
   assert.match(named, /references\/named-workbench\.md/);
   assert.match(named, new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  const windowsDirectory = String.raw`C:\Users\fixture\.context-guard\named-workbench`;
+  const windowsState = { path: windowsDirectory, overridden: false, unavailable: true };
+  assert.match(startFailedMessage({ log: JSON.stringify({ error: { message: `The default directory ${windowsDirectory} is unavailable (ENOTDIR)` } }), directory: windowsState }), /The default directory/);
+  assert.equal(startFailedMessage({ log: JSON.stringify({ error: { message: 'Another directory is unavailable (ENOTDIR)' } }), directory: windowsState }), base);
 
   const home = await fs.mkdtemp(path.join(cwd, 'temp/default-dir-home-'));
   fixtureRoots.push(home);
@@ -508,7 +564,7 @@ test('START_FAILED mentions the default directory only when that directory cause
   const env = { ...process.env, HOME: home, USERPROFILE: home };
   delete env.CONTEXT_GUARD_NAMED_STATE_DIR;
   const child = spawn(process.execPath, ['--input-type=module', '-e', `
-    import { ensureServer } from ${JSON.stringify(path.join(cwd, 'scripts/workbench/cli.mjs'))};
+    import { ensureServer } from ${JSON.stringify(pathToFileURL(path.join(cwd, 'scripts/workbench/cli.mjs')).href)};
     try {
       await ensureServer(${JSON.stringify(root)}, 0);
       console.log(JSON.stringify({ ok: true }));
@@ -527,7 +583,8 @@ test('START_FAILED mentions the default directory only when that directory cause
   assert.equal(code, 0, stderr || stdout);
   const result = JSON.parse(stdout);
   assert.equal(result.code, 'START_FAILED');
-  assert.match(result.message, /The default directory .+ is unavailable/);
+  const startupLog = await fs.readFile(path.join(root, '.codex/context/private/node-workbench.log'), 'utf8');
+  assert.match(result.message, /The default directory .+ is unavailable/, startupLog);
   assert.match(result.message, /references\/named-workbench\.md/);
   assert.match(result.message, /inspect private\/node-workbench\.log/);
 });

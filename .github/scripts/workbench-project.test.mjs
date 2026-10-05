@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { resolveProject, saveMainBinding, bindingStatus, sameProject, listWorktrees, mainWorktree, sessionBinding } from '../../scripts/workbench/project.mjs';
 import { startServer } from '../../scripts/workbench/server.mjs';
 import { ensureServer } from '../../scripts/workbench/cli.mjs';
-import { syncPaths } from '../../scripts/sync/client.mjs';
+import { memoryConfigPath, sessionMemoryDir } from '../../scripts/workbench/memory.mjs';
 
 function git(root, ...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
@@ -104,12 +104,12 @@ test('ordinary folders retain one-folder-one-workbench compatibility', async t =
   for (const field of ['branch', 'head', 'gitDir', 'mainBranch', 'mainRef', 'mainSha']) assert.equal(project[field], '');
 });
 
-test('linked worktrees share one Cloud project binding but retain temporary sync state', async t => {
+test('linked worktrees share Cloud credentials but isolate Session receipts and drafts', async t => {
   const fixture = await repository(); t.after(() => fixture.dispose());
-  const main = syncPaths(fixture.root), feature = syncPaths(fixture.worktree);
-  assert.equal(main.config, feature.config);
-  assert.notEqual(main.state, feature.state);
-  assert.notEqual(main.works, feature.works);
+  const [main, feature] = await Promise.all([resolveProject(fixture.root), resolveProject(fixture.worktree)]);
+  assert.equal(memoryConfigPath(main), memoryConfigPath(feature));
+  assert.notEqual(sessionMemoryDir(main, 'session-1'), sessionMemoryDir(feature, 'session-1'));
+  assert.notEqual(sessionMemoryDir(main, 'session-1'), sessionMemoryDir(main, 'session-2'));
 });
 
 test('linked worktrees reuse one running workbench instance', async t => {

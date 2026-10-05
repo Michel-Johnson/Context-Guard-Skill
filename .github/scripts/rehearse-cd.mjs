@@ -34,6 +34,8 @@ function run(command, args, options = {}) {
 }
 
 try {
+  run(npm.command, [...npm.args, "ci", "--ignore-scripts", "--no-audit", "--no-fund"]);
+  run(npm.command, [...npm.args, "run", "build:runtime"]);
   run(process.execPath, [".github/scripts/security-tool.mjs"]);
   // Includes security setup/checks, the 15-minute Node suite and package smoke.
   // The outer orchestration deadline must not truncate those inner budgets.

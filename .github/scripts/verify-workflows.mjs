@@ -33,6 +33,16 @@ function workflowJob(content, name, nextName) {
   return content.slice(start, end);
 }
 
+for (const [content, jobs] of [[ci, ['test', 'package', 'install', 'minimum-runtime', 'browser', 'clients']],
+  [publish, ['package', 'unix-smoke', 'windows-smoke']], [clients, ['package', 'clients']],
+  [realClients, ['package', 'clients']]]) {
+  for (const name of jobs) {
+    const job = workflowJob(content, name).slice(1).split(/\n  [a-z][\w-]*:/)[0];
+    requireMatch(job, /run: npm ci --ignore-scripts --no-audit --no-fund/, `${name} must install the locked dependency graph without host side effects.`);
+    requireMatch(job, /run: npm run build:runtime/, `${name} must materialize fixed Cloud packages before using Skill runtime.`);
+  }
+}
+
 export function verifyReleaseHardening(publishContent) {
   const packageJob = publishContent.slice(publishContent.indexOf("  package:"), publishContent.indexOf("  unix-smoke:"));
   const releaseJob = publishContent.slice(publishContent.indexOf("  publish:"), publishContent.indexOf("  verify-published:"));

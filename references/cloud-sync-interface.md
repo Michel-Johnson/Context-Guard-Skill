@@ -1,214 +1,66 @@
-# Cloud Sync interface
+# Cloud Session synchronization
 
-Read this reference only when a project is connected to Context Guard Cloud or a
-`WORK_IMPACT` conflict must be resolved.
+Read this reference for a Cloud-connected project or a preserved synchronization
+conflict. Memory authority and publication remain defined in `server-memory.md`.
 
-For first-time server installation, project enrollment, upgrades, and host
-migration, read `references/cloud-deployment.md` first.
+## One connection, isolated Sessions
 
-This document describes two protocols. The current protocol synchronizes each
-bound Session Map through the workbench. The old project-wide Map protocol is
-kept temporarily for compatibility and must not be started beside the workbench
-for the same Session. Full development-memory rules remain in
-`references/server-memory.md`.
+Use `context-guard workbench connect --url <origin> --root <project> --session
+<actual-session-id> --wait` for browser authorization. Once connected, ordinary
+`workbench --root <project> --session <actual-session-id>` reuses the project
+connection. The workbench owns the background connection; never start a separate
+project-wide Map daemon or point a Session at Main to bypass publication.
 
-Implementation layout: current Session coordination lives in `scripts/workbench/`,
-shared protocol/model/storage in `scripts/shared/`. The historical
-`scripts/sync/client.mjs` entry only forwards to `scripts/legacy/map-sync.mjs`;
-it is retained for existing CLI/Hook callers, not a second default transport.
-
-## Model
-
-Cloud is a directory of projects. It does not merge projects into one Map. Each
-project has a committed-main baseline and independent Session Maps. A Session
-can write only its own Map; publishing a Session does not silently change main.
-
-The workbench is the only background sync owner. Agents use the normal Map API;
-they do not generate temporary synchronization scripts. For every local edit the
-workbench first fsyncs an outbox entry, then sends it to Cloud. Cloud persists the
-snapshot, receipt and timestamped event atomically before acknowledging it.
-
-The local repository remains the working copy. The current Session sync state is
-private and separated by project worktree and Session:
+Local edits enter a durable outbox. Cloud changes are read through events with
+heartbeat recovery. Receipts, queues and cursors remain isolated per Session:
 
 ```text
-<git-common-dir>/context-guard/session-memory/<session-hash>/remote-sync/
-  state.json        # status, server version and last received cursor
-  server-base.json  # last acknowledged common base
-  outbox.json       # durable unsent/unacknowledged operation
-  conflict.json     # base/local/remote documents for manual resolution
+<project-shared-dir>/session-memory/<session-hash>/remote-sync/
+  state.json
+  server-base.json
+  outbox.json
+  conflict.json
 ```
 
-This directory must never be committed.
+These are private data, not repository files. The workbench preserves uncertain
+requests and retries their original operation IDs. Independent edits can merge;
+overlapping edits preserve base, local and remote documents for review.
 
-The legacy Map-only client still uses `.codex/context/private/cloud-sync/`.
-
-## Session connection
-
-Private memory connection is configured once by the workbench deployment flow.
-After a real Session is bound, `SessionStart` runs:
+## Commands and confirmation
 
 ```bash
-context-guard sync ensure --root <project> --session <session-id>
+context-guard sync status --root <project> --session <actual-session-id>
+context-guard sync ensure --root <project> --session <actual-session-id>
+context-guard sync prepare --root <project> --session <actual-session-id>
+context-guard sync checkpoint --root <project> --session <actual-session-id>
+context-guard sync finish --root <project> --session <actual-session-id>
 ```
 
-This ensures the project workbench is running. It does not start a second sync
-daemon. Status is read without exposing the project token:
+`status` reads saved Session synchronization state without printing credentials;
+it is not a fresh server receipt. `ensure` reuses the workbench. `prepare`, `pull`
+and `checkpoint` use the current memory read/reconciliation path. `finish` uploads
+the Session through the durable memory path and returns `confirmed: true` only
+with a server snapshot version. None of these commands publishes Main or records
+human acceptance. Lifecycle `plan-finish` still enforces archive and review gates.
 
-```bash
-context-guard sync status --root <project> --session <session-id>
-```
+The retired project-wide development windows are not supported. Plan scope stays
+in the lifecycle plan; `sync track`, `sync connect` and `sync serve` must not start
+the old transport. Use `workbench connect` for authentication.
 
-The workbench status icon means: spinner = a recent Session lifecycle event is
-active, check = explicitly stopped/completed, dot = no recent Session event and
-therefore disconnected/unknown, exclamation = conflict/error. Historical
-`SessionStart` and prompt events expire instead of leaving a permanent spinner.
-A successful server disk write whose response has not reached the client is still
-shown as pending.
+## Upgrades and conflicts
 
-## Legacy project Map connection
+Old `.codex/context/private/cloud-sync/` data and shared `cloud-sync/` configuration
+are inspected read-only. Unconfirmed work, a changed draft, unreadable state or a
+conflict returns `UPGRADE_REQUIRED` with reason `legacy-sync-state-pending`.
+Preserve and reconcile those records; do not delete them or infer that an old
+project Map belongs to a particular Session. A configuration-only remnant does
+not block an already connected current client. If it is the only connection,
+`legacy-sync-reconnect` requests current browser authorization.
 
-An administrator creates or enrolls a project once and gives the project its
-scoped sync token. Connect explicitly:
+Network failure leaves current queues on disk. Reconnect retries with backoff;
+conflicts require explicit reconciliation. Do not manufacture a new request ID,
+erase private state or report success merely because a connection is alive.
 
-```bash
-context-guard sync connect --root <project> --url <cloud-origin> \
-  --project <project-id> --token <project-token>
-```
-
-If both sides already have different Maps, the command stops with
-`INITIAL_SYNC_CONFLICT`. Re-run with exactly one of `--pull` or `--push`
-after deciding which side is authoritative. First connection to an empty cloud
-project uploads the local Map.
-
-## Session event protocol
-
-The private service exposes project-token-authenticated routes:
-
-```text
-GET  /v1/projects/:project/sessions/:session/changes?after=<cursor>
-GET  /v1/projects/:project/sessions/:session/events?after=<cursor>
-POST /v1/projects/:project/sessions/:session/map
-```
-
-Each Session has its own monotonically increasing cursor. Events are appended to
-the same durable memory file as the snapshot and idempotency receipt. The SSE
-listener subscribes before replaying the durable log, so a commit during connect
-cannot fall into a gap. Reconnect sends the last acknowledged cursor.
-
-Map writes carry a stable `operationId`, `baseVersion` and operations. Retrying
-the same body after a lost response returns the original receipt. Reusing the ID
-with different content is rejected.
-
-Publishing removes only the active generation. If that same real Session edits
-again, the workbench first creates its next generation from the latest Main
-snapshot, then resumes ordinary Map patches. `SESSION_REOPEN_REQUIRED` triggers
-this background path. Append-only records created independently in the Session
-and latest Main are merged by stable record identity before the next generation
-is created. A change to the same scalar/object field, an ambiguous record
-identity, or delete-vs-edit preserves `base`, `local`, and `remote` in
-`conflict.json` for review. Older generation receipts remain idempotent.
-
-## Legacy project event protocol
-
-Each project event has a monotonically increasing `seq`, stable `eventId`,
-`projectId`, type, actor, version, timestamp and affected scope:
-
-```json
-{
-  "seq": 42,
-  "eventId": "uuid",
-  "projectId": "context-guard",
-  "type": "map.committed",
-  "actor": { "kind": "sync", "sessionId": "thread-id" },
-  "baseVersion": "old",
-  "version": "new",
-  "scope": {
-    "nodeIds": ["N460"],
-    "fields": ["purpose"],
-    "paths": ["scripts/cloud/server.mjs"],
-    "wildcard": false
-  },
-  "operations": []
-}
-```
-
-The listener uses SSE and resumes after its received cursor. Events are appended
-to the private inbox immediately. They are not injected into the Agent prompt
-one by one. A complete snapshot is fetched only for first connection, explicit
-pull, cursor recovery or conflict recovery.
-
-## Development checkpoints
-
-Before changing code or Map state:
-
-```bash
-context-guard sync prepare --root <project> --session <session-id> \
-  --nodes N460 --paths scripts/cloud/server.mjs
-```
-
-`prepare` drains current cloud state, records `baseSeq` and `baseVersion`,
-and opens a durable development window. `plan-start` invokes it once, after plan
-approval and before implementation. Later `PostToolUse` hooks only record local
-observations; they do not perform remote synchronization for every file.
-
-After development and verification:
-
-```bash
-context-guard sync finish --root <project> --session <session-id>
-```
-
-`finish` checks every remote Map event after `baseSeq` in one serialized
-server transaction:
-
-- Disjoint node/field/path scopes are rebased automatically.
-- Overlapping scope returns `WORK_IMPACT`; local files are preserved and the
-  window remains `conflict`/unverified.
-- A successful result records `work.completed`, updates the cloud snapshot,
-  and refreshes the local Map from that snapshot.
-
-`sync checkpoint` performs the same impact check without completing the
-window. `sync track --paths ...` adds repository-relative files to its scope.
-For lifecycle-managed work use `plan-finish`, which checks the archive receipt,
-tracks the plan scope, checkpoints and finishes in that order. Direct `sync finish`
-does not manufacture a local plan completion receipt. See the plan command schema
-in `workbench-interface.md`.
-Every lifecycle observation and plan transition is also written with occurrence
-and recording timestamps plus stable event/plan IDs for later reconstruction.
-
-## Automatic recovery and conflicts
-
-```bash
-context-guard sync status --root <project> --session <session-id>
-context-guard sync ensure --root <project> --session <session-id>
-```
-
-The workbench represents status only:
-
-- spinner: connecting, receiving, or pending
-- check: synchronized
-- exclamation: conflict or failure
-
-Network failure leaves the outbox on disk and reconnect uses exponential backoff
-with jitter. Starting while Cloud is unavailable follows the same recovery path.
-Edits to different node fields and disjoint append-only records are merged
-automatically. Changes to the same node field, ambiguous sequence identities, or
-delete-vs-edit create `conflict.json` containing base, local and remote
-documents; the local draft is never overwritten. A journal-recovery state blocks
-Map writes but does not erase or hide the bound Session identity in the browser.
-
-Never solve a conflict by deleting private state or inventing a new operation
-ID. Review the three saved versions, make an explicit resolution, then restart
-the Session sync. The old development-window `WORK_IMPACT` process remains only
-for callers of the legacy project Map protocol.
-
-## Cloud authorization
-
-- Admin token: create projects and rotate project tokens only.
-- Project token: one project's Map, events and development windows only.
-- Workbench token: browser editing only; exchanged for an HttpOnly cookie at
-  `/auth?token=...&next=/`.
-- Public pages and project directory are read-only.
-
-The bootstrap response and generated HTML must never contain an admin or project
-token.
+The private Session service uses authorized `/v1/projects/:project/sessions/`
+reads, changes/events and map writes. Session generations and server authorization
+remain enforced. Credentials never belong in Maps, logs or generated HTML.

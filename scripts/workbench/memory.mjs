@@ -41,6 +41,18 @@ export async function memoryStatus(project, sessionId) {
   const [main, session] = await Promise.all([memoryRequest(project, 'main'), sessionId ? memoryRequest(project, `sessions/${encodeURIComponent(sessionId)}`) : null]);
   return { status: 'ready', current: true, main: main.snapshot, session: session?.snapshot || null };
 }
+
+// Explicit recovery only. Ordinary synchronization must never attest review;
+// device/Agent credentials are intentionally rejected by the server.
+export async function completeMemory(project, sessionId, input) {
+  if (!sessionId || input?.sessionId !== sessionId) throw new MapError('SESSION_MISMATCH', 'Completion must name the actual bound Session', 409);
+  if (!(await bindingStatus(project, sessionId)).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind the actual Session before completion', 409);
+  try { return await memoryRequest(project, `sessions/${encodeURIComponent(sessionId)}/complete`, input); }
+  catch (error) {
+    if ([404, 405].includes(error.status)) throw new MapError('CAPABILITY_UNAVAILABLE', 'Cloud lacks reviewed Session completion; preserve the Session and upgrade Cloud', 409);
+    throw error;
+  }
+}
 export async function prepareMemory(project, sessionId) {
   const status = await memoryStatus(project, sessionId);
   if (!status.current) return status;

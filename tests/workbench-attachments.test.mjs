@@ -7,6 +7,105 @@ import { randomUUID } from 'node:crypto';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
 import { encode } from '../scripts/shared/io.mjs';
+import { applyOperations } from '../scripts/shared/map-model.mjs';
+import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
+import { attachmentOwner, attachmentTarget } from '../prototype/attachments.mjs';
+
+// Execute the current classic-script handlers, not copies of their algorithms.
+// Only DOM rendering, upload transport and commit transport are substituted;
+// stable-owner lookup, UI branches, diff generation and Map application are real.
+async function attachmentUi(files, { failFirstFlush = false, removePending = false } = {}) {
+  const source = await fs.readFile(new URL('../prototype/workbench-app.js', import.meta.url), 'utf8');
+  const section = (name, next, asynchronous = false) => {
+    const declaration = `${asynchronous ? 'async ' : ''}function ${name}(`;
+    const start = source.indexOf(declaration), end = source.indexOf(`function ${next}(`, start);
+    assert.ok(start >= 0 && end > start, `Actual attachment handler boundary: ${name}`);
+    assert.equal(source.indexOf(declaration, start + declaration.length), -1, `Unique handler: ${name}`);
+    return source.slice(start, end);
+  };
+  const owner = { id: 'B1', title: 'Fixture Bug', status: 'open', ...(files === undefined ? {} : { files: structuredClone(files) }) };
+  const data = { id: 'T0', title: 'Fixture', kind: 'module', bugs: [owner], children: [] };
+  const target = attachmentTarget(data, 'bug', 'B1', '/attachment-fixture');
+  const path = 'docs/shots/same.png';
+  const job = { id: 'stable-upload', target, viewId: 'main', name: 'same.png', blob: new Blob(['synthetic image']) };
+  const sync = Object.create(WorkbenchSync.prototype), calls = { uploads: 0, flushes: 0, renders: 0, clears: 0, operations: [] };
+  Object.assign(sync, { config: { root: target.root }, viewId: job.viewId, status: 'synced', ready: true, revision: 0,
+    baseTree: structuredClone(data), a: { getRoot: () => data }, setStatus() {} });
+  sync.flush = async () => {
+    calls.flushes++;
+    if (failFirstFlush && calls.flushes === 1) throw new Error('Controlled commit transport failure');
+    const operations = sync.operations();
+    calls.operations.push(structuredClone(operations));
+    if (operations.length) sync.baseTree = applyOperations({ root: sync.baseTree }, operations, { kind: 'human', sessionId: 'attachment-fixture' }).doc.root;
+  };
+  const api = { attachmentOwner, async uploadAttachment(_configuration, input) {
+    calls.uploads++;
+    assert.equal(input.id, job.id, 'Transport receives the same stable upload job');
+    return { path };
+  } };
+  if (removePending) job.saved = { path };
+  const handlers = new Function('ctx', `
+    let pendingWrite = ctx.job, workbenchSync = ctx.sync, data = ctx.data, attaching = null, attachDraft = '';
+    const attachmentApi = () => ctx.api, rememberPreview = () => {};
+    const renderAll = () => { ctx.calls.renders++; workbenchSync.revision++; };
+    const clearAttach = () => { ctx.calls.clears++; pendingWrite = null; };
+    ${section('filePathOf', 'normRepoPath')}
+    ${section('ownerOf', 'isAttaching')}
+    ${section('resumeAttachment', 'repoRelPath', true)}
+    ${section('bindFileUi', 'unpackInbox')}
+    return { resumeAttachment, bindFileUi, pending: () => pendingWrite };
+  `)({ job, sync, data, api, calls });
+  return { ...handlers, owner, data, target, job, path, sync, calls };
+}
+
+for (const [name, files] of [
+  ['absent files', undefined],
+  ['an existing string path', ['docs/shots/same.png']],
+  ['a legacy whitespace string path', [' docs/shots/same.png ']],
+  ['a legacy whitespace object path', [{ path: ' docs/shots/same.png ', name: 'Legacy label' }]],
+]) test(`Actual upload handler recognizes ${name} and confirms one persisted reference`, async () => {
+  const f = await attachmentUi(files);
+  assert.equal(await f.resumeAttachment(f.job), true, `Upload must finish, not report an already-present reference as unsynced: ${f.job.error}`);
+  assert.equal(f.job.running, false);
+  assert.equal(f.pending(), null, 'A confirmed reference clears the captured pending job');
+  assert.equal(f.calls.uploads, 1);
+  const committed = attachmentOwner(f.sync.baseTree, f.target);
+  assert.equal(committed.files.length, 1, 'Existing legacy references must not be appended twice');
+  const reference = committed.files[0];
+  assert.equal((typeof reference === 'string' ? reference : reference.path).trim(), f.path);
+  if (files === undefined) assert.deepEqual(committed.files, [{ path: f.path, name: 'same.png' }]);
+});
+
+test('Actual upload retry reuses the saved same-name file after a failed reference commit', async () => {
+  const f = await attachmentUi(undefined, { failFirstFlush: true });
+  assert.equal(await f.resumeAttachment(f.job), false);
+  assert.match(f.job.error, /Controlled commit transport failure/);
+  assert.equal(f.pending(), f.job, 'Failed commit keeps the original job recoverable');
+  assert.equal(f.job.saved.path, f.path);
+  assert.equal(await f.resumeAttachment(f.job), true);
+  assert.equal(f.calls.uploads, 1, 'Retry must not allocate/upload a second same-name file');
+  assert.equal(f.calls.flushes, 2);
+  assert.deepEqual(f.owner.files, [{ path: f.path, name: 'same.png' }]);
+  assert.deepEqual(attachmentOwner(f.sync.baseTree, f.target).files, f.owner.files);
+  assert.equal(f.pending(), null);
+});
+
+for (const removePending of [false, true]) test(`Actual remove-file click persists the selected reference removal (${removePending ? 'pending upload' : 'ordinary'})`, async () => {
+  const f = await attachmentUi([' keep.txt ', { path: ' docs/shots/same.png ', name: 'Remove me' }], { removePending });
+  const button = { dataset: { fk: 'bug', fi: 'B1', i: '1' } };
+  const element = { querySelectorAll: selector => selector === '[data-act="rm-file"]' ? [button] : [], querySelector: () => null };
+  f.bindFileUi(element, f.data);
+  assert.equal(typeof button.onclick, 'function', 'The actual UI binder installed the click handler');
+  let prevented = false;
+  button.onclick({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.deepEqual(f.owner.files, [{ path: 'keep.txt' }]);
+  assert.equal(f.calls.clears, removePending ? 1 : 0);
+  await f.sync.flush();
+  assert.deepEqual(attachmentOwner(f.sync.baseTree, f.target).files, [{ path: 'keep.txt' }]);
+  assert.equal(f.calls.operations[0].length, 1, 'Explicit deletion produces a real Map diff');
+  assert.deepEqual(Object.keys(f.calls.operations[0][0].fields), ['bugs']);
+});
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-attachments-'));
