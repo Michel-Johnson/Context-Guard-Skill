@@ -387,9 +387,28 @@ test('Workbench keeps the bound Session identity visible while its Map needs rec
   assert.equal(sync.pendingSession, '');
 });
 
-test('failed Session switch restores canvas, version and identity together', async () => {
+test('failed Session switch restores canvas, version and identity together', async t => {
+  const originalGlobals = Object.fromEntries(['location', 'history'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  t.after(() => {
+    for (const [key, descriptor] of Object.entries(originalGlobals)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  });
+  const originalUrl = 'https://example.invalid/projects/project?session=old&theme=sketch#map';
+  const browserLocation = { href: originalUrl }, replacedUrls = [];
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: browserLocation });
+  Object.defineProperty(globalThis, 'history', { configurable: true, value: {
+    replaceState(_state, _title, url) {
+      browserLocation.href = new URL(url, browserLocation.href).href;
+      replacedUrls.push(browserLocation.href);
+    },
+  } });
   const sync = Object.create(WorkbenchSync.prototype);
   let tree = { id: 'old', title: 'Original' };
+  const originalTree = structuredClone(tree), calls = [];
+  const nextSnapshot = { version: 'v-next', doc: { root: { id: 'next', title: 'Wrong map' } } };
+  let reloads = 0;
   Object.assign(sync, {
     config: { root: 'cloud:project' }, sessions: [{ id: 'next' }],
     activeSession: 'old', viewId: 'session:old', version: 'v-old',
@@ -397,18 +416,40 @@ test('failed Session switch restores canvas, version and identity together', asy
     a: { getRoot: () => tree, apply: doc => { tree = doc.root; } },
     panel: { querySelector: () => ({}) }, dirty: () => false,
     connect() {}, setStatus() {},
+    async call(route, input, method, view) {
+      calls.push({ route, input, method, view });
+      assert.deepEqual(calls.at(-1), { route: '/api/state', input: undefined, method: 'GET', view: 'session:next' });
+      assert.equal(this.activeSession, 'old', 'preflight precedes identity changes');
+      assert.equal(this.viewId, 'session:old');
+      return structuredClone(nextSnapshot);
+    },
     async reload() {
-      this.doc = { root: { id: 'next', title: 'Wrong map' } };
-      this.a.apply(this.doc); this.version = 'v-next'; this.baseTree = this.doc.root;
+      reloads++;
+      assert.equal(this.activeSession, 'next');
+      assert.equal(this.viewId, 'session:next');
+      this.doc = structuredClone(nextSnapshot.doc);
+      this.a.apply(this.doc); this.version = nextSnapshot.version; this.baseTree = this.doc.root;
+      const url = new URL(location.href); url.searchParams.set('session', 'next');
+      history.replaceState(null, '', url);
       throw new Error('interrupted switch');
     },
   });
   assert.equal(await sync.selectSession('next'), false);
+  assert.deepEqual(calls, [{ route: '/api/state', input: undefined, method: 'GET', view: 'session:next' }]);
+  assert.equal(reloads, 1, 'successful preflight reaches the partially applied reload');
   assert.equal(sync.activeSession, 'old');
   assert.equal(sync.viewId, 'session:old');
   assert.equal(sync.version, 'v-old');
   assert.equal(tree.id, 'old');
   assert.equal(sync.baseTree.id, 'old');
+  assert.deepEqual(tree, originalTree);
+  assert.deepEqual(sync.doc, { root: originalTree });
+  assert.deepEqual(sync.baseTree, originalTree);
+  assert.equal(sync.ready, true);
+  assert.equal(sync.switchingSession, false);
+  const nextUrl = new URL(originalUrl); nextUrl.searchParams.set('session', 'next');
+  assert.deepEqual(replacedUrls, [nextUrl.href, originalUrl], 'rollback restores the changed browser URL');
+  assert.equal(location.href, originalUrl);
 });
 after(async () => {
   const temporary = await fs.realpath(os.tmpdir());

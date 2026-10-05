@@ -1,5 +1,37 @@
 # CI TODO
 
+## SESSION-SWITCH-FIXTURE-01: target preflight and browser rollback fixture
+
+- [x] Preserve PR #451 run `37311320171` initial failure: Node 24 functional
+  reported 401 tests, 398 passes, one failure and two skips; Node 18 failed the
+  same Session-switch case. The Node-only fixture lacked browser globals after
+  shared UI added URL capture and target-snapshot preflight. Existing local
+  Node 22 Claude watchdog failure and all full-CD timeouts below remain open.
+- [x] Executor changed only the formal failed-switch fixture: test-scoped
+  location/history save and restore original descriptors; replaceState really
+  updates the synthetic URL. A valid target snapshot is returned only for the
+  exact GET `/api/state`, view `session:next`. Reload must run once, change the
+  canvas/version/baseTree and URL, then throw; original identity/map/version
+  assertions remain, with complete document/tree and URL rollback checks added.
+  No runtime, generated shared source, canonical Cloud source or budget changed.
+- [x] One targeted run each on Node 18.20.8 and 24.19.0 passed 1/1, zero
+  failures. Node 18 reports 80 other cases excluded by the name filter; Node 24
+  reports only the selected case. Command: `node --test --test-name-pattern="failed Session switch restores canvas, version and identity together" tests/workbench-sync.test.mjs`.
+  Logs: `temp/session-switch-fixture-node18-20261006.log` and
+  `temp/session-switch-fixture-node24-20261006.log`. Governance verified 33
+  automatic tests, four standalone suites and three helpers; diff check passed.
+- [x] Independent Tester confirmed reached preflight/reload and complete rollback,
+  with test-scoped globals restored. Node 18.20.8 and Node 24.19.0 each passed the
+  selected case 1/1, exit 0; Node 18's 80 name-filter exclusions are not a full
+  module acceptance. Test SHA-256 remained
+  `d55d3384acbedb12dbe56526b09a149be693a0837dcad01c7d7e0756aa6acfb5`.
+  Logs `temp/tester-session-switch-fixture-node{18,24}-20261005.log`; SHA-256:
+  `092a4a355e1f38272c2a6fd70c665ce1f0d192bd8b34bb86fb6999227c5cb94e`
+  and `193f62731f8c3a03a45e0c9215c6485a71e534788e1093354ebe7b0602c4336d`.
+- [ ] Exact revised-head GitHub Required remains pending. These focused results
+  do not replace full CI/CD or resolve the separately recorded Claude runtime
+  failure.
+
 ## Final delivery status (2026-10-05)
 
 - [x] Merged: Skill #449 → `3773aa9`, #450 → `4ae1788eb93cc8d0b62e60e376d4387843abce43`; Cloud #1 → `2b47df759ee567e8d53f569cc56a50c19f616a47`. Official npm **0.6.2** CD run `37271755297` completed successfully: three-OS install/upgrade, OIDC publication, exact downloaded bytes and registry-latest npx acceptance. The old 0.6.1 CD4 failure below remains historical evidence.
