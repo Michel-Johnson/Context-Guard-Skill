@@ -1,6 +1,6 @@
 {
   "name": "@michelj/context-guard",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Next-generation collaboration layer for humans and coding agents on Codex, Cursor, and Claude.",
   "repository": {
     "type": "git",
@@ -56,8 +56,8 @@
     "node": ">=18"
   },
   "devDependencies": {
-    "@michelj/context-guard-core": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.0.0/michelj-context-guard-core-1.0.0.tgz",
-    "@michelj/context-guard-workbench": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.0.0/michelj-context-guard-workbench-1.0.0.tgz",
+    "@michelj/context-guard-core": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.1.0/michelj-context-guard-core-1.1.0.tgz",
+    "@michelj/context-guard-workbench": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.1.0/michelj-context-guard-workbench-1.1.0.tgz",
     "marked": "15.0.12",
     "playwright": "1.62.1"
   }
