@@ -12,7 +12,7 @@ import { validateMessage } from '../shared/protocol.mjs';
 import { hostAttestedPlatform, recordHostAttestedSession } from './access.mjs';
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
-import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
+import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, completeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
 import { atomicWrite, encode } from '../shared/io.mjs';
 import { resolveProjectRoot, bindProject } from './project.mjs';
 import { namedWorkbench, readWorkbenchHealth, verifyWorkbenchUrl } from './named.mjs';
@@ -169,7 +169,7 @@ Only explicitly allowlisted project clients can create, rename, update or move n
 ${HELP_EXIT_NOTE}`;
   }
   if (command === 'memory') {
-    return `Usage: context-guard memory [status|sync|prepare|rebase|configure|publish|history|restore|file] [options]
+    return `Usage: context-guard memory [status|sync|prepare|rebase|configure|complete|publish|history|restore|file] [options]
 
 Options:
   --root <dir>        Project root (default: current directory)
@@ -748,6 +748,7 @@ async function main(args) {
     if (opt._[0] === 'prepare') return prepareMemory(project, session);
     if (opt._[0] === 'rebase') return rebaseMemory(project, session, { adoptMain: !!opt['adopt-main'] });
     if (opt._[0] === 'publish') return memoryRequest(project, 'publish', await inputJSON(opt.input));
+    if (opt._[0] === 'complete') return completeMemory(project, session, await inputJSON(opt.input));
     if (opt._[0] === 'history') {
       const scope = String(opt.scope || (session ? `session:${session}` : 'main'));
       return memoryRequest(project, `history?scope=${encodeURIComponent(scope)}&after=${encodeURIComponent(opt.after || 0)}&limit=${encodeURIComponent(opt.limit || 100)}`);

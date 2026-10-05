@@ -1,5 +1,19 @@
 # CI TODO
 
+## Session completion source acceptance (2026-10-05)
+
+- [x] Independent Tester, Windows / Node 24.19.0, working tree based on
+  `6973d182`: `tests/cloud-sync-client.test.mjs` covers exact Session mismatch,
+  missing binding, old Cloud 404 capability failure, device 403 rejection,
+  original proof/operation-ID replay and side-effect-free `memory --help`.
+  Existing related modules passed 94/94; augmented client suite passed 14/14,
+  then the added CLI-help assertion passed 1/1. Workflow, hidden-process and
+  test-governance checks passed. Runtime input SHA-256:
+  `memory.mjs` = `3bf6828c0a7e6539e321c095e23c6aa329505ad12060284307365880e7b03037`;
+  `cli.mjs` = `79e2f23141c1f4f86bd603fd393c14ee6a0f86401d8c94456e5449e29eaf8c20`.
+- [ ] New immutable runtime release, installed entry-point acceptance and
+  production deployment remain pending; source tests do not establish them.
+
 ## Slack 可插拔接入（用户专项授权）
 
 - [x] 隔离回归：独立 loopback 网关的工作区/项目/动作校验、幂等与 SSE 退出；Slack/工作台共用人工执行对话及版本审批，确认后只保存 Main TODO/Bug 和执行提示，不创建执行 Session。

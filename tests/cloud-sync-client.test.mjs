@@ -7,8 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { atomicWrite, encode } from '../scripts/shared/io.mjs';
-import { memoryConfigPath, sessionMemoryDir } from '../scripts/workbench/memory.mjs';
-import { resolveProject } from '../scripts/workbench/project.mjs';
+import { completeMemory, memoryConfigPath, sessionMemoryDir } from '../scripts/workbench/memory.mjs';
+import { resolveProject, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
 import { inspectRetiredSync, sessionSync, syncStatus } from '../scripts/workbench/sync.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
 
@@ -27,6 +27,35 @@ async function fixture(t, git = false) {
 }
 const write = (file, value) => atomicWrite(file, encode(value));
 const upgrade = reason => error => error.code === 'UPGRADE_REQUIRED' && error.details.reason === reason;
+
+test('explicit completion preserves the exact bound Session request and reports old Cloud or denied authority', async t => {
+  const { root, project } = await fixture(t);
+  const help = spawnSync(process.execPath, [fileURLToPath(new URL('../bin/context-guard-skill.js', import.meta.url)),
+    'memory', '--help', '--root', root], { encoding: 'utf8', windowsHide: true });
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /configure\|complete\|publish/);
+  await assert.rejects(fs.access(path.join(root, '.codex')), { code: 'ENOENT' });
+  const input = { operationId: 'review-original', sessionId: 'actual', generation: 1,
+    sessionVersion: 'reviewed-version', sourceCommit: 'a'.repeat(40) };
+  await assert.rejects(completeMemory(project, 'different', input), { code: 'SESSION_MISMATCH' });
+  await assert.rejects(completeMemory(project, 'actual', input), { code: 'SESSION_BINDING_REQUIRED' });
+  await write(sessionBindingsPath(project), { sessions: { actual: await sessionBinding(project, 'actual') } });
+  await write(memoryConfigPath(project), { url: 'https://map.example.test', projectId: 'project', token: 'synthetic-recovery' });
+  let status = 404, body = { error: { code: 'NOT_FOUND', message: 'old Cloud' } };
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url: String(url), options });
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  });
+  await assert.rejects(completeMemory(project, 'actual', input), { code: 'CAPABILITY_UNAVAILABLE' });
+  status = 403; body = { error: { code: 'FORBIDDEN', message: 'device cannot attest review' } };
+  await assert.rejects(completeMemory(project, 'actual', input), { code: 'FORBIDDEN' });
+  status = 200; body = { committed: true, projectId: 'project' };
+  assert.deepEqual(await completeMemory(project, 'actual', input), body);
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => call.url === 'https://map.example.test/v1/projects/project/sessions/actual/complete'));
+  assert.ok(calls.every(call => call.options.body === JSON.stringify(input)), 'the original proof and operation ID survive retries');
+});
 
 test('sync status reports workbench-managed Session state without exposing its token', async t => {
   const { root, project } = await fixture(t);
@@ -115,4 +144,3 @@ test('backend startup cannot bypass the retired pending-data guard', async t => 
   assert.equal(JSON.parse(await fs.readFile(file)).operationId, 'unsent-before-upgrade');
   await assert.rejects(fs.access(path.join(root, '.codex/context/private/node-workbench.lock')), { code: 'ENOENT' });
 });
-
