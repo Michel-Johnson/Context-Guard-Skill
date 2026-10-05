@@ -27,6 +27,25 @@
   Earlier failing logs remain available. These checks cover the repaired source
   fixture, not publication of 0.6.1, production deployment or live Slack.
 
+Final fixed artifact: public 0.6.1 at `8f144fb1de7f0de1fb024cb744fc154ea5ed834f`
+was anonymously downloaded. SHA-256
+`0b3af28b1957a76ae763f26e1660b7c6187bae75272c91dff035f7d26cd9cf8e`
+and SHA-512 matched the immutable release and Cloud lock exactly; actual package
+contract/security passed 100 files. Both Windows Node 18.20.8 and Node 24.19.0
+passed official isolated global/npx install, startup, health, packaged assets,
+authorized state and denied access. Separate explicit `install --no-hooks`
+targets retained the launcher, started correctly and exposed `memory complete`
+without creating Hook/configuration files. Runtime probes use the official
+isolated environment and Git ceiling; the first manual probe without those
+guards failed and is not counted as a product failure or passing evidence.
+Logs: `temp/tester061-{node18,node24,nohooks-node18,nohooks-node24}-20261005.log`.
+New fixed 0.6.1 Cloud browser synchronization passed both UI directions, disk
+and refresh persistence, Main isolation and timestamps under original budgets;
+Cloud artifacts `session-sync-1791178932502-cd7996cb-0f2f-443e-be78-20df7fb75d93`.
+The package was not substituted by sibling source; user homes/disabled Hooks
+were not changed. Remote Required, deployed revisions and live Slack remain
+pending independent gates.
+
 ## Session completion source acceptance (2026-10-05)
 
 - [x] Independent Tester, Windows / Node 24.19.0, working tree based on
