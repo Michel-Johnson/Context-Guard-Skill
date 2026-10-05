@@ -14,10 +14,12 @@ test('a non-Git folder needs one Git probe and retains empty repository metadata
     import cp from 'node:child_process';
     import { syncBuiltinESMExports } from 'node:module';
     let calls = 0;
+    const stderr = 'fatal: not a git repository (or any of the parent directories): .git\\n';
     cp.execFile = (command, args, options, callback) => {
       if (command !== 'git') throw new Error('Unexpected command');
       calls++;
-      queueMicrotask(() => callback(Object.assign(new Error('Not a Git repository'), { code: 128 }), '', ''));
+      const error = Object.assign(new Error('Not a Git repository'), { code: 128, stdout: '', stderr });
+      queueMicrotask(() => callback(error, '', stderr));
     };
     syncBuiltinESMExports();
     const { resolveProject } = await import(${JSON.stringify(moduleUrl)});

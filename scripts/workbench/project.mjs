@@ -11,7 +11,7 @@ const digest = value => createHash('sha256').update(String(value)).digest('hex')
 export const nonInteractiveGitEnvironment = (parent = process.env) => ({ ...parent, GIT_TERMINAL_PROMPT: '0' });
 export const optionalGitMiss = error => Number.isInteger(error?.code) && error.code !== 0 && !error.killed && error.signal == null;
 
-async function git(root, args, { optional = false } = {}) {
+async function git(root, args, { optional = false, rawOutput = false } = {}) {
   try {
     const { stdout } = await execFileAsync('git', args, {
       cwd: root,
@@ -21,7 +21,7 @@ async function git(root, args, { optional = false } = {}) {
       timeout: 10000,
       maxBuffer: 16 * 1024 * 1024,
     });
-    return stdout.trim();
+    return rawOutput ? stdout : stdout.trim();
   } catch (error) {
     if (optional && optionalGitMiss(error)) return '';
     throw error;
@@ -62,13 +62,40 @@ async function defaultBranch(root, remote = 'origin') {
   return '';
 }
 
-async function worktreeMetadata(root, main = null) {
+async function physicalGitDirectories(root) {
+  let output;
+  try {
+    output = await git(root, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'], { rawOutput: true });
+  } catch (error) {
+    if (!optionalGitMiss(error)) throw error;
+    // Supported Git reports these misses without any directory records. Other
+    // failures may be older-option incompatibilities; keep the legacy path.
+    if (/fatal: (?:not a git repository|this operation must be run in a work tree)/.test(String(error.stderr || ''))) return null;
+  }
+  if (output !== undefined) {
+    const records = (output.endsWith('\n') ? output.slice(0, -1) : output).split('\n');
+    if (records.length === 3 && records.every(value => value && !value.includes('\r') && path.isAbsolute(value))) {
+      return { topLevel: records[0], commonDir: records[1], gitDir: records[2] };
+    }
+  }
+  const topLevel = await git(root, ['rev-parse', '--show-toplevel'], { optional: true });
+  if (!topLevel) return null;
+  const worktreeRoot = await fs.realpath(topLevel);
+  let commonDir = await git(worktreeRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'], { optional: true });
+  if (!commonDir) {
+    const relative = await git(worktreeRoot, ['rev-parse', '--git-common-dir']);
+    commonDir = path.resolve(worktreeRoot, relative);
+  }
+  return { topLevel, commonDir };
+}
+
+async function worktreeMetadata(root, main = null, physicalGitDir) {
   const mainBranch = main?.branch || '';
   const mainRef = main?.ref || '';
   const [head, currentBranch, rawGitDir, mainSha] = await Promise.all([
     git(root, ['rev-parse', 'HEAD'], { optional: true }),
     git(root, ['branch', '--show-current'], { optional: true }),
-    git(root, ['rev-parse', '--path-format=absolute', '--git-dir'], { optional: true }),
+    physicalGitDir === undefined ? git(root, ['rev-parse', '--path-format=absolute', '--git-dir'], { optional: true }) : physicalGitDir,
     mainRef ? git(root, ['rev-parse', '--verify', '--quiet', `${mainRef}^{commit}`], { optional: true }) : '',
   ]);
   const gitDir = rawGitDir ? await fs.realpath(rawGitDir).catch(() => path.resolve(root, rawGitDir)) : '';
@@ -91,8 +118,8 @@ function mainTarget({ mode = 'remote', remote = 'origin', branch } = {}) {
 
 export async function resolveProject(openedRoot) {
   const requestedRoot = await fs.realpath(path.resolve(openedRoot));
-  const topLevel = await git(requestedRoot, ['rev-parse', '--show-toplevel'], { optional: true });
-  if (!topLevel) {
+  const directories = await physicalGitDirectories(requestedRoot);
+  if (!directories) {
     const projectId = `folder-${digest(requestedRoot).slice(0, 20)}`;
     return {
       projectId,
@@ -111,27 +138,28 @@ export async function resolveProject(openedRoot) {
       branch: '', head: '', gitDir: '', mainBranch: '', mainRef: '', mainSha: '',
     };
   }
-  const worktreeRoot = await fs.realpath(topLevel);
-  let commonDir = await git(worktreeRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'], { optional: true });
-  if (!commonDir) {
-    const relative = await git(worktreeRoot, ['rev-parse', '--git-common-dir']);
-    commonDir = path.resolve(worktreeRoot, relative);
-  }
-  commonDir = await fs.realpath(commonDir);
+  const worktreeRoot = await fs.realpath(directories.topLevel);
+  const commonDir = await fs.realpath(directories.commonDir);
   const projectId = `git-${digest(commonDir).slice(0, 20)}`;
   const sharedDir = path.join(commonDir, 'context-guard');
   const stored = await readJSON(path.join(sharedDir, 'project-binding.json'), null);
   if (stored && (stored.projectId !== projectId || !stored.main?.branch)) throw new Error('Invalid project binding; repair it explicitly, do not recreate it');
-  const originUrl = await git(worktreeRoot, ['config', '--get', 'remote.origin.url'], { optional: true });
-  const originGithub = githubRepository(originUrl);
-  const automaticBranch = originGithub ? await defaultBranch(worktreeRoot) : '';
-  const automatic = automaticBranch ? mainTarget({ remote: 'origin', branch: automaticBranch }) : null;
-  const selected = stored?.projectId === projectId && stored?.main?.branch ? mainTarget(stored.main) : automatic;
-  const remote = selected?.mode === 'remote'
-    ? await git(worktreeRoot, ['config', '--get', `remote.${selected.remote}.url`], { optional: true })
-    : '';
+  let selected;
+  if (stored) {
+    selected = mainTarget(stored.main);
+  } else {
+    const originUrl = await git(worktreeRoot, ['config', '--get', 'remote.origin.url'], { optional: true });
+    const originGithub = githubRepository(originUrl);
+    const automaticBranch = originGithub ? await defaultBranch(worktreeRoot) : '';
+    selected = automaticBranch ? mainTarget({ remote: 'origin', branch: automaticBranch }) : null;
+  }
+  const [remote, metadata] = await Promise.all([
+    selected?.mode === 'remote'
+      ? git(worktreeRoot, ['config', '--get', `remote.${selected.remote}.url`], { optional: true })
+      : '',
+    worktreeMetadata(worktreeRoot, selected, directories.gitDir),
+  ]);
   const github = githubRepository(remote);
-  const metadata = await worktreeMetadata(worktreeRoot, selected);
   return {
     projectId,
     kind: 'git',

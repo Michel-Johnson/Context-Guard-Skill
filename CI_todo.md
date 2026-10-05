@@ -1,5 +1,222 @@
 # CI TODO
 
+## SESSION-SWITCH-FIXTURE-01: target preflight and browser rollback fixture
+
+- [x] Preserve PR #451 run `37311320171` initial failure: Node 24 functional
+  reported 401 tests, 398 passes, one failure and two skips; Node 18 failed the
+  same Session-switch case. The Node-only fixture lacked browser globals after
+  shared UI added URL capture and target-snapshot preflight. Existing local
+  Node 22 Claude watchdog failure and all full-CD timeouts below remain open.
+- [x] Executor changed only the formal failed-switch fixture: test-scoped
+  location/history save and restore original descriptors; replaceState really
+  updates the synthetic URL. A valid target snapshot is returned only for the
+  exact GET `/api/state`, view `session:next`. Reload must run once, change the
+  canvas/version/baseTree and URL, then throw; original identity/map/version
+  assertions remain, with complete document/tree and URL rollback checks added.
+  No runtime, generated shared source, canonical Cloud source or budget changed.
+- [x] One targeted run each on Node 18.20.8 and 24.19.0 passed 1/1, zero
+  failures. Node 18 reports 80 other cases excluded by the name filter; Node 24
+  reports only the selected case. Command: `node --test --test-name-pattern="failed Session switch restores canvas, version and identity together" tests/workbench-sync.test.mjs`.
+  Logs: `temp/session-switch-fixture-node18-20261006.log` and
+  `temp/session-switch-fixture-node24-20261006.log`. Governance verified 33
+  automatic tests, four standalone suites and three helpers; diff check passed.
+- [x] Independent Tester confirmed reached preflight/reload and complete rollback,
+  with test-scoped globals restored. Node 18.20.8 and Node 24.19.0 each passed the
+  selected case 1/1, exit 0; Node 18's 80 name-filter exclusions are not a full
+  module acceptance. Test SHA-256 remained
+  `d55d3384acbedb12dbe56526b09a149be693a0837dcad01c7d7e0756aa6acfb5`.
+  Logs `temp/tester-session-switch-fixture-node{18,24}-20261005.log`; SHA-256:
+  `092a4a355e1f38272c2a6fd70c665ce1f0d192bd8b34bb86fb6999227c5cb94e`
+  and `193f62731f8c3a03a45e0c9215c6485a71e534788e1093354ebe7b0602c4336d`.
+- [ ] Exact revised-head GitHub Required remains pending. These focused results
+  do not replace full CI/CD or resolve the separately recorded Claude runtime
+  failure.
+
+## Final delivery status (2026-10-05)
+
+- [x] Merged: Skill #449 → `3773aa9`, #450 → `4ae1788eb93cc8d0b62e60e376d4387843abce43`; Cloud #1 → `2b47df759ee567e8d53f569cc56a50c19f616a47`. Official npm **0.6.2** CD run `37271755297` completed successfully: three-OS install/upgrade, OIDC publication, exact downloaded bytes and registry-latest npx acceptance. The old 0.6.1 CD4 failure below remains historical evidence.
+- [x] Codex/Cursor/Claude local Skill copies were explicitly installed from official npm 0.6.2 with `--no-hooks`; launcher, SKILL.md and Hook-script hashes match the official package. All three host Hook configuration files remained unchanged; this is not proof of native Hook trust or actual context delivery.
+- [x] Cloud 1.1.0 / Slack 0.1.14 deployed from Cloud Main `2b47df7`; business mirror HEAD `4ae1788`. Both formal services are active, candidate services disabled. Existing Main/Session/closed/history hashes are unchanged. Shared Core/UI remain 1.1.0; Cloud's public GitHub **Skill fixture 0.6.1** is intentionally separate from official npm 0.6.2 and was not overwritten.
+- [x] Production Slack state structurally matches the verified pre-release business backup: same stateVersion, inbox 327, threads 9, channels 2, preferences 1, drafts 3 and outgoing 105; all old IDs and thread project/conversation bindings remain. Detailed verification is in Cloud CI_todo; no private IDs/content are published and no claim is made about every payload or execution effect. User-confirmed candidate source/disabled-unit cleanup is now complete, with formal PIDs/health and all runtime/data/config paths preserved; no source backup was created.
+- [ ] Live user bidirectional connection and host delivery: the actual host Session is now verified against the linked `browser-device-login` worktree and its shared local backend, with Coordinator role. Cloud browser-device approval is still pending; local binding is not Cloud synchronization evidence. Real Slack E2E also remains incomplete (`authenticated:true`, `usersRead:false`); deployment and isolated browser success do not close these items.
+
+### Follow-up source fixes awaiting delivery
+
+Cloud source adds the opt-in other-Session view and preserves the original map,
+URL and draft when a target snapshot is unavailable. Independent Cloud browser
+acceptance passed 44 checks; installed fixed GitHub Skill fixture **0.6.1** passed
+the existing seven bidirectional-sync checks against the frozen isolated Cloud.
+This does not prove the real installed npm **0.6.2** user connection, or deploy
+the new UI. Cloud PR #2 is now merged as `29a6c9853d3bb65504757eb7219660be3850df1d`,
+with all Required jobs successful, and immutable `shared-v1.1.1` assets are public.
+Independent anonymous downloads match the frozen Core/UI/Cloud hashes and package
+contracts. Skill dependency update and actual Cloud/install delivery remain
+separate steps. Full frozen Cloud regression passed
+366/368 with zero failures; the two existing skips concern separately accepted
+browser approval and an unconfigured live model Provider. Separate supported-
+runtime Slack passed 142/142; real Linux Store durability passed 5/5. These source
+checks do not close actual user connection or real Slack interaction;
+see `SESSION-VIEW-01` / `AUTO-PUB-IDLE-01` in Cloud CI_todo.
+
+## BROWSER-AUTH-WAIT-01: bounded browser approval waiting (2026-10-05)
+
+- [x] Executor source fix: one monotonic ten-minute invocation budget, capped by
+  the first displayed grant's remaining TTL. Sleep and start/poll requests use
+  only remaining time; expiry never silently renews a code. A competing pending
+  grant causes an explicit conflict. First-command retry of an expired cache,
+  healthy connection reuse, denial and private credential storage remain intact.
+- [x] Formal `tests/browser-login.test.mjs` is in the product manifest and the
+  automatic Node runner. Node 24.19.0 module acceptance passed 10/10; governance
+  verified 33 automatic files, four standalone suites and three helpers;
+  `git diff --check` passed. The public project connection entry used an actual
+  isolated HTTP fixture with a one-second grant and saved no connection/config.
+- [x] Actual negative control: the same formal expiry case against the unmodified
+  pre-fix module failed (`device/start` count 2, expected 1). Its shared imports
+  used the real relative dependencies, not a replacement implementation.
+  The first module run was 9/10: its public-entry timing assertion included
+  pre-authorization project resolution. Timing now starts at the displayed
+  prompt; the one-second TTL, no-renewal and no-saved-connection assertions remain.
+- [x] Independent Tester: the formal authorization module passed 10/10 on
+  Node 18.20.8 and 10/10 on Node 24.19.0 with unchanged source hashes; the actual
+  pre-fix negative control fails the no-renewal assertion.
+- [ ] Exact-package CD rehearsal: the Node 24 run failed after 901 seconds at
+  the existing 900000 ms Node-suite deadline. The log contains 209 passed tests,
+  not a complete final count; package/install/upgrade stages were not reached.
+  Preserve `temp/tester-skill063-cd-20261005.log` (SHA-256
+  `d1299a0eec671dc56f8c9529213a2ec2a270000c06d20cab3d98de46d1da4265`).
+  Diagnose the slow Hook lifecycle commands before another full rehearsal;
+  do not increase budgets or skip assertions. Public shared Core/UI 1.1.1
+  download/build succeeded; Skill 0.6.3
+  installation, registry publication and a real human-approved connection are
+  separate pending acceptance, not implied by synthetic approval tests.
+
+## PROJECT-RESOLVE-01: explicit-binding Git discovery (2026-10-05)
+
+- [x] Executor A fix only: valid stored Main bindings bypass unused automatic
+  origin/default-branch discovery. Selected remote URL and Git metadata are read
+  concurrently, fresh on every invocation. Invalid binding validation, default
+  discovery, server-side binding checks, permission checks and timeouts remain.
+  No CLI/Python batching, identity cache or generated shared code was added.
+- [x] Formal Node 24.19.0 targeted acceptance passed 5/5: four real-Git identity
+  cases plus the existing linked-worktree/server/Hook public-entry regression.
+  Command: `node --test --test-name-pattern="project identity|explicit linked-worktree binding" tests/named-workbench.test.mjs`.
+  Governance verified 33 automatic files, four standalone suites and three helpers;
+  `git diff --check` passed. Log: `temp/project-identity-fixed.log`. Final formal
+  helper is fixed to actual source with no environment override; its four cases
+  passed again (4/4), log `temp/project-identity-frozen.log`.
+- [x] Actual HEAD `4ae1788` negative control used the same formal four cases and
+  real shared dependencies: two pass, two fail on the intended count assertions.
+  Explicit local Git calls changed 8 → 6; selected remote 9 → 7; automatic default
+  stays 9 and invalid stored binding stays 2. Resolve-only wall samples, old/new:
+  local 3234/2445 ms, remote 4864/2471 ms. Separate synthetic fixtures and scheduling
+  variability mean these samples do not prove a universal speedup or the whole
+  Plan/CD bottleneck. Old source fixture was removed and the controlled temporary
+  source selector was removed from formal tests; log `temp/project-identity-old-head.log`
+  preserves both expected failures. HEAD/branch/Main SHA/selected URL freshness,
+  missing Main ref and invalid-binding non-recreation are asserted.
+- [x] Independent Tester: the unchanged formal Hook plan-extension case passed
+  1/1, zero skips, on Node 24.19.0 against frozen A source. Total elapsed time
+  changed from 109.2 to 89.5 seconds; successful Plan commands changed from
+  33.6/33.8 to 30.6/25.8 seconds. These single-run traces show a targeted benefit,
+  not proof that the full CD deadline is met. Log:
+  `temp/tester-hook-plan-extension-node24-A-20261005.log`, SHA-256
+  `c5dfaca4bd1b2e7a56a1873f3ade57f39661e0188902d65bd2c324afc4e71cc2`.
+  The original 901-second CD failure remains above; budgets/concurrency and all
+  assertions are unchanged. The final A-only CD rehearsal also exited 1 after
+  901 seconds at the original 900000 ms deadline. It contains 210 visible passes,
+  zero visible assertion failures and no final summary; package/install/upgrade
+  stages were not reached. The last completed accept-layer case took 93.5 seconds;
+  the following empty-graph task-signal case was interrupted. Log:
+  `temp/tester-skill063-cd-final-A-20261005.log`, SHA-256
+  `1c79decf780e96cb672ab5b165d4dd004520957922149554e76e91f161a5e5aa`.
+  Runner-owned subprocess cleanup completed and frozen source hashes match.
+  The proposed same-invocation snapshot reuse was rejected. The fresh physical
+  directory query below is the only additional approved optimization; no
+  increased budget, identity cache or skipped assertion is approved.
+
+## PROJECT-PHYSICAL-01: fresh batched Git directories (2026-10-05)
+
+- [x] Executor D source fix only: one fresh `rev-parse` obtains top-level,
+  common and administrative directories. Only exactly three nonempty absolute
+  records without CR are accepted; only Git's final LF is removed, not directory
+  whitespace. Ambiguous/relative/unsupported output uses the old individual
+  resolver, including its common-directory fallback. Git environment, timeout,
+  error classification and identity hashes are unchanged. HEAD/branch/Main are
+  still read freshly. No CLI/server change, snapshot reuse, cache, B or C.
+- [x] Frozen Node 24.19.0 formal module passed 8/8, zero skips:
+  `node --test --test-name-pattern="project identity" tests/named-workbench.test.mjs`.
+  Real Git 2.49.0.windows.1 fixtures cover normal/subdir/junction/linked/detached,
+  moved and reused worktree paths, empty-HEAD/unborn Git, one-call folder/bare,
+  selected remote/HEAD/Main freshness and invalid-binding non-recreation.
+  The normal observer forwards actual Git; compatibility modes deliberately
+  change arguments and the killed-error case is injected classification evidence,
+  not an actual ten-second timeout. Governance and `git diff --check` passed.
+- [x] Existing linked-worktree/server/Hook public-entry regression also passed
+  1/1, zero skips, against frozen D (16.1 seconds total), without changed
+  assertions: `temp/project-physical-D-linked-entry.log`.
+- [x] Actual A-only source SHA-256 `d18b558113b3368f43c13e57e143734128072dc5931b1b8a18bc0f1c0dcadd8a`
+  was used by an ignored temporary copy of the same four count cases with real
+  dependencies. All four failed their intended assertions: local 6 → 4, remote
+  7 → 5, automatic GitHub 9 → 7, invalid binding 2 → 1. Supported non-Git/bare
+  remains one call. Both temporary source/test copies were deleted; formal
+  source selection is fixed, with no module/environment override.
+- [x] Preserve initial 7/8 failure in `temp/project-physical-D.log`: the test
+  observer's promisify wrapper omitted Node's original stdout/stderr error fields,
+  making the folder probe incorrectly fall back to a second call. The observer
+  was corrected; the production classifier and one-call assertion were not
+  relaxed. Final log: `temp/project-physical-D-frozen.log` (SHA-256
+  `6d5fce8e8854403326c368a20942215dc6fbed064dcfaadc3e898ce5b3d541bb`);
+  expected negative log: `temp/project-physical-A-negative.log` (SHA-256
+  `a50f72eff6f928bdb140e0446fb4ad6b0d36a88762a1038f9bf9cd1c71793b95`).
+- [x] Independent Tester: the frozen eight identity/boundary cases passed 8/8,
+  zero skips, in 62.235 seconds. The unchanged original Hook plan-extension
+  case passed 1/1, zero skips, in 69.456 seconds total, versus the A-only sample's
+  89.466 seconds. Initial/extended Plan traces took 20.439/20.131 seconds;
+  single-run timings do not prove universal performance or full-CD success.
+  Source/test hashes remained unchanged. Logs:
+  `temp/tester-project-identity-D-20261005.log`, SHA-256
+  `e1981b545edbe757beadc69c92ec80fcc766ef2794e34d9a431f5f4c10888956`;
+  `temp/tester-hook-plan-extension-node24-D-20261005.log`, SHA-256
+  `516cb5e7e28c5e9a84c67aaa8149d41b39081ca204a9f7f0909cd280dbe3ec74`.
+  Compatibility probes use current Git with controlled flags, not an installed
+  old Git; Windows did not execute a real POSIX LF/CR-containing pathname. The
+  legacy resolver's historical trimming/optional-miss limits are not claimed
+  fixed. Existing 901-second full-CD failures and original budgets remain.
+- [ ] Full frozen D Node 24.19.0 CD rehearsal exited 1 after 901 seconds at the
+  original 900000 ms deadline: 211 visible passes, one visible fixture failure,
+  no final suite summary; package/install/upgrade stages were not reached.
+  Log `temp/tester-skill063-cd-final-D-20261005.log`, SHA-256
+  `5aebb24c77e292304ffd0c644fed2403044269d72310320e396d596c17ddd91f`.
+  This third local Node 24 timeout remains a failure, not an acceptance.
+- [x] The failed `.github/scripts/project-resolution.test.mjs` non-Git mock
+  supplied only code 128 and empty stderr, causing legitimate legacy fallback
+  and two probes. Its Error now contains empty stdout and real fatal-not-repo
+  stderr; the callback carries identical values. The original one-call/six-empty-
+  metadata assertion, production classifier and ten-second child deadline are
+  unchanged. Repository review found no other affected Git execFile mock;
+  SQLite executors and Python Hook fixtures do not enter this resolver.
+  The formal module passed 1/1 with zero skips on Node 18.20.8, 22.18.0 and
+  24.19.0; governance and `git diff --check` passed. Logs:
+  `temp/project-resolution-fixture-node{18,22,24}.log`; fixture SHA-256
+  `b2a8d0ba4ba522942b3adb369ea6cb85248844fcfae4514596ee835345193f84`.
+- [x] Independent Node 24 verification of the corrected formal non-Git fixture
+  passed 1/1, zero skips, with the frozen source and original assertions.
+- [ ] The one final Node 22.18.0 full CD rehearsal also exited 1 after 903 seconds
+  at the original 900000 ms Node-suite deadline. There are 212 visible passes,
+  one assertion failure and no final summary; ci-smoke, packaging,
+  installation and upgrade were not reached. Log:
+  `temp/tester-skill063-cd-node22-D-fixedfixture-20261005.log`, SHA-256
+  `c505eb6866210daca42afd3bf18aee9ca0cbda01cab13de8f00e9894df9d2b17`.
+  The failed original Claude long-active/silent-runtime case expected
+  `CLAUDE_TURN_LIMIT` but received `CLAUDE_TIMEOUT_OR_INTERRUPTED` at
+  `tests/claude-runtime.test.mjs:227`. This is a real failed assertion, not
+  proven to be an environment-only issue; its source and budgets are unchanged.
+  This is a failure, not a replacement Node 24 acceptance. No additional local
+  full-suite retry, budget increase or production identity abstraction is made.
+  The normal exact-commit GitHub Required and official CD, including all selected
+  tests and three-platform package installation/upgrade, remain mandatory before
+  delivery; this recorded local timeout does not waive those gates.
+
 ## Independent CD4 registry-npx acceptance (2026-10-05)
 
 - Original release run `37269736295` published 0.6.1 successfully but its final
@@ -94,15 +311,15 @@ pending independent gates.
   test-governance checks passed. Runtime input SHA-256:
   `memory.mjs` = `3bf6828c0a7e6539e321c095e23c6aa329505ad12060284307365880e7b03037`;
   `cli.mjs` = `79e2f23141c1f4f86bd603fd393c14ee6a0f86401d8c94456e5449e29eaf8c20`.
-- [ ] New immutable runtime release, installed entry-point acceptance and
-  production deployment remain pending; source tests do not establish them.
+- [x] New immutable runtime release, installed entry-point acceptance and
+  production deployment: see Final delivery status above; source tests alone did not establish them.
 
 ## Slack 可插拔接入（用户专项授权）
 
 - [x] 隔离回归：独立 loopback 网关的工作区/项目/动作校验、幂等与 SSE 退出；Slack/工作台共用人工执行对话及版本审批，确认后只保存 Main TODO/Bug 和执行提示，不创建执行 Session。
 - [x] 隔离模型回归：图片轮次固定配置的视觉模型、重试不换模型；附件提交前校验 UTF-8/hash/总量及请求大小，历史只读摘要和受保护引用。Slack Web API 使用替身，不能代替真实工作区验收。
 - [ ] 真实 Jerry Family：App 安装及 Socket 凭据、Home、私聊、两并发线程、两端接续、TODO/Bug、brief 与执行提示导出、记忆编辑、附件/Flash 截图理解、Map 预览、通知、重启去重及停用后工作台正常运行。
-- [ ] 合并、安装入口核验及 Cloud/独立插件部署；仅开放实验项目。自动派发仍暂缓，本专项不恢复旧 Cloud 编排队列。
+- [x] 合并、安装入口核验及 Cloud/独立插件部署：见本页 Final delivery status；未扩大项目配置，真实 Slack E2E 仍待上项验收。自动派发仍暂缓，本专项不恢复旧 Cloud 编排队列。
 
 ## CI-AUTH-001 · 浏览器授权连接
 
@@ -522,11 +739,11 @@ pending independent gates.
 
 - [ ] Tester：从没有生成物和另一个本地 checkout 的干净检出执行 `npm ci --ignore-scripts`、`npm run build:runtime`；核对共享包明确版本、锁文件完整性及可重复构建，依赖不可下载或被篡改时必须失败。
 - [ ] Tester：核对 `scripts/shared/`、`prototype/`、角色文件和生成 references 来自固定 Cloud 包，手改生成物不得被静默覆盖；`references/cloud-sync-interface.md` 始终由 Skill 维护。不得靠本机旧文件、浮动 main/latest 或跨仓库相对路径通过。
-- [ ] Tester：两个仓库独立 CI 与 Required 通过；Skill 产物含完整本地运行依赖/UI，却不含 Cloud 服务端、Slack SDK、部署配置、凭据或私有记忆；运行时包中的第三方许可保留。提供两仓库 SHA、共享包版本、安装产物哈希及边界检查输出。
+- [x] Tester：两个仓库独立 CI 与 Required 通过；Skill 产物含完整本地运行依赖/UI，却不含 Cloud 服务端、Slack SDK、部署配置、凭据或私有记忆；运行时包中的第三方许可保留。最终两仓库 SHA、共享版本与正式发布见 Final delivery status；精确包哈希及边界输出见上方独立制品验收和 CD run `37271755297`。
 
 ### SPLIT-INSTALL-01 · 安装后的真实入口与升级
 
-- [ ] Tester：Ubuntu/macOS/Windows 从准确 tarball 新装及升级，校验源码版本、生成运行时版本与安装文件一致；用户设置、项目 Map、未发队列及第三方 Hook 不变，用户关闭的 Hook 不被重新启用。
+- [x] Tester：Ubuntu/macOS/Windows 从准确 tarball 新装及升级，校验源码版本、生成运行时版本与安装文件一致；用户设置、项目 Map、未发队列及第三方 Hook 不变，用户关闭的 Hook 不被重新启用。最终证据为 official npm 0.6.2 CD run `37271755297` 的三平台安装/升级与下载验收；三本机显式 `--no-hooks` 安装另见 Final delivery status。
 - [ ] Tester：安装后的入口在无 Cloud 模式启动本地工作台、读取/编辑/刷新；在授权实验项目使用浏览器设备授权连接真实 Cloud，确认双向可见、Session 隔离和重启恢复，不把源码或替身测试当成真实联调。
 - [ ] Tester：安装入口的 `doctor`、宿主 Hook 信任与实际上下文投递分别记录；无法验证的宿主/场景标为 incomplete。完成后保留本节编号、打勾并关联准确测试和证据，不删除条目。
 
