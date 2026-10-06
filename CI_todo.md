@@ -1,5 +1,28 @@
 # CI TODO
 
+## ATTACHMENT-FETCH-FIXTURE-05: browser-compatible test URL input (2026-10-06)
+
+- [x] Preserve `db9706c` complete CD failure: 421 tests / 420 passes / one
+  failure, exit 1 in 884 seconds, not a timeout. The first direct download fetch
+  failed after HTTP upload succeeded; actual port/cause were absent and the old
+  fixture was deleted. Log SHA-256
+  `fc352410b746c2e346c0c45d33fec4f7b0bcbb9e79c847b5eec986ae8be356ae`.
+- [x] This existing case now retains failures and reports only fixed cause
+  classifications, actual port and request phase before throwing the original
+  error. The sole Node 22 diagnostic passed 1/1, exit 0, 718.09 ms: no failure
+  cause was captured (`temp/attachment-fetch-diagnostic-node22-20261006.log`).
+- [x] Correct a known input prerequisite, not a proven cause: local dynamic TCP
+  ports start at 1024 and include Undici-restricted low ports. This direct-fetch
+  fixture now selects one candidate in 49152..65514; actual startup retains its
+  existing bounded bind fallback. No GET retry, second candidate, browser-port
+  bypass, permission relaxation or production port-zero/budget change. Original
+  unreferenced 404, referenced 200/body and traversal 403 assertions remain.
+- [x] Complete attachment module passed 9/9, zero skips, exit 0 on Node 18.20.8,
+  22.18.0 and 24.19.0 (3202.4591 / 1745.4041 / 1583.6994 ms). Logs:
+  `temp/attachment-fetch-high-candidate-node{18,22,24}-20261006.log`.
+- [ ] Original fetch failure remains unassigned; the diagnostic did not
+  reproduce it. Independent verification, Required and complete CD remain pending.
+
 ## HOOK-SIGNAL-DIAGNOSTIC-04: missing bootstrap prompt signal (2026-10-06)
 
 - [x] Preserve `785aea8` complete CD failure: 421 tests / 420 passes / one
