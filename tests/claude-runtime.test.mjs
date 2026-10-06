@@ -191,13 +191,34 @@ test('Claude keeps a single native turn, resumes its Session, and deduplicates a
 
 test('Claude runtime allows a long active turn but interrupts a silent native process', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-idle-timeout-'));
-  t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 3 }));
-  const script = path.join(directory, 'native.cjs');
-  await fs.writeFile(script, `let input=''; process.stdin.on('data',chunk=>input+=chunk).on('end',()=>{
+  let passed = false;
+  t.after(async () => {
+    if (passed) await fs.rm(directory, { recursive: true, force: true, maxRetries: 3 });
+    else t.diagnostic(`Retained synthetic watchdog fixture: ${directory}`);
+  });
+  const script = path.join(directory, 'native.cjs'), trace = path.join(directory, 'readiness.jsonl');
+  const floodControl = path.join(directory, 'flood-control.json'), floodRelease = path.join(directory, 'flood-release');
+  await fs.writeFile(script, `const fs=require('fs');let input='';
+  const record=(event,bytes=0)=>fs.appendFileSync(${JSON.stringify(trace)},JSON.stringify({at:Date.now(),branch:input||'before-stdin',event,bytes})+'\\n');
+  record('fixture-start');process.stdin.on('data',chunk=>input+=chunk).on('end',()=>{
+    record('stdin-ready');
     const args=process.argv.slice(2), index=Math.max(args.indexOf('--session-id'),args.indexOf('--resume')), session_id=args[index+1];
-    console.log(JSON.stringify({type:'system',subtype:'init',session_id}));
+    const init=JSON.stringify({type:'system',subtype:'init',session_id});console.log(init);
+    record('init-issued');
     if(input==='silent') { setTimeout(()=>console.log(JSON.stringify({type:'result',session_id,is_error:false})),1200); return; }
-    if(input==='flood') { console.log(JSON.stringify({type:'assistant',session_id,payload:'x'.repeat(2048)})); setTimeout(()=>console.log(JSON.stringify({type:'result',session_id,is_error:false})),1200); return; }
+    if(input==='flood') {
+      const {deadline}=JSON.parse(fs.readFileSync(${JSON.stringify(floodControl)},'utf8'));let heartbeats=0;
+      const ready=setInterval(()=>{
+        if(Date.now()>=deadline){clearInterval(ready);return;}
+        if(fs.existsSync(${JSON.stringify(floodRelease)})){
+          clearInterval(ready);record('pre-flood-bytes',Buffer.byteLength(init+'\\n')+heartbeats);
+          const output=JSON.stringify({type:'assistant',session_id,payload:'x'.repeat(2048)});console.log(output);
+          record('flood-issued',Buffer.byteLength(output+'\\n'));
+          setTimeout(()=>console.log(JSON.stringify({type:'result',session_id,is_error:false})),1200);return;
+        }
+        if(heartbeats<120){process.stderr.write('.');heartbeats++;}
+      },50);return;
+    }
     let count=0; const interval=setInterval(()=>{
       console.log(JSON.stringify({type:'assistant',session_id,progress:++count}));
       if(count===12){clearInterval(interval);console.log(JSON.stringify({type:'result',session_id,is_error:false}));}
@@ -208,13 +229,34 @@ test('Claude runtime allows a long active turn but interrupts a silent native pr
   const config = { command: process.execPath, args: [script], root: directory, configDir: path.join(directory, 'config'),
     environmentFile, name: 'Idle watchdog', model: 'fixture', role: 'executor', timeoutMs: 400 };
   await runtime.configure(sessionId, config);
-  const wait = async (id, targetSessionId = sessionId) => {
-    const deadline = Date.now() + 6000;
-    for (;;) {
-      const job = await readJSON(runtime.jobFile(targetSessionId, id), null);
-      if (['interrupted', 'failed'].includes(job?.state) || job?.state === 'finished' && (await runtime.status(targetSessionId)).status === 'stopped') return job;
-      if (Date.now() > deadline) throw new Error(`Native fixture stalled: ${job?.state}`);
-      await pause(40);
+  const wait = async (id, targetSessionId = sessionId, { started = Date.now(), releaseWhenReady } = {}) => {
+    const deadline = started + 6000, states = [];
+    const jobFile = runtime.jobFile(targetSessionId, id);
+    let releasedAtMs = null;
+    try {
+      for (;;) {
+        const job = await readJSON(jobFile, null);
+        if (states.at(-1)?.state !== job?.state) states.push({ atMs: Date.now() - started, state: job?.state, error: job?.error || null });
+        if (Date.now() > deadline) throw new Error(`Native fixture stalled: ${job?.state}`);
+        if (['interrupted', 'failed'].includes(job?.state) || job?.state === 'finished' && (await runtime.status(targetSessionId)).status === 'stopped') return job;
+        if (releaseWhenReady && releasedAtMs === null) {
+          const output = await fs.readFile(jobFile + '.jsonl', 'utf8').catch(error => error.code === 'ENOENT' ? '' : Promise.reject(error));
+          const initialized = output.split('\n').some(line => {
+            try { const event = JSON.parse(line); return event.type === 'system' && event.subtype === 'init' && event.session_id === targetSessionId; } catch { return false; }
+          });
+          if (initialized) { await fs.writeFile(releaseWhenReady, 'release'); releasedAtMs = Date.now() - started; }
+        }
+        await pause(40);
+      }
+    } finally {
+      const output = await fs.readFile(jobFile + '.jsonl').catch(error => error.code === 'ENOENT' ? Buffer.alloc(0) : Promise.reject(error));
+      const initSeen = output.toString('utf8').split('\n').some(line => {
+        try { const event = JSON.parse(line); return event.type === 'system' && event.subtype === 'init'; } catch { return false; }
+      });
+      const readiness = (await fs.readFile(trace, 'utf8').catch(error => error.code === 'ENOENT' ? '' : Promise.reject(error)))
+        .trim().split('\n').filter(Boolean).map(JSON.parse).filter(event => event.at >= started)
+        .map(({ at, event, bytes }) => ({ atMs: at - started, event, bytes }));
+      t.diagnostic(JSON.stringify({ branch: id, states, persistedOutputBytes: output.length, initSeen, releasedAtMs, readiness }));
     }
   };
   await runtime.deliver({ id: 'active', platform: 'claude', sessionId, root: directory, message: 'active' });
@@ -230,11 +272,20 @@ test('Claude runtime allows a long active turn but interrupts a silent native pr
   assert.equal(interrupted.state, 'interrupted');
   assert.equal(interrupted.error, 'CLAUDE_TIMEOUT_OR_INTERRUPTED');
   const floodSessionId = randomUUID();
-  await runtime.configure(floodSessionId, { ...config, outputLimitBytes: 1024 });
+  // Test the byte limit independently of the 400ms cold-start race. The whole
+  // flood branch still has its original 6000ms deadline, including readiness.
+  await runtime.configure(floodSessionId, { ...config, timeoutMs: 6000, outputLimitBytes: 1024 });
+  // The output-limit assertion starts only after this same native process has
+  // emitted a persisted init. Readiness never resets the original wait budget.
+  const floodStarted = Date.now();
+  await fs.writeFile(floodControl, JSON.stringify({ deadline: floodStarted + 6000 }));
   await runtime.deliver({ id: 'flood', platform: 'claude', sessionId: floodSessionId, root: directory, message: 'flood' });
-  const flooded = await wait('flood', floodSessionId);
+  const flooded = await wait('flood', floodSessionId, { started: floodStarted, releaseWhenReady: floodRelease });
   assert.equal(flooded.state, 'interrupted');
   assert.equal(flooded.error, 'CLAUDE_OUTPUT_LIMIT', 'a bounded output stop must not be mislabeled as a timeout');
+  const prefix = (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse).find(event => event.event === 'pre-flood-bytes');
+  assert.ok(prefix && prefix.bytes < 1024, 'init and readiness heartbeats must not trigger the output limit');
+  passed = true;
 });
 
 test('Explicit Claude recovery retains old intent, refuses live processes and replays one continuation after restart', async t => {

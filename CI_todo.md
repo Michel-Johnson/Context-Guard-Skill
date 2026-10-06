@@ -946,3 +946,12 @@ pending independent gates.
 - [x] Executor：既有 `test-environment.test.mjs` 正式回归从同一 parent 入口运行隔离合成文件，检查完整执行一次、真实首批启动、并发峰值 2、成功退出 0、断言失败及模块异常退出 1、完整 TAP 汇总、惰性导入和拒绝名称过滤。Windows Node 18.20.8、22.18.0、24.19.0 的 `node --test .github/scripts/test-environment.test.mjs` 均 4/4、退出 0；治理及 `git diff --check` 通过。
 - 首次 Node 18 模块检查为 3/4、退出 1：`setup` 参数不支持 `.on`，与该版文档描述存在差异。改为对 `run()` 返回的公共 TestsStream 注册监听后通过；未使用私有 API。首次失败工具输出及隔离现场 `temp/node-runner-lutOTT` 保留，不覆盖为成功。
 - [ ] 独立 Tester：以本次最终提交 SHA 集中复核模块与完整 CD，保留原时限、失败历史和精确产物证据；模块通过不代表全量、安装或发布验收完成。
+
+### CLAUDE-LIMIT-FIXTURE-01 · 分离冷启动与输出限额的测试前提（2026-10-06）
+
+- 原 `492b61c` 完整 CD 失败保留：420 项中 418 PASS / 2 FAIL；Claude watchdog 用例期望 `CLAUDE_OUTPUT_LIMIT`，实际 `CLAUDE_TIMEOUT_OR_INTERRUPTED`。来源 `temp/tester-skill064-listen-cd-node22-20261006.log` 第 1712 行及 `temp/tester-skill064-listen-acceptance-20261006.md`；该轮并非超时，也不因随后定向通过改记成功。
+- 一次 Node 22 安全取证先通过；增加显式 ready/release 后，三版本集中检查中的 Node 22 再次失败：flood 在 238ms 观察到 running、841ms 观察到 TIMEOUT，但输出 0 字节、未见 init、未释放 flood，夹具连启动记录也未写入。失败现场 `cg-claude-idle-timeout-T9enA3` 保留在本机系统临时目录。该轮 18/24 通过；22 的 TAP 为 FAIL，串行命令未单独采集它的退出码，不冒称具有独立退出码证据。这证明该失败发生在就绪前，不能通过覆盖 first-reason 来假报输出超限。
+- [x] Executor：仅修改测试设计，不修改 ClaudeRuntime。active/silent 的 400ms idle 与 bounded 的 650ms turn 保持原样；**flood-only timeoutMs 从 400 改为 6000**，移除输出限额测试无关的冷启动前提。该分支仍从 deliver 前统一计算原 6000ms 端到端截止，ready 后不重置，超时检查先于终态返回。1024 字节限额、2134 字节 flood 和唯一 `CLAUDE_OUTPUT_LIMIT` 期望不变。
+- [x] Executor：通过真实持久 init 释放同一子进程；就绪阶段每 50ms 至多一个 stderr 字节、最多 120 个并受同一总截止约束，init 加心跳严格小于 1024，并有正式断言。保留各阶段无正文时间/字节诊断，失败不删除夹具。没有 warmup、概率重试、新增 Runtime 参数或测试框架；不能宣称产品错误分类被修复。
+- [x] Executor 最终集中定向：Windows Node 18.20.8 / 22.18.0 / 24.19.0 分别独立执行 `node --test --test-name-pattern="Claude runtime allows a long active turn but interrupts a silent native process" tests/claude-runtime.test.mjs`，各目标 1/1 PASS、独立采集退出码 0（18 另有 10 项名称排除）。用例耗时分别 4.981 / 4.463 / 4.413 秒；三轮 pre-flood 都为 87 字节。24 的真实 init 出现在 launch 后 828ms，仍在原总截止内，说明不能假设冷启动必定小于 400ms。最终测试 SHA256 `d55605d8dceae3ca1ebdb0a4f76d0a6ba6a7f634d578909df4e1cdc6c7e7cd21`。
+- [ ] 独立 Tester：基于最终提交复核测试前置条件、原真实 idle/turn 限制和完整 CD。上述模块结果不代表全量/安装/生产验收通过；未就绪超过原总 6 秒仍须失败。
