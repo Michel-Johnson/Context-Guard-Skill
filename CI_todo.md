@@ -32,7 +32,35 @@
   in-process proxy; production proxy behavior and original assertions/budgets
   are unchanged. Original logs: `temp/binding-recovery-auth-repository-node24-20261006.log`
   and `temp/binding-recovery-sync-node18-final-20261006.log`.
-- [ ] Independent Tester, exact-head Required/CD, fixed shared UI update,
+  - [x] Independent Tester: exact clean source
+    `d2c33e530fb2449ea77195db708512f96e514166` was reviewed and tested on Windows.
+    Six runtime and four formal-test SHA-256 values matched the Executor freeze
+    before and after execution; no source, assertion or timeout was changed.
+    Node 18.20.8 and 24.19.0 each passed auth/repository 22/22 with zero skips
+    (17038.9088 / 14900.3491 ms). The original filtered HTTP/status and
+    managed/unmanaged synchronization cases each passed 3/3 with actual exit 0
+    (3466.1753 / 7439.2488 ms); Node 18 additionally reports 92 name exclusions,
+    not a full-module pass. All four command invocations exited 0.
+    Real loopback registration and authorized `/api/cloud-sync` reads returned
+    safe reasons without opening an inaccessible Map (`mapReads == 0`); repeated
+    registration sent only one bind and retained the rejected receipt unchanged.
+    Deterministic legacy and indexed new rejection recovery survived restart,
+    preserved the old pending task/outbox, and did not give a new synthetic
+    Session the old task. TTL, no-renewal, unknown-claim, bounded retry and GitHub
+    identity/authorization checks passed; governance (33/4/3), hidden-process
+    verification and diff check passed. Log names:
+    `temp/tester-binding-recovery-node{18,24}-auth-repository-20261006.log` and
+    `temp/tester-binding-recovery-node{18,24}-http-sync-20261006.log`.
+    SHA-256 in Node 18 auth, Node 24 auth, Node 18 HTTP, Node 24 HTTP order:
+    `a7a66fd22042f7f3c8a00cf7bc300a52362fecbd9cfd4a1d94dac165c744f5ec`,
+    `0cea73a49150a4a5d69c7db0dfae1a25ee58fe71dcdda244b88e432cab69becc`,
+    `1e4ed197dacd81f75a971bef1328a537a2ae19440ec5693b553bc98959324316`,
+    `b2f3f05072798e08bba69934c1ef176d6b0ccf54c3635925cb34b07265549d63`.
+    This is source-level technical acceptance with fixed shared Core/UI 1.1.1,
+    not a finished 1.1.2-dependent package, new UI, real host Session or production
+    connection. The first TTL failure, Node 18 cleanup failure and historical
+    Windows CD/watchdog failures remain recorded, not reclassified.
+  - [ ] Exact-head Required/CD, fixed shared UI update,
   installation and real new host-Session connection remain pending. Old Windows
   CD timeouts and the Node 22 Claude watchdog failure below are not erased or
   reclassified. No personal Hooks, generated runtime, version or production change.
