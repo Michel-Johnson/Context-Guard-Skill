@@ -1,5 +1,28 @@
 # CI TODO
 
+## CI-IMPACT-HELPER-07: classify the formal Hook helper (2026-10-07)
+
+- [x] Preserve remote `140fd0c` CI run `37491337661` failures in CI1 and minimum
+  runtime: tracked-path classification found `tests/hook-test-helpers.mjs`
+  unmatched. Local CD also failed that exact assertion and reached the unchanged
+  900000 ms Node deadline (runner 903 seconds); 304 visible passes / one failure
+  are not a complete summary. Remaining results and pack/install were incomplete.
+  Log `temp/tester-140fd-cd-node22-20261006.log`, SHA-256
+  `d58baaa452d8cdb016854cbe59ae494a8c592f6bfb74b2c55700eb7c9cbf5572`.
+- [x] Add only the precise helper path to the existing `test-helpers` impact rule,
+  retaining its test/minimum-runtime jobs. No wildcard widening or gate bypass;
+  this configuration change still forces complete CI. New formal regressions
+  assert the exact six-job helper-only selection and check approved manifest
+  helper paths independently of Git tracking. The manifest is coverage input,
+  not a source of CI job permissions; original tracked[], unknown/full-run and
+  malformed-configuration assertions remain unchanged.
+- [x] Executor complete selector module passed 13/13, zero skips, actual exit 0
+  on Node 18.20.8 / 22.18.0 / 24.19.0 (1136.4557 / 1041.2171 / 462.4485 ms).
+  Logs `temp/ci-impact-hook-helper-node{18,22,24}-20261007.log`.
+- [ ] Independent verification, exact-head Required and complete CD remain
+  pending. Fixing classification does not establish or resolve the separate
+  full-suite timeout; historical failures and incomplete delivery stay recorded.
+
 ## HOOK-SUITE-SPLIT-06: independent lifecycle and durable-record tests (2026-10-06)
 
 - [x] Preserve `1d910d3` full CD exit 1 at the original 900000 ms Node deadline.

@@ -39,6 +39,31 @@ test("browser fixture changes select the browser job", () => {
   assert.deepEqual(Object.entries(plan.jobs).filter(([, enabled]) => enabled).map(([job]) => job), ["browser"]);
 });
 
+test("Hook integration helper changes select only tests and minimum runtime", () => {
+  const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["tests/hook-test-helpers.mjs"] });
+  assert.equal(plan.full, false);
+  assert.deepEqual(plan.unmatchedPaths, []);
+  assert.deepEqual(plan.matchedRules, ["test-helpers"]);
+  assert.deepEqual(plan.jobs, {
+    test: true,
+    package: false,
+    install: false,
+    "minimum-runtime": true,
+    browser: false,
+    clients: false,
+  });
+});
+
+test("approved test helpers are classified even before Git tracking", () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL("../../tests/test-manifest.json", import.meta.url), "utf8"));
+  // The impact configuration remains authoritative; the manifest supplies only
+  // additional paths to check, never job permissions or selection rules.
+  for (const helper of manifest.helpers) {
+    const plan = selectImpact({ config, eventName: "pull_request", changedPaths: [helper.path] });
+    assert.deepEqual(plan.unmatchedPaths, [], helper.path);
+  }
+});
+
 test("client installation changes include package, compatibility and minimum runtime", () => {
   const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["bin/context-guard-skill.js"] });
   for (const job of ["test", "package", "install", "minimum-runtime", "clients"]) assert.equal(plan.jobs[job], true);
