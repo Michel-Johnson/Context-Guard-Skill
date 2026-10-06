@@ -18,13 +18,22 @@ test('Node runner import is inert and discovery preserves every automatic file e
   const actual = discoverNodeTests(repository);
   assert.equal(actual.length, expected.length); assert.equal(new Set(actual).size, expected.length);
   assert.deepEqual([...actual].sort(), expected);
-  assert.equal(actual[0], 'tests/hook-lifecycle.test.mjs');
+  const hooks = ['tests/hook-lifecycle.test.mjs', 'tests/hook-records.test.mjs'];
+  assert.deepEqual(actual.slice(0, 2), hooks);
+  const helper = fs.readFileSync(path.join(repository, 'tests/hook-test-helpers.mjs'), 'utf8');
+  assert.doesNotMatch(helper, /^test\(|from ['"]node:test['"]/m, 'the shared helper must not register tests');
+  const names = hooks.flatMap(file => {
+    const source = fs.readFileSync(path.join(repository, file), 'utf8');
+    assert.match(source, /from ['"]\.\/hook-test-helpers\.mjs['"]/, 'both independent suites use the formal helper');
+    return [...source.matchAll(/^test\('([^']+)'/gm)].map(match => match[1]);
+  });
+  assert.equal(new Set(names).size, names.length, 'Hook case names must remain unique across the two suites');
 });
 
-test('Node runner public parent executes all files once, starts lifecycle early and bounds concurrency', async () => {
+test('Node runner public parent executes all files once, starts both Hook suites early and bounds concurrency', async () => {
   const temporary = path.join(repository, 'temp'); fs.mkdirSync(temporary, { recursive: true });
   const root = fs.mkdtempSync(path.join(temporary, 'node-runner-'));
-  const files = ['.github/scripts/a.test.mjs', '.github/scripts/b.test.mjs', 'tests/hook-lifecycle.test.mjs', 'tests/z.test.mjs'];
+  const files = ['.github/scripts/a.test.mjs', '.github/scripts/b.test.mjs', 'tests/hook-lifecycle.test.mjs', 'tests/hook-records.test.mjs', 'tests/z.test.mjs'];
   let passed = false;
   try {
     const env = isolatedEnvironment(root);
@@ -50,6 +59,7 @@ test('Node runner public parent executes all files once, starts lifecycle early 
           test(file, async () => {
             try {
               if (file === 'tests/hook-lifecycle.test.mjs') {
+                // Only one first-wave suite waits; the other must release its slot.
                 const deadline = Date.now() + 5000;
                 while (fs.readFileSync('events.jsonl', 'utf8').trim().split('\\n').map(JSON.parse).filter(event => event.kind === 'start').length < ${files.length}) {
                   assert.ok(Date.now() < deadline, 'remaining files must start');
@@ -65,14 +75,14 @@ test('Node runner public parent executes all files once, starts lifecycle early 
       fs.writeFileSync(path.join(cwd, '.github/scripts/security-checks.test.mjs'), "throw new Error('standalone must not run twice');");
       const result = await run(process.execPath, [runner], { cwd, env, allowFailure: true, timeout: 20_000 });
       assert.equal(result.code, mode === 'pass' ? 0 : 1, result.stdout + result.stderr);
-      assert.match(result.stdout, /TAP version 13/); assert.match(result.stdout, /# tests 4/);
+      assert.match(result.stdout, /TAP version 13/); assert.match(result.stdout, /# tests 5/);
       assert.match(result.stdout, mode === 'pass' ? /# fail 0/ : /# fail 1/);
       if (mode !== 'pass') assert.match(result.stdout, mode === 'fail' ? /synthetic assertion failure/ : /synthetic module exception/);
       const events = fs.readFileSync(path.join(cwd, 'events.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
         .sort((left, right) => BigInt(left.at) < BigInt(right.at) ? -1 : 1);
       const started = events.filter(event => event.kind === 'start').map(event => event.file);
       assert.deepEqual([...started].sort(), [...files].sort());
-      assert.ok(started.slice(0, 2).includes('tests/hook-lifecycle.test.mjs'), 'lifecycle must start in the first concurrent wave');
+      assert.deepEqual(started.slice(0, 2).sort(), ['tests/hook-lifecycle.test.mjs', 'tests/hook-records.test.mjs'], 'both Hook suites must start in the first concurrent wave');
       if (mode === 'pass') {
         let active = 0, peak = 0;
         for (const event of events) { active += event.kind === 'start' ? 1 : -1; peak = Math.max(peak, active); assert.ok(active >= 0 && active <= 2); }
@@ -80,6 +90,28 @@ test('Node runner public parent executes all files once, starts lifecycle early 
         assert.equal(events.filter(event => event.kind === 'finish').length, files.length);
       }
     }
+    passed = true;
+  } finally {
+    if (passed) fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test('Hook helper import is inert and its one port candidate preserves the bounded range', async () => {
+  const temporary = path.join(repository, 'temp'); fs.mkdirSync(temporary, { recursive: true });
+  const root = fs.mkdtempSync(path.join(temporary, 'hook-helper-'));
+  let passed = false;
+  try {
+    const helper = new URL('../../tests/hook-test-helpers.mjs', import.meta.url).href;
+    const result = await run(process.execPath, ['--input-type=module', '-e', `
+      import assert from 'node:assert/strict';
+      const { freePort } = await import(${JSON.stringify(helper)});
+      const port = await freePort();
+      assert.ok(Number.isInteger(port));
+      assert.ok(port >= 49152 && port <= 65514);
+      assert.ok(port + 20 <= 65535);
+      console.log('helper import inert; single bounded candidate');
+    `], { cwd: root, env: isolatedEnvironment(root), timeout: 10_000 });
+    assert.equal(result.stdout.trim(), 'helper import inert; single bounded candidate', 'no test registration or server startup output');
     passed = true;
   } finally {
     if (passed) fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

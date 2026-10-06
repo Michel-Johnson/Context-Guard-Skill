@@ -1,5 +1,43 @@
 # CI TODO
 
+## HOOK-SUITE-SPLIT-06: independent lifecycle and durable-record tests (2026-10-06)
+
+- [x] Preserve `1d910d3` full CD exit 1 at the original 900000 ms Node deadline.
+  Only 22 complete PASS results were visible; ordered TAP buffering leaves the
+  rest unconfirmed. Those visible Hook cases alone totaled 879124.1762 ms.
+  The failed rehearsal and log `temp/tester-1d910-cd-node22-20261006.log` remain;
+  log SHA-256 `b2759270bf089159ff229e891ee310ef82ca5da4517c5b7ad0f178bd1939786b`.
+- [x] Partition by responsibility: 21 lifecycle/permission/Plan cases and four
+  durable-record integration cases, using one formal helper without test
+  registration. All 25 original names and complete case-body SHA-256 values
+  match the real `1d910d3` source (line-ending/separator normalization only).
+  Fifteen helper functions remain unchanged; only `freePort` candidate
+  preparation changes below. Per-process HOME/registry and per-case temporary
+  projects remain isolated; production code, API checks and budgets are unchanged.
+- [x] Preserve the first split module run: 24/25 PASS, zero skips, exit 1 in
+  432180.5445 ms. The completion-receipt CLI requested port 6668 and URL
+  verification failed; the final bound port/cause were not recorded. This
+  supports correcting the known browser-port input prerequisite, not assigning
+  older unknown failures. Log `temp/hook-split-two-modules-node22-20261006.log`,
+  SHA-256 `979927e57706d03d23843719104f308f3878188d727ae10b68406505bfda0834`.
+- [x] The helper now returns one high candidate in 49152..65514, not a reserved
+  port. The actual CLI retains twenty bounded follow-up binds and real URL/API
+  verification; no second candidate, request retry or browser-port bypass.
+  Formal isolated-import assertions cover integer/range/+20 safety and inertness.
+  Runner discovery still covers every automatic file once, prioritizes only the
+  two Hook modules and keeps global concurrency two and the original deadline.
+- [x] Executor final runner modules passed 5/5 with zero skips and exit 0 on
+  Node 18.20.8 / 22.18.0 / 24.19.0. The two real Hook modules, Node 22 concurrency
+  two with the original 900000 ms bound, passed 25/25, zero skips, exit 0 in
+  467587.2044 ms. Logs `temp/hook-split-runner-final-node{18,22,24}-20261006.log`
+  and `temp/hook-split-two-modules-final-node22-20261006.log`; the latter SHA-256
+  is `043af5275ff9ba49cbbfe404eaa6706ea1303d57ed7466b3bc7314f236941bb8`.
+  Governance (34 automatic / 4 standalone / 4 helpers), hidden-process, workflow
+  and diff checks passed. No full CD was rerun for these Executor module results.
+- [ ] Independent Tester, exact-head Required, complete CD and delivery remain
+  pending. Module partitioning is not proof of a business communication fix;
+  original timeout, Hook signal, fetch and earlier failures remain recorded.
+
 ## ATTACHMENT-FETCH-FIXTURE-05: browser-compatible test URL input (2026-10-06)
 
 - [x] Preserve `db9706c` complete CD failure: 421 tests / 420 passes / one

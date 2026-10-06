@@ -21,10 +21,12 @@ export function discoverNodeTests(cwd = process.cwd()) {
   const files = roots.flatMap(root => discover(root, cwd))
     .filter(file => !standalone.has(file)).sort();
   if (files.length === 0) throw new Error("No Node test files were discovered.");
-  // Start the long lifecycle suite in the first scheduling wave. The Node CLI
-  // re-sorts positional files, whereas the public run API accepts this order.
-  const lifecycle = files.indexOf("tests/hook-lifecycle.test.mjs");
-  if (lifecycle > 0) files.unshift(...files.splice(lifecycle, 1));
+  // Start the independent lifecycle and durable-record suites in the first wave.
+  // The Node CLI re-sorts positional files; the public run API accepts this order.
+  for (const preferred of ["tests/hook-records.test.mjs", "tests/hook-lifecycle.test.mjs"]) {
+    const index = files.indexOf(preferred);
+    if (index > 0) files.unshift(...files.splice(index, 1));
+  }
   return files;
 }
 
