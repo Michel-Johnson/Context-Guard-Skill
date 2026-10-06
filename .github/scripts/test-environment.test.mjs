@@ -19,7 +19,8 @@ test('Node runner import is inert and discovery preserves every automatic file e
   assert.equal(actual.length, expected.length); assert.equal(new Set(actual).size, expected.length);
   assert.deepEqual([...actual].sort(), expected);
   const hooks = ['tests/hook-lifecycle.test.mjs', 'tests/hook-records.test.mjs'];
-  assert.deepEqual(actual.slice(0, 2), hooks);
+  assert.deepEqual(actual.slice(0, 5), [...hooks, 'tests/named-workbench.test.mjs',
+    '.github/scripts/multiworktree.test.mjs', '.github/scripts/workbench-project.test.mjs']);
   const helper = fs.readFileSync(path.join(repository, 'tests/hook-test-helpers.mjs'), 'utf8');
   assert.doesNotMatch(helper, /^test\(|from ['"]node:test['"]/m, 'the shared helper must not register tests');
   const names = hooks.flatMap(file => {
@@ -56,7 +57,7 @@ test('Node runner public parent executes all files once, starts both Hook suites
           const record = kind => fs.appendFileSync('events.jsonl', JSON.stringify({ file, kind, at: String(process.hrtime.bigint()) }) + '\\n');
           record('start');
           ${mode === 'exception' && file.endsWith('/b.test.mjs') ? "throw new Error('synthetic module exception');" : ''}
-          test(file, async () => {
+          test(file + ' PRIVATE_TIMING_NAME_MARKER', async () => {
             try {
               if (file === 'tests/hook-lifecycle.test.mjs') {
                 // Only one first-wave suite waits; the other must release its slot.
@@ -78,6 +79,48 @@ test('Node runner public parent executes all files once, starts both Hook suites
       assert.match(result.stdout, /TAP version 13/); assert.match(result.stdout, /# tests 5/);
       assert.match(result.stdout, mode === 'pass' ? /# fail 0/ : /# fail 1/);
       if (mode !== 'pass') assert.match(result.stdout, mode === 'fail' ? /synthetic assertion failure/ : /synthetic module exception/);
+      const timing = result.stderr.split('\n').filter(line => line.startsWith('[node-test-timing] '))
+        .map(line => JSON.parse(line.slice('[node-test-timing] '.length)));
+      assert.ok(timing.length > 0);
+      assert.ok(!JSON.stringify(timing).includes('PRIVATE_TIMING_NAME_MARKER'), 'raw test names never enter timing output');
+      const allowed = new Set(['scope', 'phase', 'utc', 'elapsedMs', 'files', 'concurrency', 'file', 'event', 'order',
+        'line', 'nesting', 'durationMs', 'passed', 'firstObservedTestMs', 'lastObservedResultMs', 'observedResults', 'processBoundaries', 'formats', 'outcome']);
+      const lastElapsed = new Map();
+      for (const row of timing) {
+        assert.ok(Object.keys(row).every(key => allowed.has(key)));
+        assert.ok(Number.isFinite(Date.parse(row.utc)));
+        assert.ok(Number.isInteger(row.elapsedMs) && row.elapsedMs >= (lastElapsed.get(row.scope) || 0));
+        lastElapsed.set(row.scope, row.elapsedMs);
+        if (row.file) assert.ok(files.includes(row.file), 'only discovered relative paths are logged');
+      }
+      assert.equal(timing[0].phase, 'launch-request');
+      assert.equal(timing.at(-1).phase, 'owned-child-close-observed');
+      assert.equal(timing.at(-1).outcome, mode === 'pass' ? 'success' : 'failure');
+      assert.ok(timing.some(row => row.phase === 'execute-start' && row.concurrency === 2 && row.files === files.length));
+      assert.ok(timing.some(row => row.phase === 'stream-ended'));
+      const formatRows = timing.filter(row => row.phase === 'file-field-formats');
+      assert.equal(formatRows.length, 1);
+      assert.deepEqual(Object.keys(formatRows[0].formats).sort(), ['absent', 'absolute', 'fileURI', 'relative']);
+      assert.ok(Object.values(formatRows[0].formats).every(value => Number.isInteger(value) && value >= 0));
+      assert.ok(Object.values(formatRows[0].formats).reduce((total, value) => total + value, 0) > 0);
+      // Counts only: no raw event path is exposed, even for unmatched formats.
+      console.error(`[runner-test-format] ${JSON.stringify({ mode, formats: formatRows[0].formats })}`);
+      const observed = timing.filter(row => row.phase === 'observed-result');
+      assert.ok(observed.length > 0);
+      const expectedOrder = Number(process.versions.node.split('.')[0]) >= 22 ? 'execution' : 'declaration-report';
+      assert.ok(observed.every(row => row.order === expectedOrder));
+      assert.ok(observed.every(row => expectedOrder === 'execution' ? row.event === 'test:complete' : ['test:pass', 'test:fail'].includes(row.event)));
+      const summaries = timing.filter(row => row.phase === 'file-observations');
+      assert.equal(summaries.length, files.length);
+      assert.deepEqual(summaries.map(row => row.file).sort(), [...files].sort());
+      assert.ok(summaries.every(row => row.processBoundaries === 'unavailable'));
+      for (const summary of summaries) {
+        const results = observed.filter(row => row.file === summary.file);
+        assert.ok(results.length > 0, 'each actual file result has an observation');
+        assert.equal(summary.observedResults, results.length);
+        assert.equal(summary.lastObservedResultMs, results.at(-1).elapsedMs);
+        if (summary.firstObservedTestMs !== null) assert.ok(summary.firstObservedTestMs <= summary.lastObservedResultMs);
+      }
       const events = fs.readFileSync(path.join(cwd, 'events.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
         .sort((left, right) => BigInt(left.at) < BigInt(right.at) ? -1 : 1);
       const started = events.filter(event => event.kind === 'start').map(event => event.file);

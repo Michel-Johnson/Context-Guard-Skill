@@ -1,5 +1,40 @@
 # CI TODO
 
+## NODE-RUNNER-OBSERVATION-08: scheduling and public-event timing (2026-10-07)
+
+- [x] `e44d370` remote CI `37494809944` passed all thirteen checks including
+  Required. The earlier `140fd0c` local classification failure plus unchanged
+  900000 ms full-suite timeout/no summary remain failed, not reclassified.
+- [x] Keep the complete discovered execution set; prioritize the two Hook
+  suites, then Named, multiworktree and project tests. Concurrency two, the
+  fifteen-minute child deadline, synthetic five-file set and five-second
+  handshake remain unchanged. Earlier queue position does not guarantee budget.
+- [x] One public `run()` stream retains original failure/exit semantics and TAP.
+  Safe stderr timing contains UTC/monotonic receipt times, known relative files,
+  numeric metadata and fixed enums/booleans, never raw names/messages/errors/env.
+  Node 18 records ordered verdict observations; Node 22/24 use execution-ordered
+  completion observations without counting both channels. First/last observations
+  are not file-child spawn/exit times; unavailable boundaries and missing first
+  events remain explicit. Owned-parent launch requests and child-close receipts
+  are separate phases. No private API, second runner or injection is used.
+- [x] Preserve two first Node 18 module failures (4/5, actual exit 1). First,
+  the setup callback argument lacked `on`; use the returned public stream.
+  Second, URI source paths failed plain-path matching; use standard
+  `fileURLToPath`, reject malformed paths and retain the known-file whitelist.
+  Node 22/24 were not run on either failed input. Logs:
+  `temp/runner-observed-timing-node18-20261007.log` and
+  `temp/runner-observed-timing-final-node18-20261007.log`.
+- [x] Final Executor complete runner modules passed 5/5, zero skips, exit 0
+  on Node 18.20.8 / 22.18.0 / 24.19.0 (5740.1243 / 6536.6821 / 11027.2312 ms).
+  Actual public-event counts show file URIs on Node 18 and absolute paths on
+  Node 22/24; no raw paths are recorded. Full discovery, first-wave/concurrency,
+  real pass/fail/exception outcomes, all-file result observations and safe
+  timing schemas are verified. Logs:
+  `temp/runner-observed-timing-uri-node{18,22,24}-20261007.log`.
+- [ ] Independent verification and complete CD on this final input remain
+  pending. No Hook module or full CD was rerun in this Executor step; production,
+  permission checks and all original budgets are unchanged.
+
 ## CI-IMPACT-HELPER-07: classify the formal Hook helper (2026-10-07)
 
 - [x] Preserve remote `140fd0c` CI run `37491337661` failures in CI1 and minimum
