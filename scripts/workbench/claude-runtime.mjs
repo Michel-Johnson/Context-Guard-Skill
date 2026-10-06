@@ -292,6 +292,68 @@ export class ClaudeRuntime {
   }
 }
 
+// Monitor an already-created native process. The worker calls this immediately
+// after spawn; it does not wait for a model-specific readiness handshake.
+export async function runClaudeTurn(child, { config, sessionId, message, logFile, onStarted, onFinished }) {
+  const exit = new Promise((resolve, reject) => { child.once('close', resolve); child.once('error', reject); });
+  exit.catch(() => {}); // A spawn failure may precede opening the private log.
+  let buffer = '', bytes = 0, result = null, initialized = false, stopReason = null;
+  const decoder = new StringDecoder('utf8');
+  const output = await fs.open(logFile, 'a', 0o600);
+  let writes = Promise.resolve();
+  const idleMs = config.timeoutMs || 600000;
+  let idleTimer, killTimer;
+  const terminate = (reason = 'CLAUDE_TIMEOUT_OR_INTERRUPTED') => {
+    if (stopReason) return;
+    stopReason = reason; child.kill('SIGTERM');
+    killTimer = setTimeout(() => child.kill('SIGKILL'), 5000);
+  };
+  const active = () => { clearTimeout(idleTimer); idleTimer = setTimeout(terminate, idleMs); };
+  active();
+  // Activity keeps the idle timer alive, but cannot extend a native turn
+  // indefinitely. A stopped turn stays recoverable in the same Session.
+  const hardTimer = setTimeout(() => terminate('CLAUDE_TURN_LIMIT'), Math.max(idleMs, config.maxTurnMs || 1800000));
+  const interrupted = () => terminate();
+  const stdinError = () => {};
+  const receive = chunk => {
+    bytes += chunk.length;
+    if (bytes > (config.outputLimitBytes || 64 * 1024 * 1024)) { terminate('CLAUDE_OUTPUT_LIMIT'); return; }
+    active();
+    writes = writes.then(() => output.write(chunk));
+    buffer += decoder.write(chunk);
+    for (;;) {
+      const index = buffer.indexOf('\n'); if (index < 0) break;
+      const line = buffer.slice(0, index); buffer = buffer.slice(index + 1);
+      try {
+        const event = JSON.parse(line);
+        if (event.session_id && event.session_id !== sessionId) { terminate('CLAUDE_SESSION_MISMATCH'); break; }
+        if (event.type === 'system' && event.subtype === 'init') initialized = true;
+        if (event.type === 'result') result = event;
+      } catch { /* Native diagnostic text is not a protocol receipt. */ }
+    }
+  };
+  process.once('SIGTERM', interrupted); process.once('SIGINT', interrupted);
+  child.stdout.on('data', receive);
+  child.stderr.on('data', active); // Activity only; never publish provider stderr or credentials.
+  child.stdin.on('error', stdinError);
+  try {
+    child.stdin.end(message);
+    await onStarted?.(); // Same point as the worker's original running update.
+    const code = await exit;
+    await writes; await output.sync();
+    const outcome = { state: stopReason || !result ? 'interrupted' : code === 0 && !result.is_error ? 'finished' : 'failed',
+      error: stopReason || (!result ? 'CLAUDE_NO_RESULT' : result.is_error ? 'CLAUDE_FAILED' : null), initialized };
+    await onFinished?.(outcome); // Preserve persistence before timer/log cleanup.
+    return outcome;
+  } finally {
+    clearTimeout(idleTimer); clearTimeout(hardTimer); clearTimeout(killTimer);
+    process.removeListener('SIGTERM', interrupted); process.removeListener('SIGINT', interrupted);
+    child.stdout.removeListener('data', receive); child.stderr.removeListener('data', active);
+    child.stdin.removeListener('error', stdinError);
+    await output.close();
+  }
+}
+
 async function runWorker(file, jobFile) {
   const session = await readJSON(file), config = session.config;
   const job = await readJSON(jobFile);
@@ -303,66 +365,24 @@ async function runWorker(file, jobFile) {
   // Written before spawning Claude. A crash after this point is uncertain, not
   // permission to submit the same prompt again.
   await update({ workerPid: process.pid, state: 'dispatching' });
-  let child, stopReason = null;
   try {
     const credentials = await readJSON(config.environmentFile);
     if (Object.keys(credentials).some(key => !providerKeys.has(key)) || Object.values(credentials).some(value => typeof value !== 'string')) fail('INVALID_ENVIRONMENT', 'Only provider settings are accepted in the private environment file');
     const env = await claudeEnvironment(config, credentials);
-    child = spawn(config.command, claudeArguments(config, { sessionId: session.sessionId, resume: job.resume }), {
+    const child = spawn(config.command, claudeArguments(config, { sessionId: session.sessionId, resume: job.resume }), {
       cwd: config.root, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const exit = new Promise((resolve, reject) => { child.once('close', resolve); child.once('error', reject); });
-    exit.catch(() => {}); // A spawn failure may precede opening the private log.
-    let buffer = '', bytes = 0, result = null, initialized = false;
-    const decoder = new StringDecoder('utf8');
-    const output = await fs.open(jobFile + '.jsonl', 'a', 0o600);
-    let writes = Promise.resolve();
-    const idleMs = config.timeoutMs || 600000;
-    let idleTimer, killTimer;
-    const terminate = (reason = 'CLAUDE_TIMEOUT_OR_INTERRUPTED') => {
-      if (stopReason) return;
-      stopReason = reason; child.kill('SIGTERM');
-      killTimer = setTimeout(() => child.kill('SIGKILL'), 5000);
-    };
-    const active = () => { clearTimeout(idleTimer); idleTimer = setTimeout(terminate, idleMs); };
-    active();
-    // Activity keeps the idle timer alive, but cannot extend a native turn
-    // indefinitely. A stopped turn stays recoverable in the same Session.
-    const hardTimer = setTimeout(() => terminate('CLAUDE_TURN_LIMIT'), Math.max(idleMs, config.maxTurnMs || 1800000));
-    const interrupted = () => terminate();
-    process.once('SIGTERM', interrupted); process.once('SIGINT', interrupted);
-    child.stdout.on('data', chunk => {
-      bytes += chunk.length;
-      if (bytes > (config.outputLimitBytes || 64 * 1024 * 1024)) { terminate('CLAUDE_OUTPUT_LIMIT'); return; }
-      active();
-      writes = writes.then(() => output.write(chunk));
-      buffer += decoder.write(chunk);
-      for (;;) {
-        const index = buffer.indexOf('\n'); if (index < 0) break;
-        const line = buffer.slice(0, index); buffer = buffer.slice(index + 1);
-        try {
-          const event = JSON.parse(line);
-          if (event.session_id && event.session_id !== session.sessionId) { terminate('CLAUDE_SESSION_MISMATCH'); break; }
-          if (event.type === 'system' && event.subtype === 'init') initialized = true;
-          if (event.type === 'result') result = event;
-        } catch { /* Native diagnostic text is not a protocol receipt. */ }
-      }
+    await runClaudeTurn(child, { config, sessionId: session.sessionId, message: job.message,
+      logFile: jobFile + '.jsonl', onStarted: () => update({ state: 'running', childPid: child.pid }),
+      onFinished: async ({ initialized, ...outcome }) => {
+        await update(outcome);
+        await withFileLock(file + '.lock', async () => {
+          const latest = await readJSON(file);
+          await atomicWrite(file, encode({ ...latest, initialized: latest.initialized || initialized,
+            ...(['finished', 'failed'].includes(job.state) ? { active: null } : {}), updatedAt: job.updatedAt }));
+        });
+      },
     });
-    child.stderr.on('data', active); // Activity only; never publish provider stderr or credentials.
-    child.stdin.on('error', () => {});
-    child.stdin.end(job.message);
-    try {
-      await update({ state: 'running', childPid: child.pid });
-      const code = await exit;
-      await writes; await output.sync();
-      await update({ state: stopReason || !result ? 'interrupted' : code === 0 && !result.is_error ? 'finished' : 'failed',
-        error: stopReason || (!result ? 'CLAUDE_NO_RESULT' : result.is_error ? 'CLAUDE_FAILED' : null) });
-      await withFileLock(file + '.lock', async () => {
-        const latest = await readJSON(file);
-        await atomicWrite(file, encode({ ...latest, initialized: latest.initialized || initialized,
-          ...(['finished', 'failed'].includes(job.state) ? { active: null } : {}), updatedAt: job.updatedAt }));
-      });
-    } finally { clearTimeout(idleTimer); clearTimeout(hardTimer); clearTimeout(killTimer); await output.close(); }
   } catch (error) { await update({ state: 'interrupted', error: String(error.code || 'CLAUDE_LAUNCH_FAILED').slice(0, 100) }); }
 }
 

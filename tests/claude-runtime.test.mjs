@@ -5,8 +5,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { ClaudeRuntime, claudeArguments, claudeEnvironment } from '../scripts/workbench/claude-runtime.mjs';
+import { execFileSync, spawn } from 'node:child_process';
+import { ClaudeRuntime, claudeArguments, claudeEnvironment, runClaudeTurn } from '../scripts/workbench/claude-runtime.mjs';
 import { ProtocolDelivery } from '../scripts/workbench/protocol-delivery.mjs';
 import { pause, readJSON, hash } from '../scripts/shared/io.mjs';
 import { canonical } from '../scripts/shared/protocol.mjs';
@@ -220,71 +220,126 @@ test('Claude runtime allows a long active turn but interrupts a silent native pr
       },50);return;
     }
     let count=0; const interval=setInterval(()=>{
-      console.log(JSON.stringify({type:'assistant',session_id,progress:++count}));
+      console.log(JSON.stringify({type:'assistant',session_id,progress:++count,at:Date.now()}));
       if(count===12){clearInterval(interval);console.log(JSON.stringify({type:'result',session_id,is_error:false}));}
     },100);
-  });`);
-  const environmentFile = path.join(directory, 'provider.json'); await fs.writeFile(environmentFile, '{}');
-  const runtime = new ClaudeRuntime(path.join(directory, 'runtime')), sessionId = randomUUID();
+  });process.send({type:'fixture-ready'});process.disconnect();`);
   const config = { command: process.execPath, args: [script], root: directory, configDir: path.join(directory, 'config'),
-    environmentFile, name: 'Idle watchdog', model: 'fixture', role: 'executor', timeoutMs: 400 };
-  await runtime.configure(sessionId, config);
-  const wait = async (id, targetSessionId = sessionId, { started = Date.now(), releaseWhenReady } = {}) => {
-    const deadline = started + 6000, states = [];
-    const jobFile = runtime.jobFile(targetSessionId, id);
-    let releasedAtMs = null;
-    try {
-      for (;;) {
-        const job = await readJSON(jobFile, null);
-        if (states.at(-1)?.state !== job?.state) states.push({ atMs: Date.now() - started, state: job?.state, error: job?.error || null });
-        if (Date.now() > deadline) throw new Error(`Native fixture stalled: ${job?.state}`);
-        if (['interrupted', 'failed'].includes(job?.state) || job?.state === 'finished' && (await runtime.status(targetSessionId)).status === 'stopped') return job;
-        if (releaseWhenReady && releasedAtMs === null) {
-          const output = await fs.readFile(jobFile + '.jsonl', 'utf8').catch(error => error.code === 'ENOENT' ? '' : Promise.reject(error));
+    name: 'Idle watchdog', model: 'fixture', role: 'executor', timeoutMs: 400 };
+  const env = await claudeEnvironment(config, {});
+  const runBranch = async (id, message, limits = {}) => {
+    const sessionId = randomUUID(), started = Date.now(), deadline = started + 6000;
+    const logFile = path.join(directory, `${id}.jsonl`);
+    if (id === 'flood') await fs.writeFile(floodControl, JSON.stringify({ deadline }));
+    const child = spawn(config.command, claudeArguments(config, { sessionId, resume: false }), {
+      cwd: directory, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    });
+    let closed = false, readyAtMs = null, monitorAtMs = null, releasedAtMs = null, observing, outcome, timer;
+    const exit = new Promise(resolve => child.once('close', () => { closed = true; resolve(); }));
+    let readyMessage, readyError, readyClose;
+    const ready = new Promise((resolve, reject) => {
+      readyMessage = event => { if (event?.type === 'fixture-ready') resolve(); };
+      readyError = reject; readyClose = () => reject(new Error('Native fixture exited before readiness'));
+      child.on('message', readyMessage); child.once('error', readyError); child.once('close', readyClose);
+    });
+    const timedOut = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Native fixture exceeded its launch deadline: ${id}`)), Math.max(0, deadline - Date.now()));
+    });
+    const exercise = async () => {
+      await ready; readyAtMs = Date.now() - started;
+      assert.ok(Date.now() < deadline, 'native readiness consumes the original total budget');
+      // IPC is fixture-only. Production calls this same monitor immediately
+      // after spawn; the 400ms monitor semantics are not a cold-start promise.
+      observing = runClaudeTurn(child, { config: { ...config, ...limits }, sessionId, message, logFile,
+        onStarted: () => { monitorAtMs = Date.now() - started; } });
+      observing.catch(() => {});
+      if (id === 'flood') {
+        for (;;) {
+          assert.ok(Date.now() < deadline, 'flood readiness must not reset the launch deadline');
+          const output = await fs.readFile(logFile, 'utf8').catch(error => error.code === 'ENOENT' ? '' : Promise.reject(error));
           const initialized = output.split('\n').some(line => {
-            try { const event = JSON.parse(line); return event.type === 'system' && event.subtype === 'init' && event.session_id === targetSessionId; } catch { return false; }
+            try { const event = JSON.parse(line); return event.type === 'system' && event.subtype === 'init' && event.session_id === sessionId; } catch { return false; }
           });
-          if (initialized) { await fs.writeFile(releaseWhenReady, 'release'); releasedAtMs = Date.now() - started; }
+          if (initialized) { await fs.writeFile(floodRelease, 'release'); releasedAtMs = Date.now() - started; break; }
+          await pause(40);
         }
-        await pause(40);
       }
+      outcome = await observing;
+      assert.ok(Date.now() <= deadline, 'completion must remain inside the original launch deadline');
+      return outcome;
+    };
+    try {
+      await Promise.race([exercise(), timedOut]);
+      const events = (await fs.readFile(logFile, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
+      return { ...outcome, events };
     } finally {
-      const output = await fs.readFile(jobFile + '.jsonl').catch(error => error.code === 'ENOENT' ? Buffer.alloc(0) : Promise.reject(error));
+      clearTimeout(timer);
+      if (!closed) child.kill('SIGKILL');
+      await exit; await observing?.catch(() => {});
+      child.removeListener('message', readyMessage); child.removeListener('error', readyError); child.removeListener('close', readyClose);
+      const output = await fs.readFile(logFile).catch(error => error.code === 'ENOENT' ? Buffer.alloc(0) : Promise.reject(error));
       const initSeen = output.toString('utf8').split('\n').some(line => {
         try { const event = JSON.parse(line); return event.type === 'system' && event.subtype === 'init'; } catch { return false; }
       });
       const readiness = (await fs.readFile(trace, 'utf8').catch(error => error.code === 'ENOENT' ? '' : Promise.reject(error)))
         .trim().split('\n').filter(Boolean).map(JSON.parse).filter(event => event.at >= started)
         .map(({ at, event, bytes }) => ({ atMs: at - started, event, bytes }));
-      t.diagnostic(JSON.stringify({ branch: id, states, persistedOutputBytes: output.length, initSeen, releasedAtMs, readiness }));
+      t.diagnostic(JSON.stringify({ branch: id, state: outcome?.state, error: outcome?.error, readyAtMs, monitorAtMs,
+        elapsedMs: Date.now() - started, persistedOutputBytes: output.length, initSeen, releasedAtMs, readiness }));
     }
   };
-  await runtime.deliver({ id: 'active', platform: 'claude', sessionId, root: directory, message: 'active' });
-  assert.equal((await wait('active')).state, 'finished', 'progress must extend the idle deadline');
-  const boundedSessionId = randomUUID();
-  await runtime.configure(boundedSessionId, { ...config, maxTurnMs: 650 });
-  await runtime.deliver({ id: 'bounded', platform: 'claude', sessionId: boundedSessionId, root: directory, message: 'active' });
-  const bounded = await wait('bounded', boundedSessionId);
+  const active = await runBranch('active', 'active');
+  assert.equal(active.state, 'finished', 'progress must extend the idle deadline');
+  assert.equal(active.error, null); assert.equal(active.initialized, true);
+  const progress = active.events.filter(event => event.type === 'assistant');
+  assert.deepEqual(progress.map(event => event.progress), Array.from({ length: 12 }, (_, i) => i + 1));
+  assert.ok(progress.at(-1).at - progress[0].at > 400, 'successful progress must span more than one idle interval');
+  const bounded = await runBranch('bounded', 'active', { maxTurnMs: 650 });
   assert.equal(bounded.state, 'interrupted', 'continuous output must not extend the turn deadline');
   assert.equal(bounded.error, 'CLAUDE_TURN_LIMIT');
-  await runtime.deliver({ id: 'silent', platform: 'claude', sessionId, root: directory, message: 'silent' });
-  const interrupted = await wait('silent');
+  assert.equal(bounded.initialized, true);
+  assert.ok(bounded.events.some(event => event.type === 'assistant'));
+  assert.equal(bounded.events.some(event => event.type === 'result'), false);
+  const interrupted = await runBranch('silent', 'silent');
   assert.equal(interrupted.state, 'interrupted');
   assert.equal(interrupted.error, 'CLAUDE_TIMEOUT_OR_INTERRUPTED');
-  const floodSessionId = randomUUID();
-  // Test the byte limit independently of the 400ms cold-start race. The whole
-  // flood branch still has its original 6000ms deadline, including readiness.
-  await runtime.configure(floodSessionId, { ...config, timeoutMs: 6000, outputLimitBytes: 1024 });
-  // The output-limit assertion starts only after this same native process has
-  // emitted a persisted init. Readiness never resets the original wait budget.
-  const floodStarted = Date.now();
-  await fs.writeFile(floodControl, JSON.stringify({ deadline: floodStarted + 6000 }));
-  await runtime.deliver({ id: 'flood', platform: 'claude', sessionId: floodSessionId, root: directory, message: 'flood' });
-  const flooded = await wait('flood', floodSessionId, { started: floodStarted, releaseWhenReady: floodRelease });
+  assert.equal(interrupted.initialized, true);
+  assert.equal(interrupted.events.some(event => event.type === 'result'), false);
+  const flooded = await runBranch('flood', 'flood', { timeoutMs: 6000, outputLimitBytes: 1024 });
   assert.equal(flooded.state, 'interrupted');
   assert.equal(flooded.error, 'CLAUDE_OUTPUT_LIMIT', 'a bounded output stop must not be mislabeled as a timeout');
+  assert.equal(flooded.initialized, true);
   const prefix = (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse).find(event => event.event === 'pre-flood-bytes');
   assert.ok(prefix && prefix.bytes < 1024, 'init and readiness heartbeats must not trigger the output limit');
+  passed = true;
+});
+
+test('Claude monitor catches spawn errors and retains idle limits before any native readiness', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-monitor-'));
+  let passed = false;
+  t.after(async () => {
+    if (passed) await fs.rm(directory, { recursive: true, force: true, maxRetries: 3 });
+    else t.diagnostic(`Retained failed monitor fixture: ${directory}`);
+  });
+  const baseline = ['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal));
+  const sessionId = randomUUID(), config = { timeoutMs: 400, outputLimitBytes: 1024 };
+  const missing = spawn(path.join(directory, 'missing-native'), [], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  await assert.rejects(runClaudeTurn(missing, { config, sessionId, message: 'fixture', logFile: path.join(directory, 'missing.jsonl') }), { code: 'ENOENT' });
+  assert.deepEqual(['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal)), baseline);
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => console.log(JSON.stringify({type:"result",is_error:false})),1200)'], {
+    windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let persisted = false;
+  const result = await runClaudeTurn(child, { config, sessionId, message: 'fixture', logFile: path.join(directory, 'silent.jsonl'),
+    onFinished: outcome => {
+      assert.equal(outcome.error, 'CLAUDE_TIMEOUT_OR_INTERRUPTED');
+      assert.deepEqual(['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal)), baseline.map(count => count + 1));
+      persisted = true;
+    },
+  });
+  assert.deepEqual(result, { state: 'interrupted', error: 'CLAUDE_TIMEOUT_OR_INTERRUPTED', initialized: false });
+  assert.equal(persisted, true);
+  assert.deepEqual(['SIGTERM', 'SIGINT'].map(signal => process.listenerCount(signal)), baseline);
   passed = true;
 });
 
