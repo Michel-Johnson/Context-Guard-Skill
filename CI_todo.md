@@ -60,10 +60,68 @@
     not a finished 1.1.2-dependent package, new UI, real host Session or production
     connection. The first TTL failure, Node 18 cleanup failure and historical
     Windows CD/watchdog failures remain recorded, not reclassified.
-  - [ ] Exact-head Required/CD, fixed shared UI update,
-  installation and real new host-Session connection remain pending. Old Windows
-  CD timeouts and the Node 22 Claude watchdog failure below are not erased or
-  reclassified. No personal Hooks, generated runtime, version or production change.
+  - [x] Final frozen dependency/browser/package acceptance at
+    `49e46d15c66cdcf0616d7786562a80d7793e00d0`, Skill 0.6.4 with the official
+    Core/UI 1.1.2 fixed URLs and SHA-512 lock. Cloud source is
+    `2af5beadb982a463ec04c31ff4e2ddf6de536f64`; generated manifest SHA-256
+    `4718f3c58a61ffd4aa2a0349b08d8305f87f7a72b60b919ebad4f66d8b2ec283`.
+    The six reviewed Skill runtime files retained their prior hashes; generated
+    canonical UI matches Cloud 1.1.2 (`51d96a006973e56f77813cc857cf0c1026eea357f3c393d319c56777445e9355`).
+    One unchanged formal `npm run test:browser` passed with actual exit 0 on
+    Node 22.18.0 / Python 3.13.7: workbench 55 checks with no page errors, plus
+    journal recovery. Evidence: `output/playwright/browser-ci/1791259282459-80d41f1f-3013-43d1-beaa-a9739075506d/`,
+    log `temp/tester-skill064-final-browser-20261006.log`, SHA-256
+    `615a160b6b4fa7811ece1af45deec5004847ab90be3baa4b408d2f59e056aa74`.
+    No new browser fixture, force, skip or timeout change was used. The new
+    binding-reason visible integration is not covered by this browser run;
+    canonical VM and real loopback HTTP/status checks remain distinct evidence.
+  - [x] Local standalone exact tarball passed the 100-file package contract and
+    security scan; 632945 bytes, SHA-256
+    `5add3f2bbcc29533876dbe466ba87c747e2e8bf1af8e178c346d6b0a0877c127`.
+    Existing `smoke-npm-package.mjs` passed on Windows / Node 22.18.0 using this
+    tarball in isolated global-prefix and npm-exec installations. Both installed
+    Workbench runtime checks passed startup, health, packaged assets, authorized
+    state and unauthorized rejection. All 96 installed-contract files matched
+    the frozen source SHA-256 values; isolated npm package metadata is 0.6.4.
+    Install log: `temp/tester-skill064-exactpkg-20261006/install.log`, SHA-256
+    `bb9cac41de741cc267b251c5acdadbdbff8aca548e1b8a3dca70233ac4273227`.
+    These results do not prove registry publication, a user's installation or
+    actual host pairing. An extra read-only diagnostic initially looked for
+    package.json in the Skill-copy target, where the installation contract does
+    not include it; correct installed-file/npm-prefix checks passed without
+    changing the contract or files.
+  - [ ] Preserve final local CD FAIL: the only Node 22.18.0 `npm run test:cd`
+    invocation began 2026-10-06 04:09:58.0608503 UTC and ended 04:26:58.2051231
+    UTC, exit 1. npm ci, materialization (55 files), security (39 checks), hidden
+    process/workflow/governance checks passed. The unchanged two-file Node suite
+    hit its 900000 ms deadline, reporting 901 seconds. Complete log parsing
+    finds 216 visible passing TAP cases and one failure, with no final summary;
+    do not infer completion from the last TAP index 217. The failure is
+    `.github/scripts/workbench-project.test.mjs:195`, All Sessions baseline
+    invalidation, `fetch failed` at line 211 (16744.5408 ms). Failure-test SHA-256
+    is `b186a0d3c239e13065e3db93d29101b720b3224b719ed2f3f87501ebe3a19ca9`.
+    Last completed case: completion receipts require evidence/scope/all files/
+    fresh content (42332.2763 ms). Timeout interrupted the following human-review
+    archive case. Remaining suite results, ci-smoke and this CD invocation's
+    final pack/install/upgrade stages are unconfirmed, not passed by the separate
+    standalone package test. Failed rehearsal directory remains
+    `context-guard-cd-rehearsal-RSw93P` in the system temp directory.
+    Log `temp/tester-skill064-final-cd-node22-20261006.log`, SHA-256
+    `355c456492a4f6069dde337e1c226b455fb6134f952023667d65031246d595cb`.
+    No full rerun, budget increase, assertion weakening or historical failure
+    removal followed this result. Scope/source/package/manifest inputs stayed
+    byte-identical. The cutoff's owned fixture initialization process had no
+    registered state/lock or listener; official diagnose reported stopped and
+    official stop returned `stopped:false`. Any remaining owned process cleanup
+    is reported separately. Root-approved normal `taskkill /PID` after exact
+    identity recheck failed because Windows requires force for this console
+    process. The residual is preserved; no force/tree fallback or unknown/user
+    backend termination was used.
+  - [ ] Final exact-head Required/CD,
+    installation and real new host-Session connection remain pending. Old Windows
+    CD timeouts and the Node 22 Claude watchdog failure below are not erased or
+    reclassified. These Tester checks did not change personal Hook configuration
+    or production data; isolated checks do not attest a real user connection.
 
 ## SESSION-SWITCH-FIXTURE-01: target preflight and browser rollback fixture
 
@@ -845,3 +903,11 @@ pending independent gates.
 - [ ] Tester：基于最终 Skill SHA 和对应安装产物独立复验以上正式用例及真实 Cloud 双向同步；确认断网/回执未知时不丢待发内容，不能用单函数测试代替安装后的链路。
 - [ ] 原 Cloud browser 的 line121 同步冲突仍未归因：两次诊断在 line95 初始 Session 选择超时，随后无重型并行任务时，未修的 f663 安装包在原 12/25 秒限制下完整通过，未捕获冲突三方快照。因此本修复只关闭已独立复现的合并误报，不宣称已经修复最初浏览器失败；保留 Cloud `temp/session-sync-diagnostic-*` 与 `temp/same-value-merge-*` 的合成取证，后续复现再关联。
 - 最终本地集中回归：Windows、Node 22.18.0，`npm test` 退出 0；39 项安全检查、382/382 功能测试（815.72 秒、零失败/跳过）、29 项安装边界，以及实际 tarball 安装后的 CLI/工作台/停止烟测通过。日志 `temp/local-ci-skill-merge-final-20261005.log`。输入为 f6637d7 加上述已独立审查的同步及清理修复；未延长 runner 时限、未跳测试，跨平台 Required 与生产验收仍待完成。
+
+### RUNNER-LIFECYCLE-ORDER-01 · 生命周期套件调度顺序（2026-10-06）
+
+- 原 Node 22 本地 CD 约 901 秒超时记录保留：可见 216 项通过及 1 项 fetch 失败，不是整轮通过。独立检查确认 Node 18/22/24 CLI 会重新排序传入的测试文件，生命周期套件晚启动；仅调 CLI 参数顺序无效，调度改进也不保证总运行时间必定低于上限。
+- [x] Executor：同一 runner 改用公共 `node:test.run` 的有序文件列表和 TAP reporter，生命周期套件进入首批并发；原自动发现集合仍为 32 个唯一文件，并发上限 2、父进程单次 900 秒、CD 外层 30 分钟和已有进程树清理均不变。默认运行全部文件，不添加过滤入口、第二测试清单或私有 Node API。
+- [x] Executor：既有 `test-environment.test.mjs` 正式回归从同一 parent 入口运行隔离合成文件，检查完整执行一次、真实首批启动、并发峰值 2、成功退出 0、断言失败及模块异常退出 1、完整 TAP 汇总、惰性导入和拒绝名称过滤。Windows Node 18.20.8、22.18.0、24.19.0 的 `node --test .github/scripts/test-environment.test.mjs` 均 4/4、退出 0；治理及 `git diff --check` 通过。
+- 首次 Node 18 模块检查为 3/4、退出 1：`setup` 参数不支持 `.on`，与该版文档描述存在差异。改为对 `run()` 返回的公共 TestsStream 注册监听后通过；未使用私有 API。首次失败工具输出及隔离现场 `temp/node-runner-lutOTT` 保留，不覆盖为成功。
+- [ ] 独立 Tester：以本次最终提交 SHA 集中复核模块与完整 CD，保留原时限、失败历史和精确产物证据；模块通过不代表全量、安装或发布验收完成。
