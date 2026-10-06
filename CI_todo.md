@@ -1,5 +1,25 @@
 # CI TODO
 
+## HOOK-SIGNAL-DIAGNOSTIC-04: missing bootstrap prompt signal (2026-10-06)
+
+- [x] Preserve `785aea8` complete CD failure: 421 tests / 420 passes / one
+  failure, exit 1 in 855.648 seconds within the original budget. The empty-graph
+  record-todo case returned no matching User signal; that original fixture was
+  removed by its old cleanup and is not claimed retained. Original log SHA-256:
+  `1573350bc7a6dec48a4665f329dd613e5dd2162bd029449cbebf6b71ac12e60d`.
+- [x] Only this existing test now emits fixed safe early-return classifications,
+  a later-than-Hook binding/runtime probe and durable prompt-signal booleans on
+  signal failure. It still officially stops its owned backend, retains failed
+  synthetic fixtures and removes them only after functional and cleanup success.
+  Original assertions, permissions, behavior and command budgets remain unchanged.
+- [x] The single authorized Node 22.18.0 original-case run passed 1/1, zero skips,
+  actual exit 0 including cleanup (62895.5553 ms total); no failure diagnostic
+  was emitted. Log `temp/empty-graph-signal-diagnostic-node22-20261006.log`, SHA-256
+  `0bfa4730c5962e0eacff60eb07d2e976a0429e4e1596db973ed862ca2616a8b0`.
+- [ ] Original failure remains unassigned: this did not reproduce it or prove a
+  health-timeout cause. No production Hook, health deadline or communication
+  behavior was changed. Independent verification and complete CD remain pending.
+
 ## WORKBENCH-LISTEN-FIXTURE-03: remove the independent port-zero probe (2026-10-06)
 
 - [x] Preserve the complete `66f5986` CD result: exit 1 in 888.48 seconds,

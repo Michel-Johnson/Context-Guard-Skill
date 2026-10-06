@@ -9,7 +9,7 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { resolveProject, saveMainBinding, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
-import { stopServer } from '../scripts/workbench/cli.mjs';
+import { diagnoseWorkbench, stopServer } from '../scripts/workbench/cli.mjs';
 import { pythonCommand } from '../.github/scripts/python-command.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1059,15 +1059,20 @@ test('accept-layer accepted Session Map nodes validate without disk map.json or 
 
 test('record-todo upgrades a task-resolved bootstrap signal on empty-graph first sessions', async t => {
   const project = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-task-signal-todo-'));
-  let workbenchPid = null;
+  let workbenchPid = null, passed = false;
   t.after(async () => {
-    if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
-    else {
-      spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
-        encoding: 'utf8', timeout: 15_000, windowsHide: true,
-      });
+    let cleaned = false;
+    try {
+      if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
+      else {
+        spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
+          encoding: 'utf8', timeout: 15_000, windowsHide: true,
+        });
+      }
+      if (passed) { await fs.rm(project, { recursive: true, force: true, maxRetries: 3 }); cleaned = true; }
+    } finally {
+      if (!cleaned) t.diagnostic(JSON.stringify({ phase: 'empty-graph-fixture-retained', fixture: project, functionalPassed: passed }));
     }
-    await fs.rm(project, { recursive: true, force: true, maxRetries: 3 });
   });
   execFileSync('git', ['init', '-b', 'trunk'], { cwd: project, stdio: 'pipe', windowsHide: true });
   execFileSync('git', [
@@ -1121,6 +1126,32 @@ test('record-todo upgrades a task-resolved bootstrap signal on empty-graph first
     turn_id: 'idea-turn',
     prompt: '在 M1 上记录需求：支持导出 markdown，变成可执行 todo',
   });
+  const context = prompt.json.hookSpecificOutput?.additionalContext;
+  if (typeof context !== 'string' || !/User signal: (SIG-[a-f0-9]+)/.test(context)) {
+    const text = typeof context === 'string' ? context : '';
+    const durable = await fs.readFile(path.join(project, '.codex/context/private/hook-runtime',
+      `${createHash('sha256').update(session).digest('hex')}.json`), 'utf8').then(JSON.parse).catch(() => null);
+    const cachedSession = await fs.readFile(path.join(project, '.codex/context/private/hook-sessions.json'), 'utf8')
+      .then(JSON.parse).catch(() => null);
+    const saved = await fs.readFile(path.join(resolved.sharedDir, 'workbench.json'), 'utf8').then(JSON.parse).catch(() => null);
+    const diagnosis = await diagnoseWorkbench(project, session).catch(() => null);
+    const statuses = new Set(['ready', 'stopped', 'unknown', 'legacy', 'duplicate', 'upgrade-required', 'named-mismatch']);
+    t.diagnostic(JSON.stringify({ phase: 'empty-graph-prompt-missing-signal', hookStatus: prompt.status,
+      context: { present: typeof context === 'string', eventMatches: prompt.json.hookSpecificOutput?.hookEventName === 'UserPromptSubmit',
+        userSignalMarker: text.includes('User signal:'), bindingUnreadable: text.includes('Context Guard binding unreadable'),
+        automaticUnverified: text.includes('Context Guard automatic binding unverified'),
+        keptBindingUnverified: text.includes('Context Guard kept the existing Session binding'),
+        noEstablishedWorkbench: text.includes('no established workbench'), unbound: text.includes('not bound to the current worktree'),
+        runtimeLegacy: text.includes('workbench runtime is legacy'), runtimeDuplicate: text.includes('workbench runtime is duplicate'),
+        runtimeUnknown: text.includes('workbench runtime is unknown') },
+      cachedSessionMatches: cachedSession?.codex === session,
+      durable: { available: Boolean(durable), signalsCount: Array.isArray(durable?.signals) ? durable.signals.length : 0,
+        ideaTurnPresent: Array.isArray(durable?.signals) && durable.signals.some(item => item.turn_id === 'idea-turn') },
+      saved: { present: Boolean(saved), sameInstance: saved?.instance === state.instance, ownedPidAlive: processIsAlive(workbenchPid) },
+      postFailureProbe: { laterThanHook: true, available: Boolean(diagnosis), bound: diagnosis?.session?.bound === true,
+        verified: diagnosis?.session?.verified === true, sameRoot: diagnosis?.project?.root === await fs.realpath(project),
+        runtimeStatus: statuses.has(diagnosis?.runtime?.status) ? diagnosis.runtime.status : 'unclassified' } }));
+  }
   const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
   assert.ok(signalId);
 
@@ -1164,6 +1195,7 @@ test('record-todo upgrades a task-resolved bootstrap signal on empty-graph first
     contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', signalId,
     '--node', 'M1', '--title', 'must not reclassify', '--phenomenon', 'todo already recorded',
   ]), /already resolved as todo/);
+  passed = true;
 });
 
 test('completion receipts require evidence, scope review, all files and fresh content', async t => {
