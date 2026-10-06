@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { atomicWrite, encode, readJSON, withFileLock } from '../shared/io.mjs';
 import { MapError } from '../shared/map-model.mjs';
 
@@ -100,6 +101,11 @@ export async function rememberProject(project, { dir = globalWorkbenchDirectory(
       } : previous?.runtime || null,
       updatedAt: new Date().toISOString(),
     };
+    if (previous) {
+      const { updatedAt: _previousUpdatedAt, ...previousContent } = previous;
+      const { updatedAt: _nextUpdatedAt, ...nextContent } = record;
+      if (isDeepStrictEqual(previousContent, nextContent)) return previous;
+    }
     const next = {
       version: 1,
       projects: [...registry.projects.filter(item => item.projectId !== project.projectId), record]

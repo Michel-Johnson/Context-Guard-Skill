@@ -1,5 +1,63 @@
 # CI TODO
 
+## REGISTRY-NOOP-11: fresh locked registration without redundant disk commits (2026-10-07)
+
+- [x] Verify deep complete-record equality excluding only `updatedAt`, after
+  the unchanged lock/fresh read/normalization/collision/root-union checks.
+  An unchanged record must retain its bytes, mtime and timestamp with zero
+  `projects.json` commits; lock acquisition/release still performs I/O.
+- [x] Verify effective root/name/origin/Main/runtime/instance changes each
+  commit once, arbitrary previous fields remain differences, property order
+  does not create writes, and concurrent same/different-project registrations
+  retain all roots/records. Corrupt JSON/duplicate identities/invalid origins
+  and name collisions must still fail without overwriting data.
+- [x] Frozen no-op plus two original inventory targets passed 3/3, actual exit 0,
+  on Node 18.20.8 / 22.18.0 / 24.19.0 (14158.0269 / 12238.28 / 13485.8767 ms).
+  Node 18 reported 35 name exclusions; Node 22/24 used the same filter without
+  showing exclusions in their summaries, not complete Named modules. Actual
+  target rename assertions prove initial commit 1 / unchanged commits 0 /
+  effective change 1, and no-op bytes/mtime/timestamp preservation. Concurrent
+  same/different-project commits each total 2 without lost roots/records;
+  normalization and collision failures commit 0. Logs:
+  `temp/registry-noop-node*-20261007.log`.
+- [ ] Independent performance/functional acceptance. This removes a source-
+  proven redundant write, not health/authentication checks or cross-operation
+  identity freshness; the original full-CD timeout remains unresolved until
+  a complete acceptance run actually succeeds.
+
+## PROJECT-COMMIT-READ-10: fresh HEAD/Main read consolidation (2026-10-07)
+
+- [x] Preserve the `de6afbd` full-CD timeout at the original 900000 ms deadline:
+  333 visible passes, no complete summary and no package stage. Thirty-three
+  files were discovered; 31 completed file-wrapper durations total
+  1784541.9749 ms, not wall time. Dividing by concurrency two gives
+  892270.98745 ms before the incomplete inbox/sync work; scheduling alone does
+  not prove that the budget can be met. Public first/result observations are
+  not file-child start/exit measurements.
+- [x] Verify the private same-resolution HEAD/Main batch and unchanged fresh
+  branch/physical identity. Accept only exactly two matching-width SHA-1/SHA-256
+  records, keep commit peeling, and fall back to the original independent reads
+  for missing refs, unknown options or ambiguous output. Killed/time-limit/system
+  failures remain failures. No cross-operation cache or CLI/Python batch API.
+- [x] Preserve the first Node 18 targeted failure (4 passed / 6 failed / 27
+  name-filter exclusions, exit 1, 91948.3597 ms); Node 22/24 were not run.
+  Real Git 2.49.0 echoed `--end-of-options` as a third record, so valid refs
+  fell back and increased process counts. One read-only corrected command with
+  `--revs-only` emitted exactly two SHA records; retain the strict two-record
+  gate. Unknown-option compatibility now explicitly simulates exit 129, not a
+  claimed historical Git execution. Log: `temp/project-commit-batch-node18-20261007.log`.
+- [x] Corrected concentrated Node 18/22/24 formal identity/count/compatibility
+  targets passed 10/10, actual exit 0 (95801.7482 / 96255.0859 / 100634.3565 ms).
+  Node 18 reported 27 name exclusions; Node 22/24 omit them from the summary,
+  not complete Named modules. Governance and diff checks passed. Real Git
+  local/remote/default discovery counts are 3/4/6, including SHA-256, peeling,
+  changes across resolves and compatibility/failure boundaries. Logs:
+  `temp/project-commit-batch-final-node*-20261007.log`.
+- [ ] Independent acceptance. Existing non-Git or unbound-Main Hook fixtures do
+  not use this optimization; do not attribute their timing variation to it.
+  The original full-CD failures and unknown causes remain open; no new full-CD
+  run, delivery or release is claimed.
+
 ## NAMED-LISTEN-09: strict loopback retry and owned-listener cleanup (2026-10-07)
 
 - [x] Preserve the `f793ad0` full-CD Named concurrent-launcher failure. Its

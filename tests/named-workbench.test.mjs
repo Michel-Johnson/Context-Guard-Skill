@@ -15,7 +15,7 @@ import { startNamedProxy } from '../scripts/workbench/named-proxy.mjs';
 import { namedWorkbench, ensureNamedProxy } from '../scripts/workbench/named.mjs';
 import { bindProject, resolveProjectRoot, projectId, projectName, resolveProject, saveMainBinding } from '../scripts/workbench/project.mjs';
 import { RouteStore } from '../scripts/workbench/portless-routes.mjs';
-import { readProjectRegistry } from '../scripts/workbench/registry.mjs';
+import { readProjectRegistry, projectRegistryPath } from '../scripts/workbench/registry.mjs';
 import { rememberProject } from '../scripts/workbench/registry.mjs';
 
 const cwd = process.cwd();
@@ -77,8 +77,8 @@ function cliJSON(args, env = {}) {
 }
 
 // Default observation forwards real Git unchanged and always imports actual
-// source. Compatibility modes deliberately change arguments; the killed mode
-// injects a process failure to check classification, not a real timeout.
+// source. Compatibility modes deliberately change arguments/output; failure
+// modes inject process errors to check classification, not real timeouts.
 function observedProject(root, physicalMode = '') {
   const moduleURL = pathToFileURL(path.join(cwd, 'scripts/workbench/project.mjs')).href;
   const code = String.raw`
@@ -89,9 +89,20 @@ function observedProject(root, physicalMode = '') {
     childProcess.execFile = (command, args, options, callback) => {
       const started = performance.now();
       const physical = command === 'git' && args.includes('--show-toplevel') && args.includes('--git-common-dir') && args.includes('--git-dir');
-      if (physical && physicalMode === 'killed') {
+      const commits = command === 'git' && args[0] === 'rev-parse' && args.includes('--end-of-options') && args.includes('HEAD');
+      if (commits && physicalMode === 'commit-unknown-option') {
+        // Controlled old-option rejection; modern Git may merely echo/filter an unknown flag.
         calls.push({ args, milliseconds: 0 });
-        queueMicrotask(() => callback(Object.assign(new Error('Controlled killed Git process'), { code: 1, killed: true, signal: 'SIGTERM' }), '', ''));
+        const stderr = 'error: unknown option end-of-options\n';
+        queueMicrotask(() => callback(Object.assign(new Error('Controlled unsupported Git option'), { code: 129, stdout: '', stderr }), '', stderr));
+        return;
+      }
+      if (physical && physicalMode === 'killed' || commits && ['commit-killed', 'commit-timeout', 'commit-system-error'].includes(physicalMode)) {
+        calls.push({ args, milliseconds: 0 });
+        const error = physicalMode === 'commit-system-error'
+          ? Object.assign(new Error('Controlled Git system failure'), { code: 'ENOENT' })
+          : Object.assign(new Error('Controlled killed Git process'), { code: physicalMode === 'commit-timeout' ? 'ETIMEDOUT' : 1, killed: true, signal: 'SIGTERM' });
+        queueMicrotask(() => callback(error, '', ''));
         return;
       }
       let executedArgs = args;
@@ -101,6 +112,9 @@ function observedProject(root, physicalMode = '') {
       if (physicalMode === 'legacy-common' && args.length === 3 && args[2] === '--git-common-dir') executedArgs = ['config', '--get', 'context-guard.missing-common-dir'];
       return original(command, executedArgs, options, (error, stdout, stderr) => {
         if (command === 'git') calls.push({ args, milliseconds: performance.now() - started });
+        if (commits && physicalMode === 'commit-extra-record') stdout += 'unexpected-record\n';
+        if (commits && physicalMode === 'commit-invalid-record') stdout = stdout.split('\n')[0] + '\n' + 'not-a-commit' + '\n';
+        if (commits && physicalMode === 'commit-mixed-format') stdout = stdout.split('\n')[0] + '\n' + 'a'.repeat(64) + '\n';
         callback(error, stdout, stderr);
       });
     };
@@ -146,7 +160,9 @@ test('project identity explicit local binding skips automatic origin and default
   const observed = observedProject(root);
   identityDiagnostic(t, observed);
   assert.equal(observed.error, undefined);
-  assert.equal(observed.calls.length, 4);
+  assert.equal(observed.calls.length, 3);
+  assert.deepEqual(observed.calls.find(call => call.args.includes('--end-of-options')).args,
+    ['rev-parse', '--revs-only', '--end-of-options', 'HEAD', 'refs/heads/main^{commit}']);
   assert.equal(observed.calls.some(call => ['config', 'symbolic-ref'].includes(call.args[0])), false);
   assert.equal(observed.project.binding.source, 'explicit');
   assert.equal(observed.project.mainRef, 'refs/heads/main');
@@ -160,7 +176,7 @@ test('project identity explicit remote binding reads only selected remote and re
   const before = observedProject(root);
   identityDiagnostic(t, before);
   assert.equal(before.error, undefined);
-  assert.equal(before.calls.length, 5);
+  assert.equal(before.calls.length, 4);
   assert.deepEqual(before.calls.filter(call => ['config', 'symbolic-ref'].includes(call.args[0])).map(call => call.args),
     [['config', '--get', 'remote.upstream.url']]);
   assert.equal(before.project.github.slug, 'example/selected');
@@ -170,20 +186,27 @@ test('project identity explicit remote binding reads only selected remote and re
   git('remote', 'set-url', 'upstream', 'https://github.com/example/changed.git');
   const after = observedProject(root);
   assert.equal(after.error, undefined);
-  assert.equal(after.calls.length, 5);
+  assert.equal(after.calls.length, 4);
   assert.equal(after.project.github.slug, 'example/changed');
   assert.equal(after.project.branch, 'changed');
   assert.equal(after.project.head, git('rev-parse', 'HEAD'));
   assert.equal(after.project.mainSha, after.project.head);
   assert.notEqual(after.project.head, before.project.head);
   assert.equal(after.project.worktreeId, before.project.worktreeId);
+  git('tag', '-a', 'main-baseline', before.project.head, '-m', 'Synthetic annotated Main');
+  git('update-ref', 'refs/remotes/upstream/main', 'refs/tags/main-baseline');
+  const tagged = observedProject(root);
+  assert.equal(tagged.error, undefined);
+  assert.equal(tagged.calls.length, 4);
+  assert.equal(tagged.project.head, after.project.head);
+  assert.equal(tagged.project.mainSha, before.project.head, 'Main still peels to its commit without changing HEAD');
 });
 test('project identity unbound GitHub repository keeps default discovery and missing-ref semantics', async t => {
   const { root, git } = await projectIdentityFixture(t);
   const observed = observedProject(root);
   identityDiagnostic(t, observed);
   assert.equal(observed.error, undefined);
-  assert.equal(observed.calls.length, 7);
+  assert.equal(observed.calls.length, 6);
   assert.equal(observed.project.binding.source, 'github-default');
   assert.equal(observed.project.mainRef, 'refs/remotes/origin/main');
   assert.equal(observed.project.bindingRequired, false);
@@ -216,7 +239,7 @@ test('project identity batched physical directories preserve linked, subdir, ali
   for (const opened of [subdir, alias]) {
     const observed = observedProject(opened);
     assert.equal(observed.error, undefined);
-    assert.equal(observed.calls.length, 4);
+    assert.equal(observed.calls.length, 3);
     assert.equal(observed.project.projectId, main.projectId);
     assert.equal(observed.project.worktreeId, main.worktreeId);
     assert.equal(observed.project.worktreeRoot, main.worktreeRoot);
@@ -226,7 +249,7 @@ test('project identity batched physical directories preserve linked, subdir, ali
   git('worktree', 'add', '-q', '-b', 'linked-test', linked);
   const original = observedProject(linked);
   assert.equal(original.error, undefined);
-  assert.equal(original.calls.length, 4);
+  assert.equal(original.calls.length, 3);
   assert.equal(original.project.projectId, main.projectId);
   assert.notEqual(original.project.worktreeId, main.worktreeId);
   assert.equal(original.project.commonDir, main.commonDir);
@@ -281,7 +304,7 @@ test('project identity ambiguous, relative and unsupported physical output uses 
     const observed = observedProject(root, mode);
     assert.equal(observed.error, undefined, mode);
     assert.deepEqual(observed.project, current, mode);
-    assert.equal(observed.calls.length, mode === 'legacy-common' ? 8 : 7, mode);
+    assert.equal(observed.calls.length, mode === 'legacy-common' ? 7 : 6, mode);
     assert.ok(observed.calls.some(call => call.args.length === 2 && call.args[1] === '--show-toplevel'), mode);
     assert.ok(observed.calls.some(call => call.args.length === 3 && call.args[2] === '--git-dir'), mode);
     if (mode === 'legacy-common') assert.ok(observed.calls.some(call => call.args.length === 2 && call.args[1] === '--git-common-dir'));
@@ -295,6 +318,152 @@ test('project identity killed physical query remains a failure without legacy fa
   assert.deepEqual(observed.errorDetails, { code: 1, killed: true, signal: 'SIGTERM' });
   assert.equal(observed.calls.length, 1);
 });
+
+test('project identity commit output falls back to fresh independent reads for incompatible records', async t => {
+  const { root, git } = await projectIdentityFixture(t);
+  await saveMainBinding(root, { mode: 'local', branch: 'main' });
+  const current = observedProject(root).project;
+  for (const mode of ['commit-unknown-option', 'commit-extra-record', 'commit-invalid-record', 'commit-mixed-format']) {
+    const observed = observedProject(root, mode);
+    assert.equal(observed.error, undefined, mode);
+    assert.deepEqual(observed.project, current, mode);
+    assert.equal(observed.calls.length, 5, mode);
+    assert.equal(observed.calls.filter(call => call.args.includes('--end-of-options')).length, 1, mode);
+    assert.ok(observed.calls.some(call => call.args.length === 2 && call.args[1] === 'HEAD'), mode);
+    assert.ok(observed.calls.some(call => call.args.includes('--verify') && call.args.at(-1) === 'refs/heads/main^{commit}'), mode);
+  }
+  const sha256Root = path.join(root, 'sha256');
+  await fs.mkdir(sha256Root);
+  const sha256Git = (...args) => execFileSync('git', args, { cwd: sha256Root, encoding: 'utf8', windowsHide: true }).trim();
+  sha256Git('init', '-q', '-b', 'main', '--object-format=sha256');
+  sha256Git('-c', 'user.name=Test', '-c', 'user.email=identity@example.test', 'commit', '--allow-empty', '-qm', 'SHA-256 fixture');
+  await saveMainBinding(sha256Root, { mode: 'local', branch: 'main' });
+  const sha256 = observedProject(sha256Root);
+  assert.equal(sha256.error, undefined);
+  assert.equal(sha256.calls.length, 3);
+  assert.equal(sha256.project.head.length, 64);
+  assert.equal(sha256.project.head, sha256Git('rev-parse', 'HEAD'));
+  assert.equal(sha256.project.mainSha, sha256.project.head);
+  git('branch', 'alternate');
+  git('update-ref', '-d', 'refs/heads/main');
+  const unborn = observedProject(root);
+  assert.equal(unborn.error, undefined);
+  assert.equal(unborn.calls.length, 5);
+  assert.equal(unborn.project.kind, 'git');
+  assert.equal(unborn.project.head, '');
+  assert.equal(unborn.project.mainSha, '');
+  assert.equal(unborn.project.branch, 'main');
+  assert.equal(unborn.project.bindingRequired, true);
+  assert.equal(unborn.project.mainRef, 'refs/heads/main');
+  assert.equal(unborn.project.worktreeId, current.worktreeId);
+  assert.equal(unborn.project.commonDir, current.commonDir);
+});
+
+test('project identity commit query preserves killed and system failures without optional fallback', async t => {
+  const { root } = await projectIdentityFixture(t);
+  await saveMainBinding(root, { mode: 'local', branch: 'main' });
+  for (const mode of ['commit-killed', 'commit-timeout', 'commit-system-error']) {
+    const observed = observedProject(root, mode);
+    assert.equal(observed.project, undefined);
+    assert.match(observed.error, mode === 'commit-system-error' ? /Controlled Git system failure/ : /Controlled killed Git process/);
+    assert.deepEqual(observed.errorDetails, mode === 'commit-system-error' ? { code: 'ENOENT' }
+      : { code: mode === 'commit-timeout' ? 'ETIMEDOUT' : 1, killed: true, signal: 'SIGTERM' });
+    assert.equal(observed.calls.filter(call => call.args.includes('--end-of-options')).length, 1);
+    assert.equal(observed.calls.some(call => call.args.length === 2 && call.args[1] === 'HEAD'), false);
+    assert.equal(observed.calls.some(call => call.args.includes('--verify')), false);
+  }
+});
+test('unchanged project registry records avoid redundant writes while validation and unions remain fresh', async t => {
+  const root = await fixture(t), dir = path.join(root, 'registry'), file = projectRegistryPath(dir);
+  retainedFixtures.add(root);
+  let project = { projectId: 'registry-one', kind: 'git', sharedDir: path.join(root, 'shared'),
+    worktreeRoot: path.join(root, 'main'), openedRoot: path.join(root, 'main'),
+    binding: { main: { mode: 'local', branch: 'main', ref: 'refs/heads/main' } } };
+  let options = { dir, name: 'registry-one', origin: 'http://registry-one.localhost:51001',
+    state: { instance: 'registry-instance-one', buildId: WORKBENCH_BUILD, runtimeSchema: 4, url: 'http://127.0.0.1:51001/prototype/workbench.html' } };
+  const rename = fs.rename;
+  let writes = 0, passed = false;
+  const observer = t.mock.method(fs, 'rename', async (...args) => {
+    if (path.resolve(String(args[1])) === file) writes++;
+    return rename(...args);
+  });
+  try {
+    const initial = await rememberProject(project, options);
+    assert.equal(writes, 1, 'the observer sees the real initial registry commit');
+    // Reordered keys and an old timestamp must not turn equal content into a write.
+    const reordered = Object.fromEntries(Object.entries({ ...initial, updatedAt: '2000-01-01T00:00:00.000Z' }).reverse());
+    await fs.writeFile(file, JSON.stringify({ version: 1, projects: [reordered] }));
+    const bytes = await fs.readFile(file), modified = (await fs.stat(file, { bigint: true })).mtimeNs;
+    writes = 0;
+    const unchanged = await rememberProject(project, options);
+    assert.deepEqual(unchanged, reordered);
+    assert.equal(writes, 0, 'equal records do not commit projects.json');
+    assert.deepEqual(await fs.readFile(file), bytes);
+    assert.equal((await fs.stat(file, { bigint: true })).mtimeNs, modified);
+    assert.equal(unchanged.updatedAt, '2000-01-01T00:00:00.000Z');
+    await assert.rejects(fs.access(file + '.lock'), { code: 'ENOENT' });
+
+    for (const change of [
+      () => options = { ...options, name: 'renamed-project' },
+      () => options = { ...options, origin: 'http://renamed-project.localhost:51001' },
+      () => project = { ...project, binding: { main: { mode: 'local', branch: 'trunk', ref: 'refs/heads/trunk' } } },
+      () => options = { ...options, state: { ...options.state, instance: 'registry-instance-two' } },
+      () => options = { ...options, state: { ...options.state, url: 'http://127.0.0.1:51002/prototype/workbench.html', buildId: 'project-workbench-v23' } },
+      () => project = { ...project, worktreeRoot: path.join(root, 'linked'), openedRoot: path.join(root, 'linked') },
+      () => project = { ...project, openedRoot: path.join(root, 'linked', 'subdir') },
+    ]) {
+      change(); writes = 0;
+      const changed = await rememberProject(project, options);
+      assert.equal(writes, 1, 'each real record change is committed exactly once');
+      assert.deepEqual((await readProjectRegistry({ dir })).projects.find(record => record.projectId === project.projectId), changed);
+      await rememberProject(project, options);
+      assert.equal(writes, 1, 'repeating the same change does not add another commit');
+    }
+    const stable = (await readProjectRegistry({ dir })).projects[0];
+    assert.deepEqual(stable.roots, [path.join(root, 'main'), path.join(root, 'linked'), path.join(root, 'linked', 'subdir')]);
+    const extra = { ...stable, unknownPreviousField: { keep: 'not-a-whitelist' } };
+    await fs.writeFile(file, JSON.stringify({ version: 1, projects: [extra] }));
+    writes = 0;
+    const normalized = await rememberProject(project, options);
+    assert.equal(writes, 1, 'unknown previous fields remain a real content difference');
+    assert.equal(Object.hasOwn(normalized, 'unknownPreviousField'), false);
+
+    writes = 0;
+    const snapshots = await Promise.all(['concurrent-a', 'concurrent-b'].map(name => rememberProject({ ...project, openedRoot: path.join(root, name) }, options)));
+    assert.equal(writes, 2);
+    const smaller = snapshots.find(record => record.roots.length === stable.roots.length + 1);
+    const larger = snapshots.find(record => record.roots.length === stable.roots.length + 2);
+    assert.ok(smaller && larger);
+    assert.deepEqual(larger.roots.slice(0, smaller.roots.length), smaller.roots, 'lock acquisition preserves the insertion order of every accumulated root');
+    const other = name => ({ ...project, projectId: name, sharedDir: path.join(root, name), worktreeRoot: path.join(root, name), openedRoot: path.join(root, name) });
+    writes = 0;
+    await Promise.all(['registry-two', 'registry-three'].map(name => rememberProject(other(name), { dir, name })));
+    assert.equal(writes, 2);
+    const complete = await readProjectRegistry({ dir });
+    assert.deepEqual(complete.projects.map(record => record.projectId), ['registry-one', 'registry-three', 'registry-two']);
+    assert.deepEqual(complete.projects.find(record => record.projectId === project.projectId), larger);
+
+    writes = 0;
+    await assert.rejects(rememberProject(other('collision'), options), { code: 'PROJECT_NAME_CONFLICT' });
+    assert.equal(writes, 0);
+    assert.deepEqual(await readProjectRegistry({ dir }), complete);
+    for (const corrupted of [
+      'not-json',
+      JSON.stringify({ ...complete, projects: [...complete.projects, complete.projects[0]] }),
+      JSON.stringify({ ...complete, projects: complete.projects.map((record, index) => index ? record : { ...record, origin: 'invalid-origin' }) }),
+    ]) {
+      await fs.writeFile(file, corrupted);
+      await assert.rejects(rememberProject(project, options));
+      assert.equal(writes, 0);
+      assert.equal(await fs.readFile(file, 'utf8'), corrupted);
+    }
+    passed = true;
+  } finally {
+    observer.mock.restore();
+    if (passed) retainedFixtures.delete(root);
+  }
+});
+
 test('named HTTP entry preserves authentication, Origin/Host checks, session registration and writes', async t => {
   const { backend, named, dir, proxy } = await environment(t), origin = new URL(named.url).origin;
   assert.match(named.url, /example-project.localhost/);
