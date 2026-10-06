@@ -160,12 +160,29 @@ try {
   recordCheck('real-hook-session-bootstrap');
   stage = 'bidirectional-sync';
   const legacy = { repos: { 'browser-test': { live: { ...doc.root, title: '旧缓存绝不能回盖' } } }, repoId: 'browser-test' };
-  await page.addInitScript(value => localStorage.setItem('cg-workbench-maps-v16', JSON.stringify(value)), legacy);
+  await page.addInitScript(value => {
+    localStorage.setItem('cg-workbench-maps-v16', JSON.stringify(value));
+    window.__legacyWarningObserved = false;
+    const observer = new MutationObserver(records => {
+      for (const record of records) {
+        if (record.target.id !== 'cg-sync-status') continue;
+        if ([...record.addedNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent.includes('旧缓存'))) {
+          window.__legacyWarningObserved = true;
+          observer.disconnect();
+          return;
+        }
+      }
+    });
+    // Observe only this phase's fixed warning fact, never raw status history.
+    // A successful match disconnects; failure closes the isolated page.
+    observer.observe(document, { childList: true, subtree: true });
+  }, legacy);
   await page.goto(running.state.url);
   await page.waitForSelector('#cg-sync[data-status="error"]', { state: 'attached' });
   await openSyncSettings();
   await page.getByRole('button', { name: '将当前图设为真实地图' }).click(); await synchronized();
   const initialized = await read(); assert.equal(initialized.root.id, 'T0'); assert.equal(initialized.root.children.length, 0, 'production initialization must not persist demo modules'); assert.equal(initialized.root.bugs.length, 0); assert.equal(initialized.bootstrap, 'proposed', 'an empty project is not a finalized architecture');
+  await page.waitForFunction(() => window.__legacyWarningObserved === true);
   recordCheck('empty-map-explicitly-initializes-current-workbench');
   stage = 'backend-password-ui';
   let loginRequest;
@@ -188,7 +205,8 @@ try {
   stage = 'bidirectional-sync';
   await fs.writeFile(mapPath, encode(doc));
   await page.waitForFunction(() => document.querySelector('#repo-title')?.textContent?.includes('browser-test'));
-  await page.waitForFunction(() => document.querySelector('#cg-sync-status')?.textContent?.includes('旧缓存'));
+  await page.waitForFunction(title => document.querySelector('#nodes .node[data-id="T0"] .m-head')?.textContent.includes(title), doc.root.title);
+  assert.equal((await read()).root.title, doc.root.title, 'external authoritative data must not be replaced by the legacy cache');
   await synchronized();
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') === 'true') await page.locator('#btn-settings').click();
   assert.equal(await page.locator('.session-chip').isVisible(), true);
@@ -832,13 +850,26 @@ try {
     await preview.locator('#context-card').click();
     assert.equal(await preview.locator('#repo-menu.open').count(), 0);
     await preview.locator('.node[data-id="M1"]').hover();
-    const moduleBeforeDrill = await preview.locator('.node[data-id="M1"]').evaluate(el => {
-      const rect = el.getBoundingClientRect();
-      return {x:rect.x, y:rect.y, width:rect.width, height:rect.height, background:getComputedStyle(el).backgroundColor};
-    });
-    const rootBeforeDrill = await preview.locator('.node[data-id="T0"]').evaluate(el => el.getBoundingClientRect().toJSON());
     await preview.evaluate(() => {
       window.__CG_TOUR_FULL_MAP__ = true;
+      window.__mapBeforeDrill = null;
+      // Capture independently before the application handles the real click;
+      // an earlier locator handle can have been replaced by a later render.
+      const captureBeforeDrill = event => {
+        const module = event.target.closest?.('#nodes .node[data-id="M1"]');
+        if (!module || module !== document.querySelector('#nodes .node[data-id="M1"]')) return;
+        window.removeEventListener('click', captureBeforeDrill, true);
+        const root = document.querySelector('#nodes .node[data-id="T0"]');
+        const rect = module.getBoundingClientRect();
+        window.__mapBeforeDrill = {
+          moduleBeforeDrill: { x: rect.x, y: rect.y, width: rect.width, height: rect.height, background: getComputedStyle(module).backgroundColor },
+          rootBeforeDrill: root?.getBoundingClientRect().toJSON() || null,
+          moduleConnected: module.isConnected, rootConnected: Boolean(root?.isConnected),
+          moduleCurrent: module === document.querySelector('#nodes .node[data-id="M1"]'),
+          rootCurrent: Boolean(root && root === document.querySelector('#nodes .node[data-id="T0"]')),
+        };
+      };
+      window.addEventListener('click', captureBeforeDrill, true);
       window.__mapMotionStart = false;
       window.__mapMotionEnd = false;
       window.addEventListener('cg:map-transition-start', () => {
@@ -858,6 +889,16 @@ try {
       }, {once:true});
     });
     await preview.locator('.node[data-id="M1"]').click();
+    const beforeDrill = await preview.evaluate(() => window.__mapBeforeDrill);
+    assert.ok(beforeDrill, 'the real module click must capture its independent pre-transition frame');
+    assert.ok(beforeDrill.moduleConnected && beforeDrill.rootConnected && beforeDrill.moduleCurrent && beforeDrill.rootCurrent,
+      `the captured frame must belong to connected current scene nodes ${JSON.stringify(beforeDrill)}`);
+    const { moduleBeforeDrill, rootBeforeDrill } = beforeDrill;
+    for (const frame of [moduleBeforeDrill, rootBeforeDrill]) {
+      assert.ok(frame && [frame.x, frame.y, frame.width, frame.height].every(Number.isFinite) && frame.width > 0 && frame.height > 0,
+        `the actual clicked scene must have a finite positive frame ${JSON.stringify(beforeDrill)}`);
+    }
+    assert.notEqual(moduleBeforeDrill.background, '', 'the connected clicked module must have its original computed color');
     assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
     const clickFrame = await preview.evaluate(() => {
       const snapshot = document.querySelector('.map-transition-snapshot');

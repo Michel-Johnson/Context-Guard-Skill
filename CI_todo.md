@@ -1,5 +1,51 @@
 # CI TODO
 
+## BROWSER-CLICK-FRAME-12: independent current-click measurement (2026-10-07)
+
+- [x] Preserve remote CI `37516211542` Browser/Required failure at static preview:
+  the earlier M1 measurement had zero dimensions and empty computed color,
+  whereas the transition-start anchor was nonzero. The screenshot captured the
+  live page, not this preview; the specific rerender callback remains unknown.
+  Canonical and generated UI bytes match, and no UI business code is changed.
+- [x] Verify the existing fixture's independent native click-capture baseline
+  before the application handler, using connected/current M1 and T0 nodes,
+  finite positive frames and nonempty color. All original position/root
+  tolerances, color, opacity and continuous-motion assertions remain unchanged;
+  no forced/synthetic click, sleeps, retries or budget changes are added.
+- [x] Preserve the first local official Browser failure: exit 1 after three
+  checks at `bidirectional-sync`, waiting for the current status text to include
+  an old-cache warning; static preview and the second journal Browser entry had
+  not run. Fixture `cg-browser-ci-MbwxMm` and official report
+  `output/playwright/browser-ci/1791314899279-3f3fd8e7-95e6-4165-87f7-5e91a07dc1d0`
+  remain retained. This is not attributed to the unexecuted click change,
+  Git commit batching or registry writes.
+- [x] Observe the same warning intent in the actual initialization/reload
+  phase, with only a fixed DOM-observed boolean and immediate disconnect.
+  Later SSE state updates can legitimately replace a synced status message;
+  an external file update does not reload recovery or promise to emit it again.
+  Keep the original real backend-title protection and strengthen the current
+  UI/backend authoritative-title check, without sleeps, retries or larger waits.
+- [ ] Separately define and verify preservation of the original legacy browser
+  copy: canonical `persist()` and recovery export use the same old storage key,
+  which presents a source-visible overwrite risk. No permanent original-copy
+  guarantee is claimed or silently replaced with a pending-draft assertion;
+  any product fix belongs in canonical Cloud UI, not generated Skill files.
+- [x] One approved official `npm run test:browser` run on Node 24.19.0 exited 0:
+  55 Browser checks with no page errors, including the original animation
+  geometry/color/opacity/continuity assertions, plus the Journal recovery entry.
+  Browser source SHA-256:
+  `3c256662b724e4f8c212e58ecadaab4819b729407c7085fafe8827f1744ee17d`.
+  Log `temp/browser-click-frame-phase-node24-20261007.log` SHA-256:
+  `be706dfafc3678a944e5d595842e4f68f3c47910b1e3c0157143c3a4e66af4d8`.
+  Official artifact:
+  `output/playwright/browser-ci/1791315778012-49054d7e-a0d2-47ed-94db-102342eba5a5`.
+  Light governance and diff checks passed; no retry, full-suite rerun,
+  installation or production action was performed.
+- [ ] Independent acceptance, remote Required and delivery on the new source.
+  The prior `46685ed` complete CD actually passed 434 Node tests plus
+  package/baseline/install/upgrade stages; that success belongs to its unchanged
+  input, not this later fixture revision.
+
 ## REGISTRY-NOOP-11: fresh locked registration without redundant disk commits (2026-10-07)
 
 - [x] Verify deep complete-record equality excluding only `updatedAt`, after
