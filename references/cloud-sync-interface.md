@@ -61,6 +61,13 @@ Network failure leaves current queues on disk. Reconnect retries with backoff;
 conflicts require explicit reconciliation. Do not manufacture a new request ID,
 erase private state or report success merely because a connection is alive.
 
+A confirmed Session-binding rejection stops automatic binding retries. When a
+Session belongs to another device, create a new actual conversation in the host
+and connect using that host-issued Session ID. Do not take over the old Session,
+alias/change its ID, discard its failed receipt or move its tasks/queues to the
+new conversation. Older binding-conflict receipts cannot prove which device owns
+the Session; they also require a new host conversation, not blind retries.
+
 The private Session service uses authorized `/v1/projects/:project/sessions/`
 reads, changes/events and map writes. Session generations and server authorization
 remain enforced. Credentials never belong in Maps, logs or generated HTML.

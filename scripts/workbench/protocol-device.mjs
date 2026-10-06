@@ -9,6 +9,13 @@ import { sendMessage, ProjectMessagePump } from './protocol-client.mjs';
 
 const readTypes = new Set(['sync.heartbeat', 'sync.read', 'workbench.read', 'object.read', 'blob.get']);
 const messageScope = message => message.session?.id || message.payload.sessionId || 'project';
+function rejectedBindingReason(record, sessionId) {
+  if (record?.state !== 'rejected' || record.message?.type !== 'session.bind' || record.message.payload?.sessionId !== sessionId || record.error?.code !== 'CONFLICT') return '';
+  if (record.error.details?.reason === 'session-bound-elsewhere') return 'session-bound-elsewhere';
+  // This older rejection also covered same-device migration/version conflicts.
+  if (record.error.message === 'Migration requires the owning device and current binding version' && typeof record.error.details?.currentVersion === 'string') return 'binding-conflict';
+  return '';
+}
 // A single project host owns this connection. Agents never receive its credential.
 export class DeviceConnection {
   constructor({ directory, origin, transport = sendMessage, allowLoopback = false }) {
@@ -180,9 +187,19 @@ export class DeviceConnection {
     const file = path.join(this.directory, 'bindings', `${hash(message.payload.sessionId)}.json`);
     return withFileLock(`${file}.lock`, async () => {
       const versions = await readJSON(file, {});
-      const remote = await this.send(message, wire => ({ ...wire, payload: { ...wire.payload,
+      let remote;
+      try { remote = await this.send(message, wire => ({ ...wire, payload: { ...wire.payload,
         expectedBindingVersion: versions[wire.payload.expectedBindingVersion] || '',
-      } }));
+      } })); }
+      catch (error) {
+        const receipt = await readJSON(path.join(this.directory, 'outcomes', `${hash(message.id)}.json`), null);
+        if (rejectedBindingReason(receipt, localBinding.session.id)) {
+          versions.rejections ||= {};
+          versions.rejections[localBinding.bindingVersion] = message.id;
+          await atomicWrite(file, encode(versions));
+        }
+        throw error;
+      }
       if (remote.session.id !== localBinding.session.id || remote.session.generation !== localBinding.session.generation) {
         fail('STALE_SESSION', 'Cloud and local binding generations differ');
       }
@@ -192,16 +209,27 @@ export class DeviceConnection {
     });
   }
   async ensureBinding(binding) {
-    const versions = await readJSON(path.join(this.directory, 'bindings', `${hash(binding.sessionId)}.json`), {});
-    if (versions[binding.version]) return;
+    const status = await this.bindingStatus(binding);
+    if (status.status === 'ready') return;
+    if (status.status === 'conflict') fail('CONFLICT', 'Session binding requires a new host Session', { reason: status.reason });
     await this.bind({ v: 2, id: `bind:${hash(binding.version)}`, type: 'session.bind', payload: {
       sessionId: binding.sessionId, worktreeId: binding.worktreeId, agentId: binding.agentId,
       expectedBindingVersion: binding.version,
     } }, { session: { id: binding.sessionId, generation: binding.generation }, bindingVersion: binding.version });
   }
-  async bindingReady(binding) {
+  async bindingStatus(binding) {
+    if (!binding) return { status: 'pending' };
     const versions = await readJSON(path.join(this.directory, 'bindings', `${hash(binding.sessionId)}.json`), {});
-    if (versions[binding.version]) return true;
+    if (versions[binding.version]) return { status: 'ready' };
+    const requestId = versions.rejections?.[binding.version] || `bind:${hash(binding.version)}`;
+    const receipt = await readJSON(path.join(this.directory, 'outcomes', `${hash(requestId)}.json`), null);
+    const reason = rejectedBindingReason(receipt, binding.sessionId);
+    return reason ? { status: 'conflict', code: 'CONFLICT', reason } : { status: 'pending' };
+  }
+  async bindingReady(binding) {
+    const status = await this.bindingStatus(binding);
+    if (status.status === 'ready') return true;
+    if (status.status === 'conflict') return false;
     this.enrolling ||= new Map();
     if (!this.enrolling.has(binding.sessionId) && this.enrolling.size < 4) {
       const job = this.ensureBinding(binding).catch(error => { this.lastError = error.code || 'UNAVAILABLE'; })

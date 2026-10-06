@@ -126,6 +126,13 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.update(fields);
     await atomicWrite(this.stateFile, encode(this.status));
   }
+  async preserveBindingConflict(error) {
+    const reason = error?.details?.reason;
+    if (error?.code !== 'CONFLICT' || !['session-bound-elsewhere', 'binding-conflict'].includes(reason)) return false;
+    await this.persist({ status: 'conflict', error: 'CONFLICT', reason,
+      conflict: { code: 'CONFLICT', reason }, pending: await readJSON(this.outboxFile, null) ? 1 : 0 });
+    return true;
+  }
 
   async start() {
     await fs.mkdir(this.directory, { recursive: true });
@@ -272,6 +279,7 @@ export class MemorySyncCoordinator extends EventEmitter {
       await this.persist({ status: equalDocument(acknowledged, this.store.doc) ? 'synced' : 'syncing', pending: 0, lastSyncedAt: result.persistedAt || new Date().toISOString() });
       if (!equalDocument(acknowledged, this.store.doc)) await this.queueLocal();
     } catch (error) {
+      if (await this.preserveBindingConflict(error)) return;
       if (error.code === 'SESSION_REOPEN_REQUIRED') {
         await this.createSessionGeneration();
         return;
@@ -451,6 +459,7 @@ export class MemorySyncCoordinator extends EventEmitter {
         this.retryDelay = this.retryMin;
       } catch (error) {
         clearTimeout(this.streamTimer);
+        if (await this.preserveBindingConflict(error)) break;
         if (this.closed || this.managed) break;
         if (this.abort?.signal.reason?.code === 'EVENT_STREAM_TIMEOUT') error = this.abort.signal.reason;
         await this.schedule(async () => {
@@ -497,6 +506,7 @@ export class MemorySyncCoordinator extends EventEmitter {
       if (this.status.pending) await this.flush();
       else if (['offline', 'error', 'connecting'].includes(this.status.status)) await this.persist({ status: 'synced', error: null });
     }).catch(async error => {
+      if (await this.preserveBindingConflict(error)) throw error;
       if (!this.status.conflict) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || 'MEMORY_UNAVAILABLE' });
       throw error;
     });

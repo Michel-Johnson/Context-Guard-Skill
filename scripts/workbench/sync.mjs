@@ -77,6 +77,7 @@ export async function sessionSync(root, sessionId, action) {
   const project = await resolveProject(root);
   if (!(await bindingStatus(project, sessionId)).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind the actual Session before synchronization', 409);
   if (!status.configured) throw new MapError('MEMORY_NOT_CONFIGURED', 'Connect this project using workbench connect', 503);
+  if (status.state?.status === 'conflict' && ['session-bound-elsewhere', 'binding-conflict'].includes(status.state.reason)) throw new MapError('CONFLICT', 'Session binding requires a new host Session', 409, { reason: status.state.reason });
   if (['prepare', 'pull', 'checkpoint'].includes(action)) return prepareMemory(project, sessionId);
   if (action === 'finish') {
     const receipt = await synchronizeMemory(root, sessionId);

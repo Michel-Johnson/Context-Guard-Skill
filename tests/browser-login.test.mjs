@@ -130,6 +130,108 @@ test('approval after one pending poll persists the connection and healthy reuse 
   assert.equal(f.calls.filter(call => call.route === 'heartbeat').length, 1);
 });
 
+test('temporary authorization start errors retry at most three times with the same device code', async t => {
+  for (const recover of [true, false]) {
+    const f = await fixture(t), fetcher = f.options.fetcher, codes = [];
+    let starts = 0;
+    const operation = browserLogin(f.device, { ...f.options, wait: false, fetcher: async (url, options) => {
+      if (new URL(url).pathname.endsWith('/start')) {
+        codes.push(JSON.parse(options.body).deviceCode);
+        if (++starts < 3 || !recover) throw new Error('synthetic start connection failure');
+      }
+      return fetcher(url, options);
+    } });
+    if (recover) assert.equal((await operation).authorizationRequired, true);
+    else await assert.rejects(operation, { code: 'UNAVAILABLE' });
+    assert.equal(starts, 3);
+    assert.equal(new Set(codes).size, 1);
+    assert.equal((await f.readPending()).deviceCode, codes[0]);
+    assert.deepEqual(f.sleeps, [250, 500]);
+    assert.equal(f.prompts.length, recover ? 1 : 0);
+  }
+});
+
+test('a poll connection-establishment error and trusted retryable failure reuse the same grant within its deadline', async t => {
+  const f = await fixture(t), fetcher = f.options.fetcher, codes = [];
+  let polls = 0;
+  const result = await browserLogin(f.device, { ...f.options, fetcher: async (url, options) => {
+    if (new URL(url).pathname.endsWith('/poll')) {
+      codes.push(JSON.parse(options.body).deviceCode);
+      if (++polls === 1) throw Object.assign(new Error('synthetic DNS failure'), { cause: { code: 'ENOTFOUND' } });
+      if (polls === 2) return new Response(JSON.stringify({ ok: false, error: { code: 'UNAVAILABLE', message: 'Synthetic temporary rejection', retryable: true } }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } });
+      f.approve();
+    }
+    return fetcher(url, options);
+  } });
+  assert.equal(result.connected, true);
+  assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
+  assert.equal(f.prompts.length, 1);
+  assert.equal(polls, 3);
+  assert.equal(new Set(codes).size, 1);
+  assert.deepEqual(f.sleeps, [250, 500]);
+});
+
+test('authorization retry backoff cannot extend the original displayed grant expiry', async t => {
+  const f = await fixture(t, { expiresIn: 1 }), fetcher = f.options.fetcher;
+  let polls = 0;
+  await assert.rejects(browserLogin(f.device, { ...f.options, sleep: async ms => { f.sleeps.push(ms); f.advance(1000); },
+    fetcher: async (url, options) => {
+      if (new URL(url).pathname.endsWith('/poll')) {
+        polls++;
+        throw Object.assign(new Error('synthetic refused connection'), { cause: { code: 'ECONNREFUSED' } });
+      }
+      return fetcher(url, options);
+    } }), { code: 'UNAUTHORIZED' });
+  assert.equal(polls, 1);
+  assert.deepEqual(f.sleeps, [250]);
+  assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
+  assert.equal((await f.readPending()).userCode, f.prompts[0].userCode);
+});
+
+test('repeated poll connection-establishment failures stop after three attempts and preserve the grant', async t => {
+  for (const code of ['ECONNREFUSED', 'UND_ERR_CONNECT_TIMEOUT']) {
+    const f = await fixture(t), fetcher = f.options.fetcher;
+    let polls = 0;
+    await assert.rejects(browserLogin(f.device, { ...f.options, fetcher: async (url, options) => {
+      if (new URL(url).pathname.endsWith('/poll')) {
+        polls++;
+        throw Object.assign(new Error('synthetic pre-connection error'), { cause: { code } });
+      }
+      return fetcher(url, options);
+    } }), { code: 'UNAVAILABLE' });
+    assert.equal(polls, 3);
+    assert.deepEqual(f.sleeps, [250, 500]);
+    assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
+    assert.equal(f.prompts.length, 1);
+    assert.equal((await f.readPending()).userCode, f.prompts[0].userCode);
+  }
+});
+
+test('unknown poll claims, malformed receipts and authentication rejection stop without changing codes or retrying', async t => {
+  for (const failure of ['reset', 'timeout', 'truncated', 'missing-credential', 'claimed', 'forbidden', 'untrusted-503']) {
+    const f = await fixture(t), fetcher = f.options.fetcher;
+    let polls = 0;
+    await assert.rejects(browserLogin(f.device, { ...f.options, fetcher: async (url, options) => {
+      if (!new URL(url).pathname.endsWith('/poll')) return fetcher(url, options);
+      polls++;
+      if (failure === 'reset') throw Object.assign(new Error('synthetic reset'), { cause: { code: 'ECONNRESET' } });
+      if (failure === 'timeout') throw Object.assign(new Error('synthetic timeout'), { name: 'TimeoutError' });
+      if (failure === 'truncated') return new Response('{', { headers: { 'Content-Type': 'application/json' } });
+      if (failure === 'missing-credential') return f.reply({ projectId: 'fixture-project', repositoryId, capabilities: ['device-memory'] });
+      if (failure === 'untrusted-503') return new Response('<html>unavailable</html>', { status: 503 });
+      return new Response(JSON.stringify({ ok: false, error: { code: failure === 'claimed' ? 'UNAUTHORIZED' : 'FORBIDDEN', message: 'Synthetic authorization rejection' } }),
+        { status: failure === 'claimed' ? 401 : 403, headers: { 'Content-Type': 'application/json' } });
+    } }));
+    assert.equal(polls, 1, failure);
+    assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
+    assert.equal(f.prompts.length, 1);
+    assert.deepEqual(f.sleeps, []);
+    assert.equal(await fs.access(f.device.file).then(() => true, () => false), false);
+    if (!['claimed', 'forbidden'].includes(failure)) assert.equal((await f.readPending()).userCode, f.prompts[0].userCode);
+  }
+});
+
 test('denial still disconnects explicitly and never silently renews in the same wait invocation', async t => {
   const f = await fixture(t), fetcher = f.options.fetcher;
   await assert.rejects(browserLogin(f.device, { ...f.options, fetcher: async (url, options) => {

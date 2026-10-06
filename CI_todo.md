@@ -1,5 +1,42 @@
 # CI TODO
 
+## BINDING-RECOVERY-01: definitive rejection and bounded connection recovery (2026-10-06)
+
+- [x] Executor: confirmed `session.bind` rejection is read from its durable
+  outcome, including the original deterministic legacy receipt. New cross-device
+  reason is `session-bound-elsewhere`; the precise older migration rejection is
+  only `binding-conflict`, not proof of its owner. Registration, saved CLI sync
+  state and the authorized HTTP status expose only safe code/reason. No repeated
+  enrollment, cache deletion, replacement request ID or old-Session takeover;
+  pending Map writes, old task queues and failed receipts remain intact. The
+  status endpoint does not open an inaccessible Map merely to display failure.
+- [x] Browser authorization has at most three attempts with 250/500 ms backoff
+  within the existing invocation/grant deadline. Poll retries only known
+  pre-connection failures or trusted retryable temporary responses; reset,
+  timeout, malformed replies, unknown claims and denial stop without renewal.
+  Local waiting expiry preserves the displayed grant rather than treating it as
+  a server denial. GitHub identity uses existing environment/gh credentials on
+  its first request; bounded read retries share a forty-second budget including
+  credential lookup. Repository-ID, redirect-domain and authorization checks stay.
+- [x] Formal Node 18.20.8 and 24.19.0 auth/repository modules passed 22/22 each;
+  public registration/status and managed/unmanaged queue preservation passed
+  the three selected cases on each runtime (Node 18 reports 92 name exclusions).
+  Governance verified 33 automatic tests, four standalone suites and three
+  helpers; hidden-process and diff checks passed. Logs:
+  `temp/binding-recovery-auth-repository-node{18,24}-final-20261006.log` and
+  `temp/binding-recovery-sync-node{18,24}-ownedproxy-20261006.log`.
+- [x] Preserve first auth module failure (20/21): local expiry erased the grant,
+  fixed by distinguishing waiting expiry from server rejection. Preserve Node 18
+  HTTP-module exit failure: all three assertions passed but an unowned spawned
+  test proxy raced registry cleanup (`ENOTEMPTY`). The fixture now owns/closes an
+  in-process proxy; production proxy behavior and original assertions/budgets
+  are unchanged. Original logs: `temp/binding-recovery-auth-repository-node24-20261006.log`
+  and `temp/binding-recovery-sync-node18-final-20261006.log`.
+- [ ] Independent Tester, exact-head Required/CD, fixed shared UI update,
+  installation and real new host-Session connection remain pending. Old Windows
+  CD timeouts and the Node 22 Claude watchdog failure below are not erased or
+  reclassified. No personal Hooks, generated runtime, version or production change.
+
 ## SESSION-SWITCH-FIXTURE-01: target preflight and browser rollback fixture
 
 - [x] Preserve PR #451 run `37311320171` initial failure: Node 24 functional

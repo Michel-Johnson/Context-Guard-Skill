@@ -210,6 +210,29 @@ test('only definitive memory rejections may release a retry identity', () => {
   assert.equal(definitiveMemoryRejection(new Error('network')), false);
 });
 
+for (const managed of [false, true]) test(`binding conflict terminates synchronization without deleting the pending write${managed ? ' (managed)' : ''}`, async t => {
+  const f = await fixture(), store = await new MapStore(f.root).init();
+  let calls = 0;
+  const coordinator = new MemorySyncCoordinator({ project: {}, sessionId: agent.sessionId, store, directory: f.root, managed,
+    request: async () => { calls++; throw Object.assign(new Error('New host Session required'), { code: 'CONFLICT', status: 409, details: { reason: 'session-bound-elsewhere' } }); } });
+  t.after(async () => { await coordinator.close(); await store.close(); });
+  const pending = { operationId: 'preserve-original-map-write', baseVersion: 'old-map-version', operations: [{ type: 'update', id: 'N1', fields: { title: 'unsent draft' } }] };
+  await atomicWrite(coordinator.outboxFile, encode(pending));
+  coordinator.configuration = { url: 'https://cloud.example.invalid' };
+  await coordinator.run();
+  assert.equal(calls, 1);
+  assert.equal(coordinator.status.status, 'conflict');
+  assert.equal(coordinator.status.reason, 'session-bound-elsewhere');
+  assert.equal(coordinator.status.pending, 1);
+  assert.equal(coordinator.retryTimer, undefined);
+  await coordinator.queueLocal(); await coordinator.flush();
+  await coordinator.projectHeartbeat({ mapVersion: 'cloud-version', mapCursor: 1 });
+  assert.equal(calls, 1, 'a terminal binding rejection is not another connection attempt');
+  assert.deepEqual(await readJSON(coordinator.outboxFile), pending);
+  assert.equal((await readJSON(coordinator.stateFile)).reason, 'session-bound-elsewhere');
+  assert.deepEqual(store.doc, f.doc, 'the local draft remains intact');
+});
+
 test('human cleanup removes attached and unassigned Bugs without changing other memory', () => {
   const doc = { v: 1, root: { id: 'R', title: 'root', bugs: [{ id: 'B1', title: 'test' }], todos: [{ id: 'TD1', title: 'keep task' }], memories: [{ text: 'keep memory' }], children: [] }, unassigned_bugs: [{ id: 'B2', title: 'unassigned test' }] };
   const operations = [{ type: 'update', id: 'R', fields: { bugs: [] } }, { type: 'document', fields: { unassigned_bugs: [] } }];
