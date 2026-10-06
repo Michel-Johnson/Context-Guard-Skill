@@ -22,7 +22,7 @@ const session = '01a06653-9bd7-7733-9679-f7781d63975d';
 const mapPath = path.join(ctx, 'map.json');
 const node = { id: 'N1', title: '原始节点', purpose: '用于正式画布验证', kind: 'work', proposal: 'accepted', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] };
 const doc = { v: 1, project: 'browser-test', bootstrap: 'ready', extra: { preserved: true }, root: { ...node, id: 'T0', title: '浏览器验收', kind: 'module', children: [node] } };
-let running, browser, page, passed = false, stage = 'isolated-hook-bootstrap';
+let running, browser, page, passed = false, bodyFailed = false, stage = 'isolated-hook-bootstrap';
 const errors = [], checks = [], queuedMessages = [];
 const messageQueue = async payload => {
   queuedMessages.push(payload);
@@ -1632,6 +1632,7 @@ try {
   passed = true;
   console.log(JSON.stringify({ output, checks, errors }));
 } catch (e) {
+  bodyFailed = true;
   if (page) errors.push(await page.evaluate(() => ({ status: workbenchSync?.status, view: workbenchSync?.viewId, operations: workbenchSync?.operations(), inputDraft: !!workbenchSync?.inputDraft, pendingRequest: !!workbenchSync?.pendingRequest, inflight: !!workbenchSync?.inflight, composing: workbenchSync?.composing, recovery: workbenchSync?.serverRecovery, baseBugs: workbenchSync?.baseTree?.children?.[0]?.bugs, docBugs: workbenchSync?.doc?.root?.children?.[0]?.bugs })).catch(() => 'Sync diagnostics unavailable'));
   if (page) await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {});
   // Only synthetic fixture text/errors; no HTTP headers, tokens, or user directories.
@@ -1639,16 +1640,35 @@ try {
   console.error(`Browser CI failed at ${stage}; fixture retained at ${sandbox}`);
   throw e;
 } finally {
+  let cleanupPassed = false, cleanupError;
   try { if (browser) await browser.close(); }
-  finally {
+  catch (error) { cleanupError = error; }
+  try {
     if (running) await running.close();
     await stopIsolatedProxy();
-    await fs.writeFile(path.join(output, 'results.json'), encode({ passed, stage, checks, errors }));
-    if (passed) {
+    if (passed && !cleanupError) {
       const resolved = await fs.realpath(sandbox), temporary = await fs.realpath(os.tmpdir());
       assert.equal(path.dirname(resolved), temporary);
       assert.ok(path.basename(resolved).startsWith('cg-browser-ci-'));
-      await fs.rm(resolved, { recursive: true, force: true });
+      await fs.rm(resolved, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
+  } catch (error) { cleanupError ??= error; }
+  cleanupPassed = !cleanupError;
+  // Report the complete entry, not only successful browser assertions.
+  // Keep diagnostics bounded and never replace a primary body exception.
+  const cleanupFailure = cleanupError ? {
+    name: ['Error', 'TypeError', 'AssertionError', 'TimeoutError'].includes(cleanupError.name) ? cleanupError.name : 'Error',
+    code: ['EBUSY', 'ENOTEMPTY', 'EPERM', 'EACCES', 'ENOENT', 'ERR_ASSERTION', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED'].includes(cleanupError.code) ? cleanupError.code : 'UNKNOWN',
+    syscall: ['rmdir', 'unlink', 'scandir', 'realpath', 'stat'].includes(cleanupError.syscall) ? cleanupError.syscall : 'unknown',
+  } : null;
+  try {
+    await fs.writeFile(path.join(output, 'results.json'), encode({ passed: passed && cleanupPassed, bodyPassed: passed, cleanupPassed, cleanupFailure, stage, checks, errors }));
+  } catch (error) {
+    console.error('Browser CI result artifact write failed');
+    if (!bodyFailed && !cleanupError) throw error;
+  }
+  if (cleanupError) {
+    console.error(`Browser CI cleanup failed; fixture retained at ${sandbox}; ${JSON.stringify(cleanupFailure)}`);
+    if (!bodyFailed) throw cleanupError;
   }
 }

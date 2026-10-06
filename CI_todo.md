@@ -1,5 +1,41 @@
 # CI TODO
 
+## BROWSER-CLEANUP-13: bounded fixture removal and complete-entry results (2026-10-07)
+
+- [x] Preserve independent `7cbe870` Node 22 Browser failure: all 55 body
+  checks passed with no page errors, but cleanup `rmdir` returned `EBUSY` at
+  synthetic `cg-browser-ci-zgJ9Gs/project`, making the official entry exit 1.
+  Journal recovery and full CD did not run; the file-lock owner is unknown.
+  Log `temp/tester-7cbe-browser-node22-20261007.log` SHA-256:
+  `621ebb8ebf590ab2e0d632150350bf6272030f3287bfe32dcebd3106078b775a`.
+  Its artifact's earlier `passed:true` only described body assertions and
+  must not be treated as complete-entry success.
+- [x] Validate the existing sandbox realpath/temporary-parent/prefix guard,
+  unchanged browser/backend/proxy close order, and removal with the existing
+  fixture policy `maxRetries:3, retryDelay:100`. Exhaustion still throws and
+  retains remaining evidence; no process kill or new watcher wait is added.
+- [x] Verify results written after cleanup distinguish `bodyPassed` from
+  `cleanupPassed`, with overall `passed` true only when both pass. Cleanup
+  diagnostics contain only bounded code/name/syscall values; a secondary
+  cleanup failure cannot replace an original body exception.
+- [x] Remote CI `37521747105` passed all 13 checks including Required for
+  `7cbe870`; this does not erase the separate local cleanup failure.
+- [x] One approved official `npm run test:browser` on Node 24.19.0 exited 0
+  (103.506 seconds): 55 checks/errors 0 plus Journal recovery passed. Final
+  artifact reports `bodyPassed:true`, `cleanupPassed:true`, `passed:true`,
+  `cleanupFailure:null`; exact sandbox `cg-browser-ci-KOPU6b` no longer exists.
+  Browser SHA-256:
+  `706f237d93c89a4e126268d07c770971906ffae38fa937b7645fc6cc2f6a712a`.
+  Log `temp/browser-cleanup-final-node24-20261007.log` SHA-256:
+  `2da686bba5fe25041d6147bc0dda76fd5fee241bf45b26e93da1d93a5f898ba4`.
+  Official artifact:
+  `output/playwright/browser-ci/1791317139549-29079a7b-d834-4231-b984-3def67f3afde`.
+  Light governance and diff checks passed. This successful run does not prove
+  whether removal retries were triggered or identify the original lock owner.
+- [ ] Independent acceptance, remote Required and delivery on the cleanup
+  revision. All earlier failures and the separately undefined legacy-copy
+  preservation risk remain open.
+
 ## BROWSER-CLICK-FRAME-12: independent current-click measurement (2026-10-07)
 
 - [x] Preserve remote CI `37516211542` Browser/Required failure at static preview:
