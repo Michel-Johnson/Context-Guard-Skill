@@ -144,6 +144,12 @@ export async function health(state) {
   return result?.ok ? result.value : null;
 }
 export { loopbackJSON };
+export function canRetryWorkbenchListen(error, port, attempt, platform = process.platform) {
+  if (port === 0 || attempt >= 20) return false;
+  return error?.code === 'EADDRINUSE' || platform === 'win32' && error?.code === 'EACCES'
+    && error.syscall === 'listen' && error.address === '127.0.0.1' && error.port === port + attempt;
+}
+
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage, repositoryLookup = lookupRepository } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   const directory = await defaultDirectoryAvailability();
@@ -1134,7 +1140,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     server.requestTimeout = 10000; server.headersTimeout = 10000;
     for (let attempt = 0; ; attempt++) {
       try { await new Promise((resolve, reject) => { const onError = e => reject(e); server.once('error', onError); server.listen(port === 0 ? 0 : port + attempt, '127.0.0.1', () => { server.off('error', onError); resolve(); }); }); break; }
-      catch (e) { if (e.code !== 'EADDRINUSE' || attempt >= 20 || port === 0) throw e; }
+      catch (e) { if (!canRetryWorkbenchListen(e, port, attempt)) throw e; }
     }
     base = `http://127.0.0.1:${server.address().port}`;
     const state = { ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, sharedDir: project.sharedDir, pid: process.pid, instance, url: base + '/prototype/workbench.html', adminToken };

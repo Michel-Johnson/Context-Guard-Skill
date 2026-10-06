@@ -1,5 +1,40 @@
 # CI TODO
 
+## WORKBENCH-LISTEN-01: Windows port-denial recovery and CLI fixture lifecycle (2026-10-06)
+
+- [x] Preserve exact `a0a6e4d` local CD failure: the unchanged 900-second suite
+  completed in 874 seconds with 418 tests, 417 passes, one failure and no skips.
+  Auto-binding Map read failed, without a printed CLI domain error. The first
+  targeted diagnostic passed 1/1; the related three-case diagnostic then failed
+  2/3 with `START_FAILED` and a real synthetic backend `listen EACCES` on a
+  loopback port. Its fixture/log are retained without a copy/backup. Read-only
+  inspection found that port bound by another application; nothing was stopped
+  or reconfigured. This does not identify the owner at the earlier full-CD failure.
+- [x] Executor source fix retries that listen-only denial on Windows only when
+  syscall, loopback address and attempted port match. The existing twenty-next-
+  port limit and twelve-second startup budget remain unchanged. Non-Windows,
+  automatic port zero, unrelated file/auth errors and exhausted attempts fail
+  closed; existing `EADDRINUSE` handling remains. No generic permission retry,
+  elevation, global network or generated shared-source change.
+- [x] The two CLI-started fixtures now await official backend shutdown before
+  successful root cleanup; failure keeps only that fixture. Original automatic
+  binding, ID, Map assertions and safe failure diagnostics remain. Formal
+  classifier boundaries and an owned HTTPServer listen injection were added to
+  the existing approved test file. Injection tests are not evidence of a real
+  OS denial; the diagnostic above is the separate observed-denial evidence.
+- [x] One concentrated regression each on Node 18.20.8, 22.18.0 and 24.19.0
+  passed the nine selected cases with exit 0; Node 18 separately reports 88
+  name-filter exclusions. Existing HTTP/Session-binding status and managed /
+  unmanaged pending-queue regressions are included. Logs:
+  `temp/windows-listen-recovery-node{18,22,24}-20261006.log`;
+  failed diagnostic `temp/auto-bind-related-diagnostic-node22-20261006.log`.
+  Governance, hidden-process and diff checks passed.
+- [ ] Independent Tester, exact-head Required and a new complete CD acceptance
+  remain pending. Original Windows CD / Claude failures stay recorded below.
+- [ ] MAP-AUTO-BIND-PORT-01: Map read's recursive first-binding workbench call
+  does not forward an explicitly selected port; this separate issue is not
+  changed or claimed fixed by the default-listen recovery.
+
 ## BINDING-RECOVERY-01: definitive rejection and bounded connection recovery (2026-10-06)
 
 - [x] Executor: confirmed `session.bind` rejection is read from its durable
