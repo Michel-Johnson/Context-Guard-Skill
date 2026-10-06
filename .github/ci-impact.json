@@ -161,6 +161,7 @@
     {
       "id": "test-helpers",
       "patterns": [
+        "tests/hook-test-helpers.mjs",
         "tests/ci-smoke.mjs",
         "tests/crash-worker.mjs",
         "tests/win-file-lock.py"

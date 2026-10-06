@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
 import { encode } from '../scripts/shared/io.mjs';
@@ -152,14 +152,42 @@ test('attachment upload is idempotent, collision-safe, and restricted to the hum
 
 test('attachment downloads require a current map reference and reject path traversal', async t => {
   const root = await fixture();
-  const server = await startServer({ root, port: 0 });
-  t.after(async () => { await server.close(); await fs.rm(root, { recursive: true, force: true }); });
+  let server, passed = false, downloads = 0;
+  t.after(async () => {
+    let cleaned = false;
+    try {
+      await server?.close();
+      if (passed) { await fs.rm(root, { recursive: true, force: true }); cleaned = true; }
+    } finally {
+      if (!cleaned) t.diagnostic(JSON.stringify({ phase: 'attachment-fixture-retained', fixture: root, functionalPassed: passed }));
+    }
+  });
+  // Direct browser-compatible fetch needs a candidate above restricted low ports.
+  const port = randomInt(49152, 65515);
+  assert.ok(port >= 49152 && port <= 65514, 'one browser-compatible candidate leaves room for the bounded fallback');
+  server = await startServer({ root, port });
   const uploadInput = { uploadId: randomUUID(), nodeId: 'N1', name: 'note.txt', base64: Buffer.from('saved attachment').toString('base64') };
   const saved = await request(server.state, '/api/attachments', { token: server.humanToken, method: 'POST', body: uploadInput });
 
-  const download = relative => fetch(new URL(`/api/attachments?path=${encodeURIComponent(relative)}`, server.state.url), {
-    headers: { Authorization: `Bearer ${server.humanToken}` },
-  });
+  const download = async relative => {
+    downloads++;
+    try {
+      return await fetch(new URL(`/api/attachments?path=${encodeURIComponent(relative)}`, server.state.url), {
+        headers: { Authorization: `Bearer ${server.humanToken}` },
+      });
+    } catch (error) {
+      const names = new Set(['Error', 'TypeError', 'AbortError', 'TimeoutError']);
+      const codes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EACCES', 'EADDRINUSE', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT']);
+      t.diagnostic(JSON.stringify({ phase: ['unreferenced-download', 'referenced-download', 'traversal-download'][downloads - 1] || 'other-download',
+        ordinal: downloads, port: Number(new URL(server.state.url).port), listening: server.server.listening,
+        errorName: names.has(error.name) ? error.name : 'unclassified',
+        causeName: names.has(error.cause?.name) ? error.cause.name : 'unclassified',
+        causeCode: codes.has(error.cause?.code) ? error.cause.code : 'unclassified',
+        badPort: error.cause?.message === 'bad port', connectionReset: error.cause?.code === 'ECONNRESET',
+        socketError: error.cause?.code === 'UND_ERR_SOCKET', connectTimeout: error.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' }));
+      throw error;
+    }
+  };
   assert.equal((await download(saved.path)).status, 404);
   await request(server.state, '/api/commit', {
     token: server.humanToken,
@@ -174,4 +202,5 @@ test('attachment downloads require a current map reference and reject path trave
   assert.equal(response.status, 200);
   assert.equal(await response.text(), 'saved attachment');
   assert.equal((await download('../package.json')).status, 403);
+  passed = true;
 });

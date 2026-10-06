@@ -15,6 +15,7 @@ import { memoryRequest, sessionMemoryDir, memoryConfigPath } from './memory.mjs'
 import { MemorySyncCoordinator } from './sync-coordinator.mjs';
 import { inspectRetiredSync } from './sync.mjs';
 import { runtimeIdentity } from './runtime.mjs';
+import { canRetryWorkbenchListen } from './listen.mjs';
 import { Attachments } from './attachments.mjs';
 import { ProtocolStore } from '../shared/protocol-store.mjs';
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
@@ -144,6 +145,8 @@ export async function health(state) {
   return result?.ok ? result.value : null;
 }
 export { loopbackJSON };
+export { canRetryWorkbenchListen };
+
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage, repositoryLookup = lookupRepository } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   const directory = await defaultDirectoryAvailability();
@@ -476,6 +479,14 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       const connection = await projectDevice();
       const coordinator = new MemorySyncCoordinator({ project: sessionProject, sessionId, store: target, directory: syncDirectory,
         managed: !!connection && await connection.supports('private-map-heads'),
+        request: async (...args) => {
+          if (connection && await connection.connected()) {
+            const binding = await protocolStore.registeredBinding(backendPrincipal, sessionId);
+            const status = await connection.bindingStatus(binding);
+            if (status.status === 'conflict') throw new MapError('CONFLICT', 'Session binding requires a new host Session', 409, { reason: status.reason });
+          }
+          return memoryRequest(...args);
+        },
         display: async () => {
           const identity = (await access.sessionRegistry()).find(item => item.id === sessionId);
           return identity?.name ? { name: identity.name, platform: identity.platform } : null;
@@ -555,6 +566,13 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     return refreshing;
   }
   async function cloudSyncStatus(viewId = 'main') {
+    if (viewId.startsWith('session:')) {
+      const connection = await projectDevice();
+      if (connection && await connection.connected()) {
+        const status = await connection.bindingStatus(await protocolStore.registeredBinding(backendPrincipal, viewId.slice(8)));
+        if (status.status === 'conflict') return { ...(syncCoordinators.get(viewId)?.snapshot() || {}), configured: true, status: 'conflict', error: status.code, reason: status.reason };
+      }
+    }
     if (syncCoordinators.has(viewId)) return syncCoordinators.get(viewId).snapshot();
     return { configured: false, status: 'disabled', cursor: 0, receivedCursor: 0, conflict: null, serviceAlive: false };
   }
@@ -593,7 +611,17 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         else await connection.bind(bindMessage, protocolBinding);
         cloudBinding = { status: 'ready' };
       }
-      catch (error) { cloudBinding = { status: 'pending', code: error.code || 'UNAVAILABLE' }; }
+      catch (error) {
+        const status = await connection.bindingStatus({ sessionId: prepared.sessionId, version: protocolBinding.bindingVersion });
+        cloudBinding = status.status === 'conflict' ? status : { status: 'pending', code: error.code || 'UNAVAILABLE' };
+        if (cloudBinding.status === 'conflict') {
+          const directory = path.join(sessionMemoryDir(prepared.sessionProject, prepared.sessionId), 'remote-sync');
+          const stateFile = path.join(directory, 'state.json');
+          await atomicWrite(stateFile, encode({ ...await readJSON(stateFile, {}), configured: true,
+            status: 'conflict', error: 'CONFLICT', reason: cloudBinding.reason,
+            pending: await readJSON(path.join(directory, 'outbox.json'), null) ? 1 : 0 }));
+        }
+      }
     }
     const lazyCloudMap = connection && await connection.supports('private-map-heads');
     const sessionFiles = project.kind === 'git' && !lazyCloudMap && !stores.has(`session:${prepared.sessionId}`) ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
@@ -965,8 +993,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         if (route.startsWith('/api/')) {
           const actor = auth(req, url);
           const viewId = viewFor(actor, url);
-          const activeStore = await storeFor(viewId);
           if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus(viewId)); }
+          const activeStore = await storeFor(viewId);
           if (route === '/api/events' && req.method === 'GET') {
             isHuman(actor); const id = url.searchParams.get('clientId');
             if (!id || id.length > 100) throw new MapError('INVALID_CLIENT', 'Invalid clientId');
@@ -1108,8 +1136,17 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     });
     server.requestTimeout = 10000; server.headersTimeout = 10000;
     for (let attempt = 0; ; attempt++) {
-      try { await new Promise((resolve, reject) => { const onError = e => reject(e); server.once('error', onError); server.listen(port === 0 ? 0 : port + attempt, '127.0.0.1', () => { server.off('error', onError); resolve(); }); }); break; }
-      catch (e) { if (e.code !== 'EADDRINUSE' || attempt >= 20 || port === 0) throw e; }
+      try {
+        await new Promise((resolve, reject) => {
+          const onListening = () => { server.off('error', onError); resolve(); };
+          const onError = error => { server.off('error', onError); server.off('listening', onListening); reject(error); };
+          server.once('error', onError);
+          try { server.listen(port === 0 ? 0 : port + attempt, '127.0.0.1', onListening); }
+          catch (error) { onError(error); }
+        });
+        break;
+      }
+      catch (e) { if (!canRetryWorkbenchListen(e, port, attempt)) throw e; }
     }
     base = `http://127.0.0.1:${server.address().port}`;
     const state = { ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, sharedDir: project.sharedDir, pid: process.pid, instance, url: base + '/prototype/workbench.html', adminToken };

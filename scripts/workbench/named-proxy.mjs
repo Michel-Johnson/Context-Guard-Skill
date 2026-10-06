@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { atomicWrite, encode, readJSON } from '../shared/io.mjs';
 import { RouteStore } from './portless-routes.mjs';
 import { compatibleRuntime } from './runtime.mjs';
+import { canRetryWorkbenchListen } from './listen.mjs';
 import { DeviceHeartbeat } from './device-heartbeat.mjs';
 
 const secret = () => randomBytes(32).toString('base64url');
@@ -81,8 +82,16 @@ export async function startNamedProxy({ dir, port = 1355 } = {}) {
   server.on('upgrade', (_req, socket) => socket.destroy()); // Workbench uses SSE, not WebSockets.
   server.requestTimeout = 15000; server.headersTimeout = 10000;
   for (let attempt = 0; ; attempt++) {
-    try { await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port ? port + attempt : 0, '127.0.0.1', () => { server.removeListener('error', reject); resolve(); }); }); break; }
-    catch (e) { server.removeAllListeners('error'); if (e.code !== 'EADDRINUSE' || !port || attempt >= 20) throw e; }
+    try {
+      await new Promise((resolve, reject) => {
+        const onListening = () => { server.off('error', onError); resolve(); };
+        const onError = error => { server.off('error', onError); server.off('listening', onListening); reject(error); };
+        server.once('error', onError);
+        try { server.listen(port ? port + attempt : 0, '127.0.0.1', onListening); }
+        catch (error) { onError(error); }
+      });
+      break;
+    } catch (error) { if (!canRetryWorkbenchListen(error, port, attempt)) throw error; }
   }
   base = `http://127.0.0.1:${server.address().port}`;
   const state = { version: 1, runtimeSchema: PROXY_RUNTIME_SCHEMA, instance, pid: process.pid, base, adminToken };

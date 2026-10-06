@@ -89,14 +89,31 @@ async function physicalGitDirectories(root) {
   return { topLevel, commonDir };
 }
 
+async function commitIds(root, mainRef) {
+  if (!mainRef) return [await git(root, ['rev-parse', 'HEAD'], { optional: true }), ''];
+  try {
+    const output = await git(root, ['rev-parse', '--revs-only', '--end-of-options', 'HEAD', `${mainRef}^{commit}`]);
+    const records = output.split(/\r?\n/);
+    if (records.length === 2 && records.every(value => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value))
+      && records[0].length === records[1].length) return records;
+  } catch (error) {
+    if (!optionalGitMiss(error)) throw error;
+  }
+  // Missing refs, older options and ambiguous output retain the independent
+  // fresh reads; process/system failures must not silently enter this fallback.
+  return Promise.all([
+    git(root, ['rev-parse', 'HEAD'], { optional: true }),
+    git(root, ['rev-parse', '--verify', '--quiet', `${mainRef}^{commit}`], { optional: true }),
+  ]);
+}
+
 async function worktreeMetadata(root, main = null, physicalGitDir) {
   const mainBranch = main?.branch || '';
   const mainRef = main?.ref || '';
-  const [head, currentBranch, rawGitDir, mainSha] = await Promise.all([
-    git(root, ['rev-parse', 'HEAD'], { optional: true }),
+  const [[head, mainSha], currentBranch, rawGitDir] = await Promise.all([
+    commitIds(root, mainRef),
     git(root, ['branch', '--show-current'], { optional: true }),
     physicalGitDir === undefined ? git(root, ['rev-parse', '--path-format=absolute', '--git-dir'], { optional: true }) : physicalGitDir,
-    mainRef ? git(root, ['rev-parse', '--verify', '--quiet', `${mainRef}^{commit}`], { optional: true }) : '',
   ]);
   const gitDir = rawGitDir ? await fs.realpath(rawGitDir).catch(() => path.resolve(root, rawGitDir)) : '';
   return { branch: currentBranch, head, gitDir, mainBranch, mainRef, mainSha };

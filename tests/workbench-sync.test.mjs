@@ -4,14 +4,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, updateBugWithRecovery } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { definitiveMemoryRejection } from '../scripts/workbench/memory.mjs';
-import { prepareSessionCommit, startServer } from '../scripts/workbench/server.mjs';
+import { canRetryWorkbenchListen, prepareSessionCommit, startServer } from '../scripts/workbench/server.mjs';
+import { canRetryWorkbenchListen as sharedListenGuard } from '../scripts/workbench/listen.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
@@ -20,6 +21,7 @@ import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/r
 import { WorkbenchSync, reconcileRecoveryDraft, workbenchTimeoutMs } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
+const retainedFixtures = new Set();
 
 // Exercise the actual classic-script status functions without starting a browser.
 // Function boundaries are checked explicitly; a missing function is a test failure.
@@ -208,6 +210,29 @@ test('only definitive memory rejections may release a retry identity', () => {
   assert.equal(definitiveMemoryRejection({ status: 400, code: 'INVALID_ARGUMENT' }), true);
   assert.equal(definitiveMemoryRejection({ status: 503, code: 'MEMORY_UNAVAILABLE' }), false);
   assert.equal(definitiveMemoryRejection(new Error('network')), false);
+});
+
+for (const managed of [false, true]) test(`binding conflict terminates synchronization without deleting the pending write${managed ? ' (managed)' : ''}`, async t => {
+  const f = await fixture(), store = await new MapStore(f.root).init();
+  let calls = 0;
+  const coordinator = new MemorySyncCoordinator({ project: {}, sessionId: agent.sessionId, store, directory: f.root, managed,
+    request: async () => { calls++; throw Object.assign(new Error('New host Session required'), { code: 'CONFLICT', status: 409, details: { reason: 'session-bound-elsewhere' } }); } });
+  t.after(async () => { await coordinator.close(); await store.close(); });
+  const pending = { operationId: 'preserve-original-map-write', baseVersion: 'old-map-version', operations: [{ type: 'update', id: 'N1', fields: { title: 'unsent draft' } }] };
+  await atomicWrite(coordinator.outboxFile, encode(pending));
+  coordinator.configuration = { url: 'https://cloud.example.invalid' };
+  await coordinator.run();
+  assert.equal(calls, 1);
+  assert.equal(coordinator.status.status, 'conflict');
+  assert.equal(coordinator.status.reason, 'session-bound-elsewhere');
+  assert.equal(coordinator.status.pending, 1);
+  assert.equal(coordinator.retryTimer, undefined);
+  await coordinator.queueLocal(); await coordinator.flush();
+  await coordinator.projectHeartbeat({ mapVersion: 'cloud-version', mapCursor: 1 });
+  assert.equal(calls, 1, 'a terminal binding rejection is not another connection attempt');
+  assert.deepEqual(await readJSON(coordinator.outboxFile), pending);
+  assert.equal((await readJSON(coordinator.stateFile)).reason, 'session-bound-elsewhere');
+  assert.deepEqual(store.doc, f.doc, 'the local draft remains intact');
 });
 
 test('human cleanup removes attached and unassigned Bugs without changing other memory', () => {
@@ -454,6 +479,7 @@ test('failed Session switch restores canvas, version and identity together', asy
 after(async () => {
   const temporary = await fs.realpath(os.tmpdir());
   for (const root of fixtureRoots) {
+    if (retainedFixtures.has(root)) continue;
     const resolved = await fs.realpath(root);
     assert.equal(path.dirname(resolved), temporary);
     assert.ok(path.basename(resolved).startsWith('cg-sync-'));
@@ -759,8 +785,14 @@ test('host-attested Codex thread can register without a lifecycle hook', async (
   assert.equal(host.source, 'host-environment');
 });
 
-test('workbench and map read accept a host-attested Codex exec thread without a prior hook', async () => {
+test('workbench and map read accept a host-attested Codex exec thread without a prior hook', async t => {
   const f = await fixture();
+  let passed = false;
+  retainedFixtures.add(f.root);
+  t.after(async () => {
+    const result = await stopServer(f.root);
+    if (passed) { assert.equal(result.stopped, true, 'the CLI-owned backend acknowledges shutdown'); retainedFixtures.delete(f.root); }
+  });
   const env = {
     ...process.env,
     CODEX_THREAD_ID: '01a07d62-exec-cli',
@@ -798,10 +830,18 @@ test('workbench and map read accept a host-attested Codex exec thread without a 
   const read = JSON.parse(cli(['map', 'read', '--root', f.root, '--session', '01a07d62-exec-cli', '--node', 'N1']));
   assert.equal(read.node.id, 'N1');
   assert.match(await fs.readFile(path.join(f.ctx, 'sessions.jsonl'), 'utf8'), /host-environment/);
+  passed = true;
 });
 
-test('map read with CODEX_THREAD_ID binds without Cloud connect or a prior hook', async () => {
+test('map read with CODEX_THREAD_ID binds without Cloud connect or a prior hook', async t => {
   const f = await fixture();
+  let passed = false;
+  retainedFixtures.add(f.root);
+  t.after(async () => {
+    const result = await stopServer(f.root);
+    if (passed) { assert.equal(result.stopped, true, 'the CLI-owned backend acknowledges shutdown'); retainedFixtures.delete(f.root); }
+  });
+  try {
   const read = JSON.parse(execFileSync(process.execPath, [
     'scripts/workbench/cli.mjs', 'map', 'read', '--root', f.root, '--session', 'exec-auto-bind', '--node', 'N1',
   ], {
@@ -817,6 +857,105 @@ test('map read with CODEX_THREAD_ID binds without Cloud connect or a prior hook'
   }));
   assert.equal(read.node.id, 'N1');
   assert.equal(read.error, null);
+  passed = true;
+  } catch (error) {
+    retainedFixtures.add(f.root);
+    const domainCodes = new Set(['START_FAILED', 'FORBIDDEN', 'UNKNOWN_SESSION', 'SESSION_BINDING_REQUIRED', 'SESSION_REQUIRED',
+      'BINDING_REQUIRED', 'WORKBENCH_UNAVAILABLE', 'WORKBENCH_IDENTITY_MISMATCH', 'PROJECT_MISMATCH', 'UPGRADE_PENDING',
+      'LEGACY_SERVICE', 'DUPLICATE_SERVICE', 'HTTP_ERROR', 'INVALID_MAP', 'JOURNAL_CORRUPT']);
+    const summarize = output => {
+      let json = false; const codes = new Set();
+      for (const line of String(output || '').split(/\r?\n/)) {
+        try { const value = JSON.parse(line); json = true; if (domainCodes.has(value?.error?.code)) codes.add(value.error.code); } catch {}
+      }
+      return { json, codes: [...codes] };
+    };
+    const log = await fs.readFile(path.join(f.ctx, 'private/node-workbench.log'), 'utf8').catch(() => '');
+    const systemCodes = ['EADDRINUSE', 'EACCES', 'EPERM', 'ENOENT', 'ENAMETOOLONG', 'EPIPE', 'ECONNRESET', 'ETIMEDOUT'];
+    t.diagnostic(JSON.stringify({ phase: 'host-attested-auto-bind', node: process.version,
+      status: Number.isInteger(error.status) ? error.status : null,
+      signal: ['SIGTERM', 'SIGKILL', 'SIGINT'].includes(error.signal) ? error.signal : null,
+      stdout: summarize(error.stdout), stderr: summarize(error.stderr),
+      backendCodes: systemCodes.filter(code => new RegExp(`\\b${code}\\b`).test(log)), fixtureRetained: true }));
+    throw error;
+  }
+});
+
+test('workbench listen retries only Windows loopback port denials within the original range', () => {
+  assert.equal(canRetryWorkbenchListen, sharedListenGuard, 'the existing server export uses the shared guard');
+  const port = 8881, denied = { code: 'EACCES', syscall: 'listen', address: '127.0.0.1', port };
+  assert.equal(canRetryWorkbenchListen(denied, port, 0, 'win32'), true);
+  for (const platform of ['linux', 'darwin']) assert.equal(canRetryWorkbenchListen(denied, port, 0, platform), false);
+  for (const error of [{ ...denied, syscall: 'open' }, { ...denied, syscall: 'authorize' },
+    { ...denied, address: '0.0.0.0' }, { ...denied, port: port + 1 }, { ...denied, port: String(port) },
+    { ...denied, code: 'EPERM' }, { code: 'EACCES' }]) assert.equal(canRetryWorkbenchListen(error, port, 0, 'win32'), false);
+  assert.equal(canRetryWorkbenchListen({ ...denied, port: port + 19 }, port, 19, 'win32'), true);
+  assert.equal(canRetryWorkbenchListen({ ...denied, port: port + 20 }, port, 20, 'win32'), false);
+  assert.equal(canRetryWorkbenchListen({ ...denied, port: 0 }, 0, 0, 'win32'), false);
+  for (const platform of ['win32', 'linux', 'darwin']) {
+    assert.equal(canRetryWorkbenchListen({ code: 'EADDRINUSE' }, port, 0, platform), true);
+    assert.equal(canRetryWorkbenchListen({ code: 'EADDRINUSE' }, 0, 0, platform), false);
+    assert.equal(canRetryWorkbenchListen({ code: 'EADDRINUSE' }, port, 20, platform), false);
+  }
+});
+
+test('owned HTTP listen denial uses the next loopback port on Windows and fails closed elsewhere', async t => {
+  const f = await fixture();
+  // The actual owned backend, not a separate port-zero probe, checks availability.
+  const port = randomInt(49152, 65515);
+  assert.ok(port >= 49152 && port <= 65514, 'the high fixture candidate has room for the bounded range');
+  const create = http.createServer, attempts = [], listenerCounts = [], warnings = [];
+  let running, owned, listenMock, factoryMock, listeningBaseline, sentinelCalls = 0;
+  const sentinel = () => { sentinelCalls++; };
+  const onWarning = warning => { if (warning.name === 'MaxListenersExceededWarning' && warning.emitter === owned) warnings.push(warning.type); };
+  process.on('warning', onWarning);
+  factoryMock = t.mock.method(http, 'createServer', (...args) => {
+    // Restore the factory immediately; only this returned server is injected.
+    factoryMock.mock.restore();
+    owned = create(...args);
+    owned.on('listening', sentinel);
+    listeningBaseline = owned.listenerCount('listening');
+    const listen = owned.listen;
+    listenMock = t.mock.method(owned, 'listen', function (...input) {
+      attempts.push({ port: input[0], address: input[1] });
+      listenerCounts.push(owned.listenerCount('listening'));
+      if (attempts.length <= 11) {
+        // Node's real listen registers this callback before an async failure.
+        owned.once('listening', input[2]);
+        process.nextTick(() => owned.emit('error', Object.assign(new Error('Synthetic listen denial'), {
+          code: 'EACCES', syscall: 'listen', address: '127.0.0.1', port: input[0],
+        })));
+        return owned;
+      }
+      return listen.apply(this, input);
+    });
+    return owned;
+  });
+  try {
+    if (process.platform === 'win32') {
+      running = await startServer({ root: f.root, port });
+      assert.equal(running.server, owned);
+      assert.ok(owned.listening);
+      assert.ok(attempts.length >= 12 && attempts.length <= 21);
+      assert.deepEqual(attempts, attempts.map((_value, index) => ({ port: port + index, address: '127.0.0.1' })));
+      assert.equal(Number(new URL(running.state.url).port), attempts.at(-1).port);
+      const response = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).doc.root.id, 'T0');
+      assert.equal(sentinelCalls, 1, 'the unrelated persistent listening listener is retained');
+    } else {
+      await assert.rejects(startServer({ root: f.root, port }), { code: 'EACCES', syscall: 'listen', address: '127.0.0.1', port });
+      assert.deepEqual(attempts, [{ port, address: '127.0.0.1' }]);
+    }
+    assert.deepEqual(listenerCounts, attempts.map(() => listeningBaseline), 'failed attempts preserve exactly the native and unrelated listener baseline');
+    assert.equal(owned.listenerCount('listening'), listeningBaseline);
+    assert.equal(owned.listenerCount('error'), 0);
+    assert.deepEqual(warnings, []);
+  } finally {
+    process.off('warning', onWarning);
+    listenMock?.mock.restore(); factoryMock.mock.restore();
+    await running?.close();
+  }
 });
 
 test('rollout lifecycle parser maps work to spinner state and completion to check state', () => {

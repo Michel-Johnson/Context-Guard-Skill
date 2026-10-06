@@ -21,6 +21,7 @@ export const installedFiles = [
   "licenses/Marked-MIT.txt",
   "scripts/workbench/named.mjs",
   "scripts/workbench/named-proxy.mjs",
+  "scripts/workbench/listen.mjs",
   "scripts/workbench/portless-routes.mjs",
   "scripts/shared/map-model.mjs",
   "prototype/workbench-app.js",

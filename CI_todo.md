@@ -1,5 +1,535 @@
 # CI TODO
 
+## BROWSER-CLEANUP-13: bounded fixture removal and complete-entry results (2026-10-07)
+
+- [x] Preserve independent `7cbe870` Node 22 Browser failure: all 55 body
+  checks passed with no page errors, but cleanup `rmdir` returned `EBUSY` at
+  synthetic `cg-browser-ci-zgJ9Gs/project`, making the official entry exit 1.
+  Journal recovery and full CD did not run; the file-lock owner is unknown.
+  Log `temp/tester-7cbe-browser-node22-20261007.log` SHA-256:
+  `621ebb8ebf590ab2e0d632150350bf6272030f3287bfe32dcebd3106078b775a`.
+  Its artifact's earlier `passed:true` only described body assertions and
+  must not be treated as complete-entry success.
+- [x] Validate the existing sandbox realpath/temporary-parent/prefix guard,
+  unchanged browser/backend/proxy close order, and removal with the existing
+  fixture policy `maxRetries:3, retryDelay:100`. Exhaustion still throws and
+  retains remaining evidence; no process kill or new watcher wait is added.
+- [x] Verify results written after cleanup distinguish `bodyPassed` from
+  `cleanupPassed`, with overall `passed` true only when both pass. Cleanup
+  diagnostics contain only bounded code/name/syscall values; a secondary
+  cleanup failure cannot replace an original body exception.
+- [x] Remote CI `37521747105` passed all 13 checks including Required for
+  `7cbe870`; this does not erase the separate local cleanup failure.
+- [x] One approved official `npm run test:browser` on Node 24.19.0 exited 0
+  (103.506 seconds): 55 checks/errors 0 plus Journal recovery passed. Final
+  artifact reports `bodyPassed:true`, `cleanupPassed:true`, `passed:true`,
+  `cleanupFailure:null`; exact sandbox `cg-browser-ci-KOPU6b` no longer exists.
+  Browser SHA-256:
+  `706f237d93c89a4e126268d07c770971906ffae38fa937b7645fc6cc2f6a712a`.
+  Log `temp/browser-cleanup-final-node24-20261007.log` SHA-256:
+  `2da686bba5fe25041d6147bc0dda76fd5fee241bf45b26e93da1d93a5f898ba4`.
+  Official artifact:
+  `output/playwright/browser-ci/1791317139549-29079a7b-d834-4231-b984-3def67f3afde`.
+  Light governance and diff checks passed. This successful run does not prove
+  whether removal retries were triggered or identify the original lock owner.
+- [ ] Independent acceptance, remote Required and delivery on the cleanup
+  revision. All earlier failures and the separately undefined legacy-copy
+  preservation risk remain open.
+
+## BROWSER-CLICK-FRAME-12: independent current-click measurement (2026-10-07)
+
+- [x] Preserve remote CI `37516211542` Browser/Required failure at static preview:
+  the earlier M1 measurement had zero dimensions and empty computed color,
+  whereas the transition-start anchor was nonzero. The screenshot captured the
+  live page, not this preview; the specific rerender callback remains unknown.
+  Canonical and generated UI bytes match, and no UI business code is changed.
+- [x] Verify the existing fixture's independent native click-capture baseline
+  before the application handler, using connected/current M1 and T0 nodes,
+  finite positive frames and nonempty color. All original position/root
+  tolerances, color, opacity and continuous-motion assertions remain unchanged;
+  no forced/synthetic click, sleeps, retries or budget changes are added.
+- [x] Preserve the first local official Browser failure: exit 1 after three
+  checks at `bidirectional-sync`, waiting for the current status text to include
+  an old-cache warning; static preview and the second journal Browser entry had
+  not run. Fixture `cg-browser-ci-MbwxMm` and official report
+  `output/playwright/browser-ci/1791314899279-3f3fd8e7-95e6-4165-87f7-5e91a07dc1d0`
+  remain retained. This is not attributed to the unexecuted click change,
+  Git commit batching or registry writes.
+- [x] Observe the same warning intent in the actual initialization/reload
+  phase, with only a fixed DOM-observed boolean and immediate disconnect.
+  Later SSE state updates can legitimately replace a synced status message;
+  an external file update does not reload recovery or promise to emit it again.
+  Keep the original real backend-title protection and strengthen the current
+  UI/backend authoritative-title check, without sleeps, retries or larger waits.
+- [ ] Separately define and verify preservation of the original legacy browser
+  copy: canonical `persist()` and recovery export use the same old storage key,
+  which presents a source-visible overwrite risk. No permanent original-copy
+  guarantee is claimed or silently replaced with a pending-draft assertion;
+  any product fix belongs in canonical Cloud UI, not generated Skill files.
+- [x] One approved official `npm run test:browser` run on Node 24.19.0 exited 0:
+  55 Browser checks with no page errors, including the original animation
+  geometry/color/opacity/continuity assertions, plus the Journal recovery entry.
+  Browser source SHA-256:
+  `3c256662b724e4f8c212e58ecadaab4819b729407c7085fafe8827f1744ee17d`.
+  Log `temp/browser-click-frame-phase-node24-20261007.log` SHA-256:
+  `be706dfafc3678a944e5d595842e4f68f3c47910b1e3c0157143c3a4e66af4d8`.
+  Official artifact:
+  `output/playwright/browser-ci/1791315778012-49054d7e-a0d2-47ed-94db-102342eba5a5`.
+  Light governance and diff checks passed; no retry, full-suite rerun,
+  installation or production action was performed.
+- [ ] Independent acceptance, remote Required and delivery on the new source.
+  The prior `46685ed` complete CD actually passed 434 Node tests plus
+  package/baseline/install/upgrade stages; that success belongs to its unchanged
+  input, not this later fixture revision.
+
+## REGISTRY-NOOP-11: fresh locked registration without redundant disk commits (2026-10-07)
+
+- [x] Verify deep complete-record equality excluding only `updatedAt`, after
+  the unchanged lock/fresh read/normalization/collision/root-union checks.
+  An unchanged record must retain its bytes, mtime and timestamp with zero
+  `projects.json` commits; lock acquisition/release still performs I/O.
+- [x] Verify effective root/name/origin/Main/runtime/instance changes each
+  commit once, arbitrary previous fields remain differences, property order
+  does not create writes, and concurrent same/different-project registrations
+  retain all roots/records. Corrupt JSON/duplicate identities/invalid origins
+  and name collisions must still fail without overwriting data.
+- [x] Frozen no-op plus two original inventory targets passed 3/3, actual exit 0,
+  on Node 18.20.8 / 22.18.0 / 24.19.0 (14158.0269 / 12238.28 / 13485.8767 ms).
+  Node 18 reported 35 name exclusions; Node 22/24 used the same filter without
+  showing exclusions in their summaries, not complete Named modules. Actual
+  target rename assertions prove initial commit 1 / unchanged commits 0 /
+  effective change 1, and no-op bytes/mtime/timestamp preservation. Concurrent
+  same/different-project commits each total 2 without lost roots/records;
+  normalization and collision failures commit 0. Logs:
+  `temp/registry-noop-node*-20261007.log`.
+- [ ] Independent performance/functional acceptance. This removes a source-
+  proven redundant write, not health/authentication checks or cross-operation
+  identity freshness; the original full-CD timeout remains unresolved until
+  a complete acceptance run actually succeeds.
+
+## PROJECT-COMMIT-READ-10: fresh HEAD/Main read consolidation (2026-10-07)
+
+- [x] Preserve the `de6afbd` full-CD timeout at the original 900000 ms deadline:
+  333 visible passes, no complete summary and no package stage. Thirty-three
+  files were discovered; 31 completed file-wrapper durations total
+  1784541.9749 ms, not wall time. Dividing by concurrency two gives
+  892270.98745 ms before the incomplete inbox/sync work; scheduling alone does
+  not prove that the budget can be met. Public first/result observations are
+  not file-child start/exit measurements.
+- [x] Verify the private same-resolution HEAD/Main batch and unchanged fresh
+  branch/physical identity. Accept only exactly two matching-width SHA-1/SHA-256
+  records, keep commit peeling, and fall back to the original independent reads
+  for missing refs, unknown options or ambiguous output. Killed/time-limit/system
+  failures remain failures. No cross-operation cache or CLI/Python batch API.
+- [x] Preserve the first Node 18 targeted failure (4 passed / 6 failed / 27
+  name-filter exclusions, exit 1, 91948.3597 ms); Node 22/24 were not run.
+  Real Git 2.49.0 echoed `--end-of-options` as a third record, so valid refs
+  fell back and increased process counts. One read-only corrected command with
+  `--revs-only` emitted exactly two SHA records; retain the strict two-record
+  gate. Unknown-option compatibility now explicitly simulates exit 129, not a
+  claimed historical Git execution. Log: `temp/project-commit-batch-node18-20261007.log`.
+- [x] Corrected concentrated Node 18/22/24 formal identity/count/compatibility
+  targets passed 10/10, actual exit 0 (95801.7482 / 96255.0859 / 100634.3565 ms).
+  Node 18 reported 27 name exclusions; Node 22/24 omit them from the summary,
+  not complete Named modules. Governance and diff checks passed. Real Git
+  local/remote/default discovery counts are 3/4/6, including SHA-256, peeling,
+  changes across resolves and compatibility/failure boundaries. Logs:
+  `temp/project-commit-batch-final-node*-20261007.log`.
+- [ ] Independent acceptance. Existing non-Git or unbound-Main Hook fixtures do
+  not use this optimization; do not attribute their timing variation to it.
+  The original full-CD failures and unknown causes remain open; no new full-CD
+  run, delivery or release is claimed.
+
+## NAMED-LISTEN-09: strict loopback retry and owned-listener cleanup (2026-10-07)
+
+- [x] Preserve the `f793ad0` full-CD Named concurrent-launcher failure. Its
+  cleaned fixture left only an EACCES code, not syscall/address/port evidence;
+  the original cause remains unknown. One approved Node 22 original-case
+  diagnostic passed 1/1, exit 0, 835.807 ms; 24 other static test names were
+  excluded, not a complete Named module. Log:
+  `temp/named-concurrent-diagnostic-node22-20261007.log`.
+- [x] The same case now waits for all five launcher closes, retains the first
+  actual failure and failed synthetic root, and verifies exact proxy ownership
+  before official stop plus state/PID exit in the original shutdown window.
+  Diagnostic output contains only fixed classifications and strictly anchored
+  daemon-message loopback-listen fields, never capabilities or raw logs.
+- [x] Frozen targeted listener/export modules passed 9/9, actual exit 0, on
+  Node 18.20.8 / 22.18.0 / 24.19.0 (934.7001 / 521.0412 / 2382.5014 ms).
+  Node 18 reported 117 name-filter exclusions; Node 22/24 omit those from their
+  summaries, not proof of complete modules. Windows owned-server injection
+  preserves native/persistent listeners, covers eleven async/sync denials then
+  real HTTP success, and rejects port-zero/non-listen/address/port mismatches.
+  The unchanged pure guard checks non-Windows rejection; actual non-Windows
+  execution remains remote CI work. Injection is not an actual OS denial or
+  proof of the original cause. Logs: `temp/named-strict-listen-node*-20261007.log`.
+- [x] One complete Node 22 Named module passed 41/41, zero skips, exit 0,
+  254876.4816 ms, including the original concurrent launchers, real SessionStart
+  and cleanup. Log: `temp/named-strict-listen-full-node22-20261007.log`.
+  Governance (34 automatic / 4 standalone / 4 helpers), hidden-process,
+  workflow and diff checks passed. The isolated exact local tarball's contract,
+  stable SHA-256 and package security scan passed with 101 files:
+  `7d9fd171a829d2f693041010ed781054917099beda34e0cdafbfeef0172c837c`.
+- [ ] Independent Tester acceptance, full CD, remote Required, installed/native
+  delivery and release remain pending; older full-CD failures are not reclassified.
+
+## NODE-RUNNER-OBSERVATION-08: scheduling and public-event timing (2026-10-07)
+
+- [x] `e44d370` remote CI `37494809944` passed all thirteen checks including
+  Required. The earlier `140fd0c` local classification failure plus unchanged
+  900000 ms full-suite timeout/no summary remain failed, not reclassified.
+- [x] Keep the complete discovered execution set; prioritize the two Hook
+  suites, then Named, multiworktree and project tests. Concurrency two, the
+  fifteen-minute child deadline, synthetic five-file set and five-second
+  handshake remain unchanged. Earlier queue position does not guarantee budget.
+- [x] One public `run()` stream retains original failure/exit semantics and TAP.
+  Safe stderr timing contains UTC/monotonic receipt times, known relative files,
+  numeric metadata and fixed enums/booleans, never raw names/messages/errors/env.
+  Node 18 records ordered verdict observations; Node 22/24 use execution-ordered
+  completion observations without counting both channels. First/last observations
+  are not file-child spawn/exit times; unavailable boundaries and missing first
+  events remain explicit. Owned-parent launch requests and child-close receipts
+  are separate phases. No private API, second runner or injection is used.
+- [x] Preserve two first Node 18 module failures (4/5, actual exit 1). First,
+  the setup callback argument lacked `on`; use the returned public stream.
+  Second, URI source paths failed plain-path matching; use standard
+  `fileURLToPath`, reject malformed paths and retain the known-file whitelist.
+  Node 22/24 were not run on either failed input. Logs:
+  `temp/runner-observed-timing-node18-20261007.log` and
+  `temp/runner-observed-timing-final-node18-20261007.log`.
+- [x] Final Executor complete runner modules passed 5/5, zero skips, exit 0
+  on Node 18.20.8 / 22.18.0 / 24.19.0 (5740.1243 / 6536.6821 / 11027.2312 ms).
+  Actual public-event counts show file URIs on Node 18 and absolute paths on
+  Node 22/24; no raw paths are recorded. Full discovery, first-wave/concurrency,
+  real pass/fail/exception outcomes, all-file result observations and safe
+  timing schemas are verified. Logs:
+  `temp/runner-observed-timing-uri-node{18,22,24}-20261007.log`.
+- [ ] Independent verification and complete CD on this final input remain
+  pending. No Hook module or full CD was rerun in this Executor step; production,
+  permission checks and all original budgets are unchanged.
+
+## CI-IMPACT-HELPER-07: classify the formal Hook helper (2026-10-07)
+
+- [x] Preserve remote `140fd0c` CI run `37491337661` failures in CI1 and minimum
+  runtime: tracked-path classification found `tests/hook-test-helpers.mjs`
+  unmatched. Local CD also failed that exact assertion and reached the unchanged
+  900000 ms Node deadline (runner 903 seconds); 304 visible passes / one failure
+  are not a complete summary. Remaining results and pack/install were incomplete.
+  Log `temp/tester-140fd-cd-node22-20261006.log`, SHA-256
+  `d58baaa452d8cdb016854cbe59ae494a8c592f6bfb74b2c55700eb7c9cbf5572`.
+- [x] Add only the precise helper path to the existing `test-helpers` impact rule,
+  retaining its test/minimum-runtime jobs. No wildcard widening or gate bypass;
+  this configuration change still forces complete CI. New formal regressions
+  assert the exact six-job helper-only selection and check approved manifest
+  helper paths independently of Git tracking. The manifest is coverage input,
+  not a source of CI job permissions; original tracked[], unknown/full-run and
+  malformed-configuration assertions remain unchanged.
+- [x] Executor complete selector module passed 13/13, zero skips, actual exit 0
+  on Node 18.20.8 / 22.18.0 / 24.19.0 (1136.4557 / 1041.2171 / 462.4485 ms).
+  Logs `temp/ci-impact-hook-helper-node{18,22,24}-20261007.log`.
+- [ ] Independent verification, exact-head Required and complete CD remain
+  pending. Fixing classification does not establish or resolve the separate
+  full-suite timeout; historical failures and incomplete delivery stay recorded.
+
+## HOOK-SUITE-SPLIT-06: independent lifecycle and durable-record tests (2026-10-06)
+
+- [x] Preserve `1d910d3` full CD exit 1 at the original 900000 ms Node deadline.
+  Only 22 complete PASS results were visible; ordered TAP buffering leaves the
+  rest unconfirmed. Those visible Hook cases alone totaled 879124.1762 ms.
+  The failed rehearsal and log `temp/tester-1d910-cd-node22-20261006.log` remain;
+  log SHA-256 `b2759270bf089159ff229e891ee310ef82ca5da4517c5b7ad0f178bd1939786b`.
+- [x] Partition by responsibility: 21 lifecycle/permission/Plan cases and four
+  durable-record integration cases, using one formal helper without test
+  registration. All 25 original names and complete case-body SHA-256 values
+  match the real `1d910d3` source (line-ending/separator normalization only).
+  Fifteen helper functions remain unchanged; only `freePort` candidate
+  preparation changes below. Per-process HOME/registry and per-case temporary
+  projects remain isolated; production code, API checks and budgets are unchanged.
+- [x] Preserve the first split module run: 24/25 PASS, zero skips, exit 1 in
+  432180.5445 ms. The completion-receipt CLI requested port 6668 and URL
+  verification failed; the final bound port/cause were not recorded. This
+  supports correcting the known browser-port input prerequisite, not assigning
+  older unknown failures. Log `temp/hook-split-two-modules-node22-20261006.log`,
+  SHA-256 `979927e57706d03d23843719104f308f3878188d727ae10b68406505bfda0834`.
+- [x] The helper now returns one high candidate in 49152..65514, not a reserved
+  port. The actual CLI retains twenty bounded follow-up binds and real URL/API
+  verification; no second candidate, request retry or browser-port bypass.
+  Formal isolated-import assertions cover integer/range/+20 safety and inertness.
+  Runner discovery still covers every automatic file once, prioritizes only the
+  two Hook modules and keeps global concurrency two and the original deadline.
+- [x] Executor final runner modules passed 5/5 with zero skips and exit 0 on
+  Node 18.20.8 / 22.18.0 / 24.19.0. The two real Hook modules, Node 22 concurrency
+  two with the original 900000 ms bound, passed 25/25, zero skips, exit 0 in
+  467587.2044 ms. Logs `temp/hook-split-runner-final-node{18,22,24}-20261006.log`
+  and `temp/hook-split-two-modules-final-node22-20261006.log`; the latter SHA-256
+  is `043af5275ff9ba49cbbfe404eaa6706ea1303d57ed7466b3bc7314f236941bb8`.
+  Governance (34 automatic / 4 standalone / 4 helpers), hidden-process, workflow
+  and diff checks passed. No full CD was rerun for these Executor module results.
+- [ ] Independent Tester, exact-head Required, complete CD and delivery remain
+  pending. Module partitioning is not proof of a business communication fix;
+  original timeout, Hook signal, fetch and earlier failures remain recorded.
+
+## ATTACHMENT-FETCH-FIXTURE-05: browser-compatible test URL input (2026-10-06)
+
+- [x] Preserve `db9706c` complete CD failure: 421 tests / 420 passes / one
+  failure, exit 1 in 884 seconds, not a timeout. The first direct download fetch
+  failed after HTTP upload succeeded; actual port/cause were absent and the old
+  fixture was deleted. Log SHA-256
+  `fc352410b746c2e346c0c45d33fec4f7b0bcbb9e79c847b5eec986ae8be356ae`.
+- [x] This existing case now retains failures and reports only fixed cause
+  classifications, actual port and request phase before throwing the original
+  error. The sole Node 22 diagnostic passed 1/1, exit 0, 718.09 ms: no failure
+  cause was captured (`temp/attachment-fetch-diagnostic-node22-20261006.log`).
+- [x] Correct a known input prerequisite, not a proven cause: local dynamic TCP
+  ports start at 1024 and include Undici-restricted low ports. This direct-fetch
+  fixture now selects one candidate in 49152..65514; actual startup retains its
+  existing bounded bind fallback. No GET retry, second candidate, browser-port
+  bypass, permission relaxation or production port-zero/budget change. Original
+  unreferenced 404, referenced 200/body and traversal 403 assertions remain.
+- [x] Complete attachment module passed 9/9, zero skips, exit 0 on Node 18.20.8,
+  22.18.0 and 24.19.0 (3202.4591 / 1745.4041 / 1583.6994 ms). Logs:
+  `temp/attachment-fetch-high-candidate-node{18,22,24}-20261006.log`.
+- [ ] Original fetch failure remains unassigned; the diagnostic did not
+  reproduce it. Independent verification, Required and complete CD remain pending.
+
+## HOOK-SIGNAL-DIAGNOSTIC-04: missing bootstrap prompt signal (2026-10-06)
+
+- [x] Preserve `785aea8` complete CD failure: 421 tests / 420 passes / one
+  failure, exit 1 in 855.648 seconds within the original budget. The empty-graph
+  record-todo case returned no matching User signal; that original fixture was
+  removed by its old cleanup and is not claimed retained. Original log SHA-256:
+  `1573350bc7a6dec48a4665f329dd613e5dd2162bd029449cbebf6b71ac12e60d`.
+- [x] Only this existing test now emits fixed safe early-return classifications,
+  a later-than-Hook binding/runtime probe and durable prompt-signal booleans on
+  signal failure. It still officially stops its owned backend, retains failed
+  synthetic fixtures and removes them only after functional and cleanup success.
+  Original assertions, permissions, behavior and command budgets remain unchanged.
+- [x] The single authorized Node 22.18.0 original-case run passed 1/1, zero skips,
+  actual exit 0 including cleanup (62895.5553 ms total); no failure diagnostic
+  was emitted. Log `temp/empty-graph-signal-diagnostic-node22-20261006.log`, SHA-256
+  `0bfa4730c5962e0eacff60eb07d2e976a0429e4e1596db973ed862ca2616a8b0`.
+- [ ] Original failure remains unassigned: this did not reproduce it or prove a
+  health-timeout cause. No production Hook, health deadline or communication
+  behavior was changed. Independent verification and complete CD remain pending.
+
+## WORKBENCH-LISTEN-FIXTURE-03: remove the independent port-zero probe (2026-10-06)
+
+- [x] Preserve the complete `66f5986` CD result: exit 1 in 888.48 seconds,
+  420 tests / 419 passes / one failure, not a suite timeout. The owned-listen
+  regression failed with native loopback `listen EACCES` before its assertions;
+  source ordering and timing strongly support the separate unhandled port-zero
+  probe as the stage, but the original log has no phase marker and does not
+  establish this as a runtime observation. Retained synthetic fixture `O6heNc`
+  and log SHA-256 `63a38f14d445033b08bbe92b8a583606b788dd20755e678b51bb301dbb4563e6`
+  remain failure evidence; no system or unrelated process was changed.
+- [x] Only test preparation changed: one high candidate in 49152..65514,
+  with no preliminary server and no candidate-selection retry. The actual
+  owned backend still injects eleven async denials, then must bind successfully
+  within the original 12..21 attempts and serve the real authorized HTTP read.
+  Native/persistent listener equality, sentinel, warning and non-Windows
+  fail-closed assertions remain. Production port-zero policy and budgets did
+  not change; exhausting the bounded candidate range still fails.
+- [x] Executor concentrated Node 18.20.8 / 22.18.0 / 24.19.0 runs each passed
+  6/6 selected cases with exit 0 (7610.5679 / 6333.4295 / 9189.5247 ms);
+  Node 18 separately reports 91 name exclusions. Logs:
+  `temp/listen-fixture-high-candidate-node{18,22,24}-20261006.log`.
+- [ ] Independent Tester, exact-head Required and final complete CD remain
+  pending. This removes a fragile test-preparation prerequisite, not evidence
+  that business communication or the earlier restored `verified=false` is fixed.
+
+## WORKBENCH-LIFECYCLE-02: failed-listen callbacks and owned Hook fixture cleanup (2026-10-06)
+
+- [x] Failed listen attempts remove only their own error/listening callbacks;
+  the existing Windows-only predicate, twenty-next-port limit and startup budget
+  remain unchanged. The owned HTTP regression injects eleven async denials, then
+  actually binds a later loopback port; its native plus persistent-listener
+  baseline remains exactly unchanged, the sentinel fires once and no owned
+  MaxListeners warning occurs. This is fault injection, not an OS denial claim.
+- [x] One concentrated Executor run each on Node 18.20.8, 22.18.0 and 24.19.0
+  passed 6/6 selected listener/HTTP/binding/queue cases with exit 0; Node 18 also
+  reports 91 name exclusions. Preserve the first Node 22 run's 5/6 FAIL: the
+  fixture incorrectly assumed one listener instead of capturing the native
+  baseline. Logs: `temp/listen-callback-cleanup-node22-20261006.log` and
+  `temp/listen-callback-cleanup-final-node{18,22,24}-20261006.log`.
+- [x] The real Named Hook fixture waits for Python stdio close, officially stops
+  its backend and waits for the exact project/root-matched child PID to exit
+  within the original shared twelve-second shutdown window; no process is
+  killed. Owned backend/proxy cleanup must finish before releasing retention.
+  Only this controlled root receives canonical parent/prefix validation and
+  bounded filesystem cleanup retries; failures still retain the fixture and fail.
+  Preserve the first diagnostic: functional assertion PASS (104631 ms), but
+  after-hook EBUSY made the actual command exit 1. Final Node 22 real SessionStart
+  rerun passed 1/1, including cleanup, with exit 0 (104248 ms total). Logs:
+  `temp/named-hook-restored-diagnostic-node22-20261006.log` and
+  `temp/named-hook-restored-cleanup-final-node22-20261006.log`.
+- [x] Governance (33 automatic / 4 standalone / 3 helpers), hidden-process and
+  diff checks passed; no owned Named-fixture backend remained after the final run.
+- [ ] Original `492b61c` complete CD remains FAIL (420 tests, 418 passes, two
+  failures, 854 seconds). Restored SessionStart's `verified=false` did not recur
+  in the two targeted observations and is still unassigned; callback cleanup
+  does not establish its cause or claim that product path fixed. The separate
+  Claude failure and all earlier failure evidence remain recorded.
+- [ ] Independent Tester, exact-head Required, final complete CD and release /
+  installed-runtime acceptance remain pending; these Executor module results
+  are not independent or production acceptance.
+
+## WORKBENCH-LISTEN-01: Windows port-denial recovery and CLI fixture lifecycle (2026-10-06)
+
+- [x] Preserve exact `a0a6e4d` local CD failure: the unchanged 900-second suite
+  completed in 874 seconds with 418 tests, 417 passes, one failure and no skips.
+  Auto-binding Map read failed, without a printed CLI domain error. The first
+  targeted diagnostic passed 1/1; the related three-case diagnostic then failed
+  2/3 with `START_FAILED` and a real synthetic backend `listen EACCES` on a
+  loopback port. Its fixture/log are retained without a copy/backup. Read-only
+  inspection found that port bound by another application; nothing was stopped
+  or reconfigured. This does not identify the owner at the earlier full-CD failure.
+- [x] Executor source fix retries that listen-only denial on Windows only when
+  syscall, loopback address and attempted port match. The existing twenty-next-
+  port limit and twelve-second startup budget remain unchanged. Non-Windows,
+  automatic port zero, unrelated file/auth errors and exhausted attempts fail
+  closed; existing `EADDRINUSE` handling remains. No generic permission retry,
+  elevation, global network or generated shared-source change.
+- [x] The two CLI-started fixtures now await official backend shutdown before
+  successful root cleanup; failure keeps only that fixture. Original automatic
+  binding, ID, Map assertions and safe failure diagnostics remain. Formal
+  classifier boundaries and an owned HTTPServer listen injection were added to
+  the existing approved test file. Injection tests are not evidence of a real
+  OS denial; the diagnostic above is the separate observed-denial evidence.
+- [x] One concentrated regression each on Node 18.20.8, 22.18.0 and 24.19.0
+  passed the nine selected cases with exit 0; Node 18 separately reports 88
+  name-filter exclusions. Existing HTTP/Session-binding status and managed /
+  unmanaged pending-queue regressions are included. Logs:
+  `temp/windows-listen-recovery-node{18,22,24}-20261006.log`;
+  failed diagnostic `temp/auto-bind-related-diagnostic-node22-20261006.log`.
+  Governance, hidden-process and diff checks passed.
+- [ ] Independent Tester, exact-head Required and a new complete CD acceptance
+  remain pending. Original Windows CD / Claude failures stay recorded below.
+- [ ] MAP-AUTO-BIND-PORT-01: Map read's recursive first-binding workbench call
+  does not forward an explicitly selected port; this separate issue is not
+  changed or claimed fixed by the default-listen recovery.
+
+## BINDING-RECOVERY-01: definitive rejection and bounded connection recovery (2026-10-06)
+
+- [x] Executor: confirmed `session.bind` rejection is read from its durable
+  outcome, including the original deterministic legacy receipt. New cross-device
+  reason is `session-bound-elsewhere`; the precise older migration rejection is
+  only `binding-conflict`, not proof of its owner. Registration, saved CLI sync
+  state and the authorized HTTP status expose only safe code/reason. No repeated
+  enrollment, cache deletion, replacement request ID or old-Session takeover;
+  pending Map writes, old task queues and failed receipts remain intact. The
+  status endpoint does not open an inaccessible Map merely to display failure.
+- [x] Browser authorization has at most three attempts with 250/500 ms backoff
+  within the existing invocation/grant deadline. Poll retries only known
+  pre-connection failures or trusted retryable temporary responses; reset,
+  timeout, malformed replies, unknown claims and denial stop without renewal.
+  Local waiting expiry preserves the displayed grant rather than treating it as
+  a server denial. GitHub identity uses existing environment/gh credentials on
+  its first request; bounded read retries share a forty-second budget including
+  credential lookup. Repository-ID, redirect-domain and authorization checks stay.
+- [x] Formal Node 18.20.8 and 24.19.0 auth/repository modules passed 22/22 each;
+  public registration/status and managed/unmanaged queue preservation passed
+  the three selected cases on each runtime (Node 18 reports 92 name exclusions).
+  Governance verified 33 automatic tests, four standalone suites and three
+  helpers; hidden-process and diff checks passed. Logs:
+  `temp/binding-recovery-auth-repository-node{18,24}-final-20261006.log` and
+  `temp/binding-recovery-sync-node{18,24}-ownedproxy-20261006.log`.
+- [x] Preserve first auth module failure (20/21): local expiry erased the grant,
+  fixed by distinguishing waiting expiry from server rejection. Preserve Node 18
+  HTTP-module exit failure: all three assertions passed but an unowned spawned
+  test proxy raced registry cleanup (`ENOTEMPTY`). The fixture now owns/closes an
+  in-process proxy; production proxy behavior and original assertions/budgets
+  are unchanged. Original logs: `temp/binding-recovery-auth-repository-node24-20261006.log`
+  and `temp/binding-recovery-sync-node18-final-20261006.log`.
+  - [x] Independent Tester: exact clean source
+    `d2c33e530fb2449ea77195db708512f96e514166` was reviewed and tested on Windows.
+    Six runtime and four formal-test SHA-256 values matched the Executor freeze
+    before and after execution; no source, assertion or timeout was changed.
+    Node 18.20.8 and 24.19.0 each passed auth/repository 22/22 with zero skips
+    (17038.9088 / 14900.3491 ms). The original filtered HTTP/status and
+    managed/unmanaged synchronization cases each passed 3/3 with actual exit 0
+    (3466.1753 / 7439.2488 ms); Node 18 additionally reports 92 name exclusions,
+    not a full-module pass. All four command invocations exited 0.
+    Real loopback registration and authorized `/api/cloud-sync` reads returned
+    safe reasons without opening an inaccessible Map (`mapReads == 0`); repeated
+    registration sent only one bind and retained the rejected receipt unchanged.
+    Deterministic legacy and indexed new rejection recovery survived restart,
+    preserved the old pending task/outbox, and did not give a new synthetic
+    Session the old task. TTL, no-renewal, unknown-claim, bounded retry and GitHub
+    identity/authorization checks passed; governance (33/4/3), hidden-process
+    verification and diff check passed. Log names:
+    `temp/tester-binding-recovery-node{18,24}-auth-repository-20261006.log` and
+    `temp/tester-binding-recovery-node{18,24}-http-sync-20261006.log`.
+    SHA-256 in Node 18 auth, Node 24 auth, Node 18 HTTP, Node 24 HTTP order:
+    `a7a66fd22042f7f3c8a00cf7bc300a52362fecbd9cfd4a1d94dac165c744f5ec`,
+    `0cea73a49150a4a5d69c7db0dfae1a25ee58fe71dcdda244b88e432cab69becc`,
+    `1e4ed197dacd81f75a971bef1328a537a2ae19440ec5693b553bc98959324316`,
+    `b2f3f05072798e08bba69934c1ef176d6b0ccf54c3635925cb34b07265549d63`.
+    This is source-level technical acceptance with fixed shared Core/UI 1.1.1,
+    not a finished 1.1.2-dependent package, new UI, real host Session or production
+    connection. The first TTL failure, Node 18 cleanup failure and historical
+    Windows CD/watchdog failures remain recorded, not reclassified.
+  - [x] Final frozen dependency/browser/package acceptance at
+    `49e46d15c66cdcf0616d7786562a80d7793e00d0`, Skill 0.6.4 with the official
+    Core/UI 1.1.2 fixed URLs and SHA-512 lock. Cloud source is
+    `2af5beadb982a463ec04c31ff4e2ddf6de536f64`; generated manifest SHA-256
+    `4718f3c58a61ffd4aa2a0349b08d8305f87f7a72b60b919ebad4f66d8b2ec283`.
+    The six reviewed Skill runtime files retained their prior hashes; generated
+    canonical UI matches Cloud 1.1.2 (`51d96a006973e56f77813cc857cf0c1026eea357f3c393d319c56777445e9355`).
+    One unchanged formal `npm run test:browser` passed with actual exit 0 on
+    Node 22.18.0 / Python 3.13.7: workbench 55 checks with no page errors, plus
+    journal recovery. Evidence: `output/playwright/browser-ci/1791259282459-80d41f1f-3013-43d1-beaa-a9739075506d/`,
+    log `temp/tester-skill064-final-browser-20261006.log`, SHA-256
+    `615a160b6b4fa7811ece1af45deec5004847ab90be3baa4b408d2f59e056aa74`.
+    No new browser fixture, force, skip or timeout change was used. The new
+    binding-reason visible integration is not covered by this browser run;
+    canonical VM and real loopback HTTP/status checks remain distinct evidence.
+  - [x] Local standalone exact tarball passed the 100-file package contract and
+    security scan; 632945 bytes, SHA-256
+    `5add3f2bbcc29533876dbe466ba87c747e2e8bf1af8e178c346d6b0a0877c127`.
+    Existing `smoke-npm-package.mjs` passed on Windows / Node 22.18.0 using this
+    tarball in isolated global-prefix and npm-exec installations. Both installed
+    Workbench runtime checks passed startup, health, packaged assets, authorized
+    state and unauthorized rejection. All 96 installed-contract files matched
+    the frozen source SHA-256 values; isolated npm package metadata is 0.6.4.
+    Install log: `temp/tester-skill064-exactpkg-20261006/install.log`, SHA-256
+    `bb9cac41de741cc267b251c5acdadbdbff8aca548e1b8a3dca70233ac4273227`.
+    These results do not prove registry publication, a user's installation or
+    actual host pairing. An extra read-only diagnostic initially looked for
+    package.json in the Skill-copy target, where the installation contract does
+    not include it; correct installed-file/npm-prefix checks passed without
+    changing the contract or files.
+  - [ ] Preserve final local CD FAIL: the only Node 22.18.0 `npm run test:cd`
+    invocation began 2026-10-06 04:09:58.0608503 UTC and ended 04:26:58.2051231
+    UTC, exit 1. npm ci, materialization (55 files), security (39 checks), hidden
+    process/workflow/governance checks passed. The unchanged two-file Node suite
+    hit its 900000 ms deadline, reporting 901 seconds. Complete log parsing
+    finds 216 visible passing TAP cases and one failure, with no final summary;
+    do not infer completion from the last TAP index 217. The failure is
+    `.github/scripts/workbench-project.test.mjs:195`, All Sessions baseline
+    invalidation, `fetch failed` at line 211 (16744.5408 ms). Failure-test SHA-256
+    is `b186a0d3c239e13065e3db93d29101b720b3224b719ed2f3f87501ebe3a19ca9`.
+    Last completed case: completion receipts require evidence/scope/all files/
+    fresh content (42332.2763 ms). Timeout interrupted the following human-review
+    archive case. Remaining suite results, ci-smoke and this CD invocation's
+    final pack/install/upgrade stages are unconfirmed, not passed by the separate
+    standalone package test. Failed rehearsal directory remains
+    `context-guard-cd-rehearsal-RSw93P` in the system temp directory.
+    Log `temp/tester-skill064-final-cd-node22-20261006.log`, SHA-256
+    `355c456492a4f6069dde337e1c226b455fb6134f952023667d65031246d595cb`.
+    No full rerun, budget increase, assertion weakening or historical failure
+    removal followed this result. Scope/source/package/manifest inputs stayed
+    byte-identical. The cutoff's owned fixture initialization process had no
+    registered state/lock or listener; official diagnose reported stopped and
+    official stop returned `stopped:false`. Any remaining owned process cleanup
+    is reported separately. Root-approved normal `taskkill /PID` after exact
+    identity recheck failed because Windows requires force for this console
+    process. The residual is preserved; no force/tree fallback or unknown/user
+    backend termination was used.
+  - [ ] Final exact-head Required/CD,
+    installation and real new host-Session connection remain pending. Old Windows
+    CD timeouts and the Node 22 Claude watchdog failure below are not erased or
+    reclassified. These Tester checks did not change personal Hook configuration
+    or production data; isolated checks do not attest a real user connection.
+
 ## SESSION-SWITCH-FIXTURE-01: target preflight and browser rollback fixture
 
 - [x] Preserve PR #451 run `37311320171` initial failure: Node 24 functional
@@ -780,3 +1310,29 @@ pending independent gates.
 - [ ] Tester：基于最终 Skill SHA 和对应安装产物独立复验以上正式用例及真实 Cloud 双向同步；确认断网/回执未知时不丢待发内容，不能用单函数测试代替安装后的链路。
 - [ ] 原 Cloud browser 的 line121 同步冲突仍未归因：两次诊断在 line95 初始 Session 选择超时，随后无重型并行任务时，未修的 f663 安装包在原 12/25 秒限制下完整通过，未捕获冲突三方快照。因此本修复只关闭已独立复现的合并误报，不宣称已经修复最初浏览器失败；保留 Cloud `temp/session-sync-diagnostic-*` 与 `temp/same-value-merge-*` 的合成取证，后续复现再关联。
 - 最终本地集中回归：Windows、Node 22.18.0，`npm test` 退出 0；39 项安全检查、382/382 功能测试（815.72 秒、零失败/跳过）、29 项安装边界，以及实际 tarball 安装后的 CLI/工作台/停止烟测通过。日志 `temp/local-ci-skill-merge-final-20261005.log`。输入为 f6637d7 加上述已独立审查的同步及清理修复；未延长 runner 时限、未跳测试，跨平台 Required 与生产验收仍待完成。
+
+### RUNNER-LIFECYCLE-ORDER-01 · 生命周期套件调度顺序（2026-10-06）
+
+- 原 Node 22 本地 CD 约 901 秒超时记录保留：可见 216 项通过及 1 项 fetch 失败，不是整轮通过。独立检查确认 Node 18/22/24 CLI 会重新排序传入的测试文件，生命周期套件晚启动；仅调 CLI 参数顺序无效，调度改进也不保证总运行时间必定低于上限。
+- [x] Executor：同一 runner 改用公共 `node:test.run` 的有序文件列表和 TAP reporter，生命周期套件进入首批并发；原自动发现集合仍为 32 个唯一文件，并发上限 2、父进程单次 900 秒、CD 外层 30 分钟和已有进程树清理均不变。默认运行全部文件，不添加过滤入口、第二测试清单或私有 Node API。
+- [x] Executor：既有 `test-environment.test.mjs` 正式回归从同一 parent 入口运行隔离合成文件，检查完整执行一次、真实首批启动、并发峰值 2、成功退出 0、断言失败及模块异常退出 1、完整 TAP 汇总、惰性导入和拒绝名称过滤。Windows Node 18.20.8、22.18.0、24.19.0 的 `node --test .github/scripts/test-environment.test.mjs` 均 4/4、退出 0；治理及 `git diff --check` 通过。
+- 首次 Node 18 模块检查为 3/4、退出 1：`setup` 参数不支持 `.on`，与该版文档描述存在差异。改为对 `run()` 返回的公共 TestsStream 注册监听后通过；未使用私有 API。首次失败工具输出及隔离现场 `temp/node-runner-lutOTT` 保留，不覆盖为成功。
+- [ ] 独立 Tester：以本次最终提交 SHA 集中复核模块与完整 CD，保留原时限、失败历史和精确产物证据；模块通过不代表全量、安装或发布验收完成。
+
+### CLAUDE-LIMIT-FIXTURE-01 · 分离冷启动与输出限额的测试前提（2026-10-06）
+
+- 原 `492b61c` 完整 CD 失败保留：420 项中 418 PASS / 2 FAIL；Claude watchdog 用例期望 `CLAUDE_OUTPUT_LIMIT`，实际 `CLAUDE_TIMEOUT_OR_INTERRUPTED`。来源 `temp/tester-skill064-listen-cd-node22-20261006.log` 第 1712 行及 `temp/tester-skill064-listen-acceptance-20261006.md`；该轮并非超时，也不因随后定向通过改记成功。
+- 一次 Node 22 安全取证先通过；增加显式 ready/release 后，三版本集中检查中的 Node 22 再次失败：flood 在 238ms 观察到 running、841ms 观察到 TIMEOUT，但输出 0 字节、未见 init、未释放 flood，夹具连启动记录也未写入。失败现场 `cg-claude-idle-timeout-T9enA3` 保留在本机系统临时目录。该轮 18/24 通过；22 的 TAP 为 FAIL，串行命令未单独采集它的退出码，不冒称具有独立退出码证据。这证明该失败发生在就绪前，不能通过覆盖 first-reason 来假报输出超限。
+- [x] Executor：仅修改测试设计，不修改 ClaudeRuntime。active/silent 的 400ms idle 与 bounded 的 650ms turn 保持原样；**flood-only timeoutMs 从 400 改为 6000**，移除输出限额测试无关的冷启动前提。该分支仍从 deliver 前统一计算原 6000ms 端到端截止，ready 后不重置，超时检查先于终态返回。1024 字节限额、2134 字节 flood 和唯一 `CLAUDE_OUTPUT_LIMIT` 期望不变。
+- [x] Executor：通过真实持久 init 释放同一子进程；就绪阶段每 50ms 至多一个 stderr 字节、最多 120 个并受同一总截止约束，init 加心跳严格小于 1024，并有正式断言。保留各阶段无正文时间/字节诊断，失败不删除夹具。没有 warmup、概率重试、新增 Runtime 参数或测试框架；不能宣称产品错误分类被修复。
+- [x] Executor 最终集中定向：Windows Node 18.20.8 / 22.18.0 / 24.19.0 分别独立执行 `node --test --test-name-pattern="Claude runtime allows a long active turn but interrupts a silent native process" tests/claude-runtime.test.mjs`，各目标 1/1 PASS、独立采集退出码 0（18 另有 10 项名称排除）。用例耗时分别 4.981 / 4.463 / 4.413 秒；三轮 pre-flood 都为 87 字节。24 的真实 init 出现在 launch 后 828ms，仍在原总截止内，说明不能假设冷启动必定小于 400ms。最终测试 SHA256 `d55605d8dceae3ca1ebdb0a4f76d0a6ba6a7f634d578909df4e1cdc6c7e7cd21`。
+- [ ] 独立 Tester：基于最终提交复核测试前置条件、原真实 idle/turn 限制和完整 CD。上述模块结果不代表全量/安装/生产验收通过；未就绪超过原总 6 秒仍须失败。
+
+### CLAUDE-MONITOR-READY-01 · 分离真实子进程冷启动与监控语义（2026-10-06）
+
+- 原 `aebc7e4` 唯一完整 CD 为 420 项中 419 PASS / 1 FAIL，约 882 秒结束、退出 1，并非整体超时。失败是 active 首分支而非 flood：starting 2ms / dispatch 150ms / running 197ms / interrupted 753ms，持久输出 0 字节、init=false、readiness=[]，首条夹具 JS 记录未执行。证据保留于 `temp/tester-aeb-acceptance-20261006.md`、`temp/tester-aeb-cd-node22-20261006.log`（SHA256 `be87ce29cb726813c37885d3dd1c52e31d858fa9a031fc2887253919441a05b5`）及系统临时目录 `cg-claude-idle-timeout-npAvyB`；此前模块通过不覆盖此次失败，也不证明操作系统或 CPU 是唯一原因。
+- [x] Executor：提取原真实 child 监控为生产共用 `runClaudeTurn`，worker 仍在 spawn 后立即调用，不等待 IPC ready，不改变首输出前 idle、默认配置、first-reason、输出解析或恢复策略。spawn error 监听先于异步日志打开；顺序保持 stdin → running → child exit → 日志 flush/sync → outcome 和 Session 锁内持久化 → finally。只清理自身计时器、信号/流监听与日志资源，未引入新启动参数、warmup、替身 spawn 或额外依赖。
+- [x] Executor：专门的时序用例使用同一真实 child 的 IPC ready 后调用同一个生产监控函数，隔离监控断言与冷启动前提；每分支仍从 spawn 前计原 6000ms 总截止、ready 后不重置，未就绪超期仍失败。active 保留 400ms idle、12×100ms 进度及实际进度跨度大于 400ms；silent 仍须 TIMEOUT；连续输出仍受 650ms turn 约束；flood 保留已批准的独立 6000ms 配置、1024 字节限额、持久 init 后同 child release、前缀严格小于 1024 及唯一 OUTPUT_LIMIT 期望。所有分支核对 initialized/解析结果；另正式用例验证 spawn ENOENT、未 ready 的真实进程仍受 400ms idle 和持久化回调先于清理。失败夹具保留并仅输出安全阶段/字节诊断；没有修改其他完整 deliver/restart/CI 用例。
+- [x] Executor 集中模块：Windows Node 18.20.8 / 22.18.0 分别独立运行 `node --test tests/claude-runtime.test.mjs`，各 12/12、退出 0，耗时 24.160 / 22.028 秒。该时点测试 SHA256 为 `ab8db2b9c62f81743d29af7d9d7585797e66dd4a7f8ead8228c9ea4d59dacc8c`；Node 18 active 的真实 ready 在 705ms、monitor 在 716ms，随后 12 条持续进度正常完成，不能假定 native 冷启动必定小于 400ms。
+- [x] Executor 最终收口：待上述两轮结束后，仅给新增 monitor 用例补充 passed 清理标志，失败保留目录；最终测试 SHA256 `39e3f2f9edb6d135c6c8fe32b5e63f6efcad9cb78b6d760b57ba5a915cd7329f`。Node 24.19.0 在最终源码完整模块 12/12、退出 0（24.087 秒）；18/22 各对受清理变更影响的 `Claude monitor catches spawn errors and retains idle limits before any native readiness` 定向 1/1、独立退出 0（18 另有 11 项名称排除），未重复全模块。三轮完整模块的生产 SHA256 均为 `faa79d32f3f3024ff15b6f89a172a9c198db9b3a13f22cbc7b20ba4ff24493e3`；治理（33 自动测试文件）、隐藏进程检查及 diff 检查通过。
+- [ ] 独立 Tester：基于最终提交，在 Node 18/22/24 集中复核完整 Claude 模块，再按 Coordinator 安排运行唯一完整 CD；保留原限制与此前失败记录。这里是监控职责提取与测试前提隔离，不宣称修复了生产超时分类或完成安装、发布、真实 Cloud 验收。

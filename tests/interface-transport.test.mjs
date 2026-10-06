@@ -8,7 +8,11 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { startServer, loopbackJSON } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
-import { hash } from '../scripts/shared/io.mjs';
+import { atomicWrite, encode, hash, readJSON } from '../scripts/shared/io.mjs';
+import { resolveProject } from '../scripts/workbench/project.mjs';
+import { memoryConfigPath } from '../scripts/workbench/memory.mjs';
+import { syncStatus } from '../scripts/workbench/sync.mjs';
+import { startNamedProxy } from '../scripts/workbench/named-proxy.mjs';
 import { messageHandler, ProjectMessagePump, sendMessage } from '../scripts/workbench/protocol-client.mjs';
 import { DeviceHeartbeat } from '../scripts/workbench/device-heartbeat.mjs';
 
@@ -113,6 +117,58 @@ test('IF-014: local backend exposes v2 binding and queue reads using existing Ag
     const hidden = await send({ v: 2, id: 'revoked-read', type: 'workbench.read', session, payload: { scope: 'session', cursor: '', limit: 10 } });
     assert.deepEqual(hidden.items, []);
   } finally { await server.close(); }
+});
+
+test('confirmed Cloud binding conflict is visible through local registration and status without opening the inaccessible Map', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-binding-status-http-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const ctx = path.join(root, '.codex/context'); await fs.mkdir(ctx, { recursive: true });
+  await atomicWrite(path.join(ctx, 'map.json'), encode({ v: 1, project: 'fixture', root: { id: 'T0', title: 'fixture', children: [] } }));
+  await fs.writeFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ session_id: session.id, event: 'session-start' }) + '\n');
+  let binds = 0, mapReads = 0;
+  const cloud = http.createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    const input = chunks.length ? JSON.parse(Buffer.concat(chunks)) : null;
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/api/v2/heartbeat') return res.end(JSON.stringify(input.map(({ message }) => ({ id: message.id, ok: true, data: { sessions: [] } }))));
+    if (req.url === '/api/v2/messages') {
+      assert.equal(input.type, 'session.bind'); binds++;
+      res.writeHead(409); return res.end(JSON.stringify({ id: input.id, ok: false,
+        error: { code: 'CONFLICT', message: 'Owned by another device', retryable: false, details: { reason: 'session-bound-elsewhere' } } }));
+    }
+    mapReads++; res.writeHead(403); res.end(JSON.stringify({ error: { code: 'FORBIDDEN' } }));
+  });
+  await new Promise(resolve => cloud.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { cloud.closeAllConnections(); await new Promise(resolve => cloud.close(resolve)); });
+  const project = await resolveProject(root), origin = `http://127.0.0.1:${cloud.address().port}`;
+  await atomicWrite(memoryConfigPath(project), encode({ url: origin, projectId: 'fixture-project' }));
+  await atomicWrite(path.join(project.sharedDir, 'interface-v2/device-connection.json'), encode({ origin, credential: 'synthetic-only', capabilities: ['device-memory', 'private-map-heads'] }));
+  // Own the test proxy instead of leaving a spawned writer alive at exit cleanup.
+  const proxy = await startNamedProxy({ dir: process.env.CONTEXT_GUARD_NAMED_STATE_DIR, port: 0 });
+  t.after(() => proxy.close());
+  const server = await startServer({ root, port: 0 });
+  try {
+    const registration = await request(server.state, '/api/session', { method: 'POST', body: { sessionId: session.id } });
+    assert.deepEqual(registration.cloudBinding, { status: 'conflict', code: 'CONFLICT', reason: 'session-bound-elsewhere' });
+    const local = await syncStatus(root, session.id);
+    assert.equal(local.state.status, 'conflict'); assert.equal(local.state.reason, 'session-bound-elsewhere');
+    const statuses = [];
+    for (let round = 0; round < 2; round++) {
+      const response = await fetch(new URL(`/api/cloud-sync?view=session:${session.id}`, server.state.url), { headers: { Authorization: `Bearer ${server.humanToken}` } });
+      assert.equal(response.status, 200); statuses.push(await response.json());
+    }
+    assert.ok(statuses.every(status => status.configured === true && status.status === 'conflict' && status.reason === 'session-bound-elsewhere'));
+    const outcomeDirectory = path.join(project.sharedDir, 'interface-v2/outcomes');
+    const receipts = await fs.readdir(outcomeDirectory);
+    assert.equal(receipts.length, 1);
+    const originalReceipt = await fs.readFile(path.join(outcomeDirectory, receipts[0]), 'utf8');
+    await request(server.state, '/api/session', { method: 'POST', body: { sessionId: session.id } });
+    assert.equal(await fs.readFile(path.join(outcomeDirectory, receipts[0]), 'utf8'), originalReceipt);
+    assert.equal((await readJSON(path.join(project.sharedDir, 'interface-v2/outcomes', receipts[0]))).state, 'rejected');
+    assert.equal(binds, 1, 'explicit retry reuses the recorded definitive rejection');
+    assert.equal(mapReads, 0, 'status must not initialize or read the inaccessible Session Map');
+    assert.equal(JSON.stringify(statuses).includes('currentVersion'), false);
+  } finally { await server.close(); await proxy.close(); }
 });
 test('IF-010: real HTTP boundary authenticates, rejects malformed JSON and echoes receipts', async t => {
   const server = http.createServer(messageHandler({

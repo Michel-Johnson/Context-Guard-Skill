@@ -4,11 +4,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { performance } from 'node:perf_hooks';
+import { promisify } from 'node:util';
 import { resolveProject, saveMainBinding, bindingStatus, sameProject, listWorktrees, mainWorktree, sessionBinding } from '../../scripts/workbench/project.mjs';
 import { startServer } from '../../scripts/workbench/server.mjs';
 import { ensureServer } from '../../scripts/workbench/cli.mjs';
 import { memoryConfigPath, sessionMemoryDir } from '../../scripts/workbench/memory.mjs';
+
+const execFileAsync = promisify(execFile);
 
 function git(root, ...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
@@ -35,13 +39,18 @@ async function repository({ remote = 'git@github.com:example/context-guard.git',
 }
 
 async function commitMainMap(fixture, title) {
+  // This fixture also commits while the HTTP server runs in this same process.
+  const gitAsync = async (...args) => {
+    const { stdout } = await execFileAsync('git', args, { cwd: fixture.root, encoding: 'utf8', windowsHide: true, timeout: 10000 });
+    return stdout.trim();
+  };
   const context = path.join(fixture.root, '.codex/context');
   await fs.mkdir(path.join(context, 'private'), { recursive: true });
   await fs.writeFile(path.join(context, 'map.json'), JSON.stringify({ v: 1, project: 'fixture', bootstrap: 'ready', flows: [], root: { id: 'T0', title, kind: 'module', state: 'dirty', children: [] } }, null, 2) + '\n');
-  git(fixture.root, 'add', '.codex/context/map.json');
-  git(fixture.root, 'commit', '-m', `map: ${title}`);
-  const branch = git(fixture.root, 'branch', '--show-current');
-  try { git(fixture.root, 'remote', 'get-url', 'origin'); git(fixture.root, 'update-ref', `refs/remotes/origin/${branch}`, 'HEAD'); } catch {}
+  await gitAsync('add', '.codex/context/map.json');
+  await gitAsync('commit', '-m', `map: ${title}`);
+  const branch = await gitAsync('branch', '--show-current');
+  try { await gitAsync('remote', 'get-url', 'origin'); await gitAsync('update-ref', `refs/remotes/origin/${branch}`, 'HEAD'); } catch {}
 }
 
 test('linked worktrees resolve to one project and one shared workbench directory', async t => {
@@ -202,13 +211,38 @@ test('All Sessions remains unavailable when Git advances without a published ser
     await fs.writeFile(path.join(context, 'map.json'), JSON.stringify({ v: 1, project: 'fixture', bootstrap: 'ready', flows: [], root: { id: 'T0', title, kind: 'module', state: 'dirty', children: [] } }, null, 2) + '\n');
   }
   running = await startServer({ root: fixture.worktree, port: 0 });
+  const started = performance.now(), events = [], sockets = [];
+  const elapsed = () => Math.round(performance.now() - started);
+  const connection = socket => {
+    const index = sockets.push(socket) - 1;
+    socket.once('close', hadError => events.push({ event: 'socket-close', socket: index, hadError, ms: elapsed() }));
+  };
+  const request = (req, res) => {
+    const route = new URL(req.url, 'http://fixture.invalid').pathname;
+    if (!['/api/state', '/api/project-refresh', '/api/commit'].includes(route)) return;
+    events.push({ event: 'request', route, socket: sockets.indexOf(req.socket), ms: elapsed() });
+    res.once('finish', () => events.push({ event: 'response-finish', route, ms: elapsed() }));
+  };
+  const closed = () => events.push({ event: 'server-close', ms: elapsed() });
+  running.server.on('connection', connection); running.server.on('request', request); running.server.once('close', closed);
+  t.after(() => { running.server.off('connection', connection); running.server.off('request', request); running.server.off('close', closed); });
   const response = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
   assert.equal(response.status, 200);
   const before = await response.json();
   assert.equal(before.doc.root, null);
   assert.equal(before.source.status, 'MEMORY_NOT_CONFIGURED');
+  const commitStarted = performance.now();
   await commitMainMap(fixture, 'merged update');
-  const refreshed = await fetch(new URL('/api/project-refresh', running.state.url), { method: 'POST', headers: { Authorization: `Bearer ${running.state.adminToken}` } });
+  const commitMs = Math.round(performance.now() - commitStarted);
+  let refreshed;
+  try { refreshed = await fetch(new URL('/api/project-refresh', running.state.url), { method: 'POST', headers: { Authorization: `Bearer ${running.state.adminToken}` } }); }
+  catch (error) {
+    const code = value => typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(value) ? value : null;
+    t.diagnostic(JSON.stringify({ phase: 'project-refresh', node: process.version, commitMs, elapsedMs: elapsed(),
+      error: { name: error.name, code: code(error.code), causeName: error.cause?.name || null, causeCode: code(error.cause?.code) },
+      listening: running.server.listening, sockets: sockets.map(socket => ({ destroyed: socket.destroyed, readable: socket.readable, writable: socket.writable })), events }));
+    throw error;
+  }
   assert.equal(refreshed.status, 200);
   const afterMerge = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
   const after = await afterMerge.json();

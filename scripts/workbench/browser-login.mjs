@@ -10,7 +10,11 @@ async function request(origin, route, input, fetcher, timeoutMs = 15000) {
   try {
     response = await fetcher(new URL(route, origin), { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
-  } catch { fail('UNAVAILABLE', 'Cloud authorization is unavailable; retry the same connection command'); }
+  } catch (error) {
+    const beforeConnection = ['ENOTFOUND', 'ECONNREFUSED', 'UND_ERR_CONNECT_TIMEOUT'].includes(error?.cause?.code || error?.code);
+    fail('UNAVAILABLE', route.endsWith('/poll') && !beforeConnection ? 'Authorization claim outcome is unknown; explicitly retry browser authorization' : 'Cloud authorization is unavailable; retry the same connection command',
+      { retryableConnection: route.endsWith('/start') || beforeConnection });
+  }
   if ([404, 405, 426].includes(response.status)) fail('UPGRADE_REQUIRED', 'Cloud does not support browser authorization; upgrade Cloud or use the explicit private-input login');
   if (!response.headers.get('content-type')?.includes('application/json')) fail('UNAVAILABLE', 'Cloud returned an invalid authorization reply');
   let result;
@@ -19,7 +23,8 @@ async function request(origin, route, input, fetcher, timeoutMs = 15000) {
     for await (const chunk of response.body) { size += chunk.length; if (size > 16384) fail('TOO_LARGE', 'Authorization reply is too large'); chunks.push(chunk); }
     result = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch (error) { if (error.code === 'TOO_LARGE') throw error; fail('UNAVAILABLE', 'Cloud authorization reply was interrupted'); }
-  if (!response.ok || result?.ok !== true) fail(result?.error?.code || 'UNAVAILABLE', result?.error?.message || 'Cloud authorization failed');
+  if (!response.ok || result?.ok !== true) fail(result?.error?.code || 'UNAVAILABLE', result?.error?.message || 'Cloud authorization failed',
+    { retryableConnection: [502, 503, 504].includes(response.status) && result?.error?.code === 'UNAVAILABLE' && result.error.retryable === true });
   if (!result.data || typeof result.data !== 'object') fail('UNAVAILABLE', 'Cloud returned an invalid authorization reply');
   return { data: result.data, credential: response.headers.get('x-context-guard-credential') };
 }
@@ -32,15 +37,22 @@ export async function browserLogin(device, { repository, repositoryId, wait = fa
   const file = path.join(device.directory, 'browser-login.json');
   let deadline = clock() + 600000, grant;
   const checkDeadline = () => {
-    if (wait && clock() >= deadline) fail('UNAUTHORIZED', 'Browser authorization expired; retry the connection command');
+    if (wait && clock() >= deadline) fail('UNAUTHORIZED', 'Browser authorization expired; retry the connection command', { reason: 'authorization-wait-expired' });
   };
   const authorize = async (route, input) => {
-    checkDeadline();
-    try {
-      const result = await request(device.origin, route, input, fetcher, wait ? Math.max(1, Math.min(15000, Math.ceil(deadline - clock()))) : 15000);
+    for (let attempt = 0; attempt < 3; attempt++) {
       checkDeadline();
-      return result;
-    } catch (error) { checkDeadline(); throw error; }
+      try {
+        const result = await request(device.origin, route, input, fetcher, wait ? Math.max(1, Math.min(15000, Math.ceil(deadline - clock()))) : 15000);
+        checkDeadline();
+        return result;
+      } catch (error) {
+        checkDeadline();
+        if (attempt === 2 || error.code !== 'UNAVAILABLE' || error.details?.retryableConnection !== true) throw error;
+        await sleep(wait ? Math.min(250 * 2 ** attempt, Math.max(1, deadline - clock())) : 250 * 2 ** attempt);
+        checkDeadline();
+      }
+    }
   };
   let first = true;
   for (;;) {
@@ -85,7 +97,7 @@ export async function browserLogin(device, { repository, repositoryId, wait = fa
       let result;
       try { result = await authorize('/api/auth/device/poll', { deviceCode: pending.deviceCode }); }
       catch (error) {
-        if (['UNAUTHORIZED', 'FORBIDDEN'].includes(error.code)) await atomicWrite(file, encode({ status: error.code }));
+        if (['UNAUTHORIZED', 'FORBIDDEN'].includes(error.code) && error.details?.reason !== 'authorization-wait-expired') await atomicWrite(file, encode({ status: error.code }));
         throw error;
       }
       if (result.data.status === 'pending') return safe;
