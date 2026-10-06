@@ -15,6 +15,7 @@ import { memoryRequest, sessionMemoryDir, memoryConfigPath } from './memory.mjs'
 import { MemorySyncCoordinator } from './sync-coordinator.mjs';
 import { inspectRetiredSync } from './sync.mjs';
 import { runtimeIdentity } from './runtime.mjs';
+import { canRetryWorkbenchListen } from './listen.mjs';
 import { Attachments } from './attachments.mjs';
 import { ProtocolStore } from '../shared/protocol-store.mjs';
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
@@ -144,11 +145,7 @@ export async function health(state) {
   return result?.ok ? result.value : null;
 }
 export { loopbackJSON };
-export function canRetryWorkbenchListen(error, port, attempt, platform = process.platform) {
-  if (port === 0 || attempt >= 20) return false;
-  return error?.code === 'EADDRINUSE' || platform === 'win32' && error?.code === 'EACCES'
-    && error.syscall === 'listen' && error.address === '127.0.0.1' && error.port === port + attempt;
-}
+export { canRetryWorkbenchListen };
 
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage, repositoryLookup = lookupRepository } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');

@@ -12,6 +12,7 @@ import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { definitiveMemoryRejection } from '../scripts/workbench/memory.mjs';
 import { canRetryWorkbenchListen, prepareSessionCommit, startServer } from '../scripts/workbench/server.mjs';
+import { canRetryWorkbenchListen as sharedListenGuard } from '../scripts/workbench/listen.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
@@ -881,6 +882,7 @@ test('map read with CODEX_THREAD_ID binds without Cloud connect or a prior hook'
 });
 
 test('workbench listen retries only Windows loopback port denials within the original range', () => {
+  assert.equal(canRetryWorkbenchListen, sharedListenGuard, 'the existing server export uses the shared guard');
   const port = 8881, denied = { code: 'EACCES', syscall: 'listen', address: '127.0.0.1', port };
   assert.equal(canRetryWorkbenchListen(denied, port, 0, 'win32'), true);
   for (const platform of ['linux', 'darwin']) assert.equal(canRetryWorkbenchListen(denied, port, 0, platform), false);

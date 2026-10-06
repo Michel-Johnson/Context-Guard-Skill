@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import { randomInt } from 'node:crypto';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { pathToFileURL } from 'node:url';
@@ -624,29 +625,172 @@ test('corrupt routes fail closed without overwriting data, and names normalize d
   assert.equal(projectName('Context_Guard', root), 'context-guard');
   assert.match(projectName('中文', root), /^project-[a-f0-9]{12}$/);
 });
+test('owned named proxy listen attempts preserve native listeners and retry only precise loopback denials', async t => {
+  for (const scenario of [
+    { name: 'asynchronous Windows listen denial', retry: true },
+    { name: 'synchronous Windows listen denial', retry: true, synchronous: true },
+    { name: 'port zero rejects listen denial', zero: true },
+    { name: 'filesystem denial is not retried', syscall: 'open' },
+    { name: 'other address denial is not retried', address: '0.0.0.0' },
+    { name: 'other attempted port denial is not retried', wrongPort: true },
+  ]) await t.test(scenario.name, async t => {
+    const root = await fixture(t), dir = path.join(root, 'proxy');
+    retainedFixtures.add(root);
+    // One candidate; the actual owned proxy validates availability within its original range.
+    const port = scenario.zero ? 0 : randomInt(49152, 65515);
+    const create = http.createServer, attempts = [], listenerCounts = [], warnings = [];
+    let owned, running, factoryMock, listenMock, listeningBaseline, errorBaseline, listeningCalls = 0, errorCalls = 0, passed = false;
+    const onWarning = warning => { if (warning.name === 'MaxListenersExceededWarning' && warning.emitter === owned) warnings.push(warning.type); };
+    process.on('warning', onWarning);
+    factoryMock = t.mock.method(http, 'createServer', (...args) => {
+      factoryMock.mock.restore();
+      owned = create(...args);
+      owned.on('listening', () => listeningCalls++);
+      owned.on('error', () => errorCalls++);
+      listeningBaseline = owned.listenerCount('listening');
+      errorBaseline = owned.listenerCount('error');
+      const listen = owned.listen;
+      listenMock = t.mock.method(owned, 'listen', function (...input) {
+        attempts.push({ port: input[0], address: input[1] });
+        listenerCounts.push({ listening: owned.listenerCount('listening'), error: owned.listenerCount('error') });
+        if (attempts.length <= 11) {
+          const error = Object.assign(new Error('Synthetic owned named listen denial'), {
+            code: 'EACCES', syscall: scenario.syscall || 'listen', address: scenario.address || '127.0.0.1', port: input[0] + (scenario.wrongPort ? 1 : 0),
+          });
+          // Match native callback registration before failure without touching any other server.
+          owned.once('listening', input[2]);
+          if (scenario.synchronous) throw error;
+          process.nextTick(() => owned.emit('error', error));
+          return owned;
+        }
+        return listen.apply(this, input);
+      });
+      return owned;
+    });
+    try {
+      if (scenario.retry && process.platform === 'win32') {
+        running = await startNamedProxy({ dir, port });
+        assert.equal(running.server, owned);
+        assert.ok(owned.listening);
+        assert.ok(attempts.length >= 12 && attempts.length <= 21);
+        assert.deepEqual(attempts, attempts.map((_value, index) => ({ port: port + index, address: '127.0.0.1' })));
+        assert.equal(Number(new URL(running.state.base).port), attempts.at(-1).port);
+        const response = await call(running.state.base, '/__cg_proxy/health');
+        assert.equal(response.status, 200);
+        assert.equal(response.data.kind, 'context-guard-named');
+        assert.ok(response.data.instance === running.state.instance);
+        assert.equal(listeningCalls, 1);
+      } else {
+        await assert.rejects(startNamedProxy({ dir, port }), {
+          code: 'EACCES', syscall: scenario.syscall || 'listen', address: scenario.address || '127.0.0.1', port: port + (scenario.wrongPort ? 1 : 0),
+        });
+        assert.deepEqual(attempts, [{ port, address: '127.0.0.1' }]);
+        assert.equal(listeningCalls, 0);
+      }
+      assert.deepEqual(listenerCounts, attempts.map(() => ({ listening: listeningBaseline, error: errorBaseline + 1 })), 'only the current attempt adds one error listener');
+      assert.equal(owned.listenerCount('listening'), listeningBaseline);
+      assert.equal(owned.listenerCount('error'), errorBaseline);
+      const retrying = scenario.retry && process.platform === 'win32';
+      const actualBindFailures = retrying ? attempts.length - 12 : 0;
+      assert.equal(errorCalls, (scenario.synchronous ? 0 : retrying ? 11 : 1) + actualBindFailures);
+      assert.deepEqual(warnings, []);
+      passed = true;
+    } finally {
+      process.off('warning', onWarning);
+      listenMock?.mock.restore(); factoryMock.mock.restore();
+      await running?.close();
+      if (passed) retainedFixtures.delete(root);
+    }
+  });
+});
+
 test('concurrent separate launchers reuse one daemon without replacing an occupied service', async t => {
   const root = await fixture(t), dir = path.join(root, 'global');
-  const occupied = http.createServer((_q, r) => r.end('unrelated')); await new Promise(r => occupied.listen(0, '127.0.0.1', r));
-  t.after(() => new Promise(r => occupied.close(r)));
-  const port = occupied.address().port;
-  const code = `import {ensureNamedProxy} from ${JSON.stringify(new URL('../scripts/workbench/named.mjs', import.meta.url).href)}; console.log(JSON.stringify(await ensureNamedProxy({dir:process.argv[1],port:Number(process.argv[2])})));`;
-  const states = await Promise.all(Array.from({ length: 5 }, () => new Promise((resolve, reject) => {
-    const p = spawn(process.execPath, ['--input-type=module', '-e', code, dir, String(port)], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-    let output = '', error = ''; p.stdout.on('data', d => output += d); p.stderr.on('data', d => error += d); p.on('error', reject); p.on('exit', c => c === 0 ? resolve(JSON.parse(output)) : reject(new Error(error)));
-  }))).catch(async error => {
-    // Synthetic fixture diagnostics only; never publish proxy capabilities.
+  const occupied = http.createServer((_q, r) => r.end('unrelated'));
+  let port = null, phase = 'occupied-listen', passed = false, firstError, launchers, closed = 0, diagnosed = false;
+  retainedFixtures.add(root);
+  const diagnose = async () => {
+    if (diagnosed) return;
+    diagnosed = true;
+    // Read only this synthetic daemon's message, never output capabilities or raw logs.
     const log = await fs.readFile(path.join(dir, 'proxy.log'), 'utf8').catch(() => '');
-    const codes = [...new Set(log.match(/\bE[A-Z]{3,}\b/g) || [])];
-    throw new Error(`${error.message}; daemon error codes: ${codes.join(',') || 'none'}`);
-  });
-  assert.equal(new Set(states.map(s => s.instance)).size, 1);
-  assert.notEqual(Number(new URL(states[0].base).port), port);
+    const listen = log.split(/\r?\n/).map(line => /^listen (EACCES|EADDRINUSE): [^\r\n]* 127\.0\.0\.1:(\d+)$/.exec(line)).find(match => match && Number(match[2]) >= 1 && Number(match[2]) <= 65535);
+    const codes = ['EACCES', 'EADDRINUSE', 'ENOENT', 'EPERM'].filter(code => new RegExp(`\\b${code}\\b`).test(log));
+    console.error('[named-launcher-diagnostic] ' + JSON.stringify({
+      fixture: root, phase, occupiedPort: port, launcherCloses: closed, occupiedListening: occupied.listening,
+      daemonCodes: codes, daemonMessage: listen ? { source: 'daemon-message', operation: 'listen', code: listen[1], address: '127.0.0.1', port: Number(listen[2]) } : null,
+      daemonOperationUnknown: !listen,
+    }));
+  };
   t.after(async () => {
-    const stopped = await call(states[0].base, '/__cg_proxy/stop', { method: 'POST', headers: { Authorization: `Bearer ${states[0].adminToken}` } });
-    assert.equal(stopped.status, 202);
-    for (let i = 0; i < 100; i++) { try { await fs.access(path.join(dir, 'proxy.json')); } catch { return; } await new Promise(r => setTimeout(r, 20)); }
-    throw new Error('Proxy did not stop');
+    try {
+      const settled = launchers ? await launchers : [];
+      const state = settled.find(result => result.status === 'fulfilled')?.value;
+      if (state) {
+        let saved;
+        try { saved = JSON.parse(await fs.readFile(path.join(dir, 'proxy.json'), 'utf8')); }
+        catch { throw new Error('Owned proxy state could not be read'); }
+        assert.ok(saved.instance === state.instance, 'Owned proxy instance must match');
+        assert.ok(saved.pid === state.pid, 'Owned proxy PID must match');
+        assert.ok(Number.isInteger(state.pid) && state.pid > 0 && state.pid !== process.pid);
+        assert.ok(saved.base === state.base, 'Owned proxy base must match');
+        assert.ok(saved.adminToken === state.adminToken, 'Owned proxy capability must match');
+        phase = 'owned-proxy-stop';
+        const stopped = await call(state.base, '/__cg_proxy/stop', { method: 'POST', headers: { Authorization: `Bearer ${state.adminToken}` } });
+        assert.equal(stopped.status, 202);
+        let exited = false;
+        for (let i = 0; i < 100; i++) {
+          let stateGone = false, pidGone = false;
+          try { await fs.access(path.join(dir, 'proxy.json')); } catch (error) { if (error.code !== 'ENOENT') throw error; stateGone = true; }
+          try { process.kill(state.pid, 0); } catch (error) { if (error.code !== 'ESRCH') throw error; pidGone = true; }
+          if (stateGone && pidGone) { exited = true; break; }
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        assert.ok(exited, 'Proxy did not stop and exit within the original shutdown window');
+      } else {
+        // A state without a successful launcher is not sufficient ownership evidence.
+        try { await fs.access(path.join(dir, 'proxy.json')); throw new Error('Proxy ownership could not be verified'); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+      }
+    } catch (error) { await diagnose(); throw firstError || error; }
+    finally {
+      try { if (occupied.listening) await new Promise((resolve, reject) => occupied.close(error => error ? reject(error) : resolve())); }
+      catch (error) { await diagnose(); throw firstError || error; }
+    }
+    if (passed) retainedFixtures.delete(root);
   });
+  try {
+    await new Promise((resolve, reject) => {
+      const onError = error => { occupied.off('listening', onListening); reject(error); };
+      const onListening = () => { occupied.off('error', onError); resolve(); };
+      occupied.once('error', onError); occupied.once('listening', onListening); occupied.listen(0, '127.0.0.1');
+    });
+    port = occupied.address().port;
+    phase = 'launcher-close';
+    const code = `import {ensureNamedProxy} from ${JSON.stringify(new URL('../scripts/workbench/named.mjs', import.meta.url).href)}; console.log(JSON.stringify(await ensureNamedProxy({dir:process.argv[1],port:Number(process.argv[2])})));`;
+    launchers = Promise.allSettled(Array.from({ length: 5 }, () => new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ['--input-type=module', '-e', code, dir, String(port)], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      let output = '', errorOutput = '', failure;
+      child.stdout.on('data', data => output += data); child.stderr.on('data', data => errorOutput += data);
+      child.on('error', error => { failure = error; firstError ||= error; });
+      child.on('close', exitCode => {
+        closed++;
+        if (!failure && exitCode !== 0) failure = new Error(errorOutput);
+        if (!failure) {
+          try { resolve(JSON.parse(output)); return; }
+          catch { failure = new Error('Named launcher returned invalid JSON'); }
+        }
+        firstError ||= failure; reject(failure);
+      });
+    })));
+    const settled = await launchers;
+    if (firstError) throw firstError;
+    const states = settled.map(result => result.value);
+    phase = 'launcher-assertions';
+    assert.equal(new Set(states.map(state => state.instance)).size, 1);
+    assert.notEqual(Number(new URL(states[0].base).port), port);
+    passed = true;
+  } catch (error) { firstError ||= error; await diagnose(); throw error; }
 });
 test('published state is not healthy until initialization finishes, including slow disk flush', async t => {
   const dir = await fixture(t), originalOpen = fs.open;

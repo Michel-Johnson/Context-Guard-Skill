@@ -1,5 +1,37 @@
 # CI TODO
 
+## NAMED-LISTEN-09: strict loopback retry and owned-listener cleanup (2026-10-07)
+
+- [x] Preserve the `f793ad0` full-CD Named concurrent-launcher failure. Its
+  cleaned fixture left only an EACCES code, not syscall/address/port evidence;
+  the original cause remains unknown. One approved Node 22 original-case
+  diagnostic passed 1/1, exit 0, 835.807 ms; 24 other static test names were
+  excluded, not a complete Named module. Log:
+  `temp/named-concurrent-diagnostic-node22-20261007.log`.
+- [x] The same case now waits for all five launcher closes, retains the first
+  actual failure and failed synthetic root, and verifies exact proxy ownership
+  before official stop plus state/PID exit in the original shutdown window.
+  Diagnostic output contains only fixed classifications and strictly anchored
+  daemon-message loopback-listen fields, never capabilities or raw logs.
+- [x] Frozen targeted listener/export modules passed 9/9, actual exit 0, on
+  Node 18.20.8 / 22.18.0 / 24.19.0 (934.7001 / 521.0412 / 2382.5014 ms).
+  Node 18 reported 117 name-filter exclusions; Node 22/24 omit those from their
+  summaries, not proof of complete modules. Windows owned-server injection
+  preserves native/persistent listeners, covers eleven async/sync denials then
+  real HTTP success, and rejects port-zero/non-listen/address/port mismatches.
+  The unchanged pure guard checks non-Windows rejection; actual non-Windows
+  execution remains remote CI work. Injection is not an actual OS denial or
+  proof of the original cause. Logs: `temp/named-strict-listen-node*-20261007.log`.
+- [x] One complete Node 22 Named module passed 41/41, zero skips, exit 0,
+  254876.4816 ms, including the original concurrent launchers, real SessionStart
+  and cleanup. Log: `temp/named-strict-listen-full-node22-20261007.log`.
+  Governance (34 automatic / 4 standalone / 4 helpers), hidden-process,
+  workflow and diff checks passed. The isolated exact local tarball's contract,
+  stable SHA-256 and package security scan passed with 101 files:
+  `7d9fd171a829d2f693041010ed781054917099beda34e0cdafbfeef0172c837c`.
+- [ ] Independent Tester acceptance, full CD, remote Required, installed/native
+  delivery and release remain pending; older full-CD failures are not reclassified.
+
 ## NODE-RUNNER-OBSERVATION-08: scheduling and public-event timing (2026-10-07)
 
 - [x] `e44d370` remote CI `37494809944` passed all thirteen checks including
