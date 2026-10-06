@@ -1139,7 +1139,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     });
     server.requestTimeout = 10000; server.headersTimeout = 10000;
     for (let attempt = 0; ; attempt++) {
-      try { await new Promise((resolve, reject) => { const onError = e => reject(e); server.once('error', onError); server.listen(port === 0 ? 0 : port + attempt, '127.0.0.1', () => { server.off('error', onError); resolve(); }); }); break; }
+      try {
+        await new Promise((resolve, reject) => {
+          const onListening = () => { server.off('error', onError); resolve(); };
+          const onError = error => { server.off('error', onError); server.off('listening', onListening); reject(error); };
+          server.once('error', onError);
+          try { server.listen(port === 0 ? 0 : port + attempt, '127.0.0.1', onListening); }
+          catch (error) { onError(error); }
+        });
+        break;
+      }
       catch (e) { if (!canRetryWorkbenchListen(e, port, attempt)) throw e; }
     }
     base = `http://127.0.0.1:${server.address().port}`;

@@ -904,18 +904,26 @@ test('owned HTTP listen denial uses the next loopback port on Windows and fails 
   const port = probe.address().port;
   await new Promise(resolve => probe.close(resolve));
   assert.ok(port < 65515, 'the OS-assigned fixture port has room for the bounded range');
-  const create = http.createServer, attempts = [];
-  let running, owned, listenMock, factoryMock;
+  const create = http.createServer, attempts = [], listenerCounts = [], warnings = [];
+  let running, owned, listenMock, factoryMock, listeningBaseline, sentinelCalls = 0;
+  const sentinel = () => { sentinelCalls++; };
+  const onWarning = warning => { if (warning.name === 'MaxListenersExceededWarning' && warning.emitter === owned) warnings.push(warning.type); };
+  process.on('warning', onWarning);
   factoryMock = t.mock.method(http, 'createServer', (...args) => {
     // Restore the factory immediately; only this returned server is injected.
     factoryMock.mock.restore();
     owned = create(...args);
+    owned.on('listening', sentinel);
+    listeningBaseline = owned.listenerCount('listening');
     const listen = owned.listen;
     listenMock = t.mock.method(owned, 'listen', function (...input) {
       attempts.push({ port: input[0], address: input[1] });
-      if (attempts.length === 1) {
+      listenerCounts.push(owned.listenerCount('listening'));
+      if (attempts.length <= 11) {
+        // Node's real listen registers this callback before an async failure.
+        owned.once('listening', input[2]);
         process.nextTick(() => owned.emit('error', Object.assign(new Error('Synthetic listen denial'), {
-          code: 'EACCES', syscall: 'listen', address: '127.0.0.1', port,
+          code: 'EACCES', syscall: 'listen', address: '127.0.0.1', port: input[0],
         })));
         return owned;
       }
@@ -928,17 +936,23 @@ test('owned HTTP listen denial uses the next loopback port on Windows and fails 
       running = await startServer({ root: f.root, port });
       assert.equal(running.server, owned);
       assert.ok(owned.listening);
-      assert.ok(attempts.length >= 2 && attempts.length <= 21);
+      assert.ok(attempts.length >= 12 && attempts.length <= 21);
       assert.deepEqual(attempts, attempts.map((_value, index) => ({ port: port + index, address: '127.0.0.1' })));
       assert.equal(Number(new URL(running.state.url).port), attempts.at(-1).port);
       const response = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
       assert.equal(response.status, 200);
       assert.equal((await response.json()).doc.root.id, 'T0');
+      assert.equal(sentinelCalls, 1, 'the unrelated persistent listening listener is retained');
     } else {
       await assert.rejects(startServer({ root: f.root, port }), { code: 'EACCES', syscall: 'listen', address: '127.0.0.1', port });
       assert.deepEqual(attempts, [{ port, address: '127.0.0.1' }]);
     }
+    assert.deepEqual(listenerCounts, attempts.map(() => listeningBaseline), 'failed attempts preserve exactly the native and unrelated listener baseline');
+    assert.equal(owned.listenerCount('listening'), listeningBaseline);
+    assert.equal(owned.listenerCount('error'), 0);
+    assert.deepEqual(warnings, []);
   } finally {
+    process.off('warning', onWarning);
     listenMock?.mock.restore(); factoryMock.mock.restore();
     await running?.close();
   }

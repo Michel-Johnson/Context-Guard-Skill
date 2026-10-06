@@ -1,5 +1,41 @@
 # CI TODO
 
+## WORKBENCH-LIFECYCLE-02: failed-listen callbacks and owned Hook fixture cleanup (2026-10-06)
+
+- [x] Failed listen attempts remove only their own error/listening callbacks;
+  the existing Windows-only predicate, twenty-next-port limit and startup budget
+  remain unchanged. The owned HTTP regression injects eleven async denials, then
+  actually binds a later loopback port; its native plus persistent-listener
+  baseline remains exactly unchanged, the sentinel fires once and no owned
+  MaxListeners warning occurs. This is fault injection, not an OS denial claim.
+- [x] One concentrated Executor run each on Node 18.20.8, 22.18.0 and 24.19.0
+  passed 6/6 selected listener/HTTP/binding/queue cases with exit 0; Node 18 also
+  reports 91 name exclusions. Preserve the first Node 22 run's 5/6 FAIL: the
+  fixture incorrectly assumed one listener instead of capturing the native
+  baseline. Logs: `temp/listen-callback-cleanup-node22-20261006.log` and
+  `temp/listen-callback-cleanup-final-node{18,22,24}-20261006.log`.
+- [x] The real Named Hook fixture waits for Python stdio close, officially stops
+  its backend and waits for the exact project/root-matched child PID to exit
+  within the original shared twelve-second shutdown window; no process is
+  killed. Owned backend/proxy cleanup must finish before releasing retention.
+  Only this controlled root receives canonical parent/prefix validation and
+  bounded filesystem cleanup retries; failures still retain the fixture and fail.
+  Preserve the first diagnostic: functional assertion PASS (104631 ms), but
+  after-hook EBUSY made the actual command exit 1. Final Node 22 real SessionStart
+  rerun passed 1/1, including cleanup, with exit 0 (104248 ms total). Logs:
+  `temp/named-hook-restored-diagnostic-node22-20261006.log` and
+  `temp/named-hook-restored-cleanup-final-node22-20261006.log`.
+- [x] Governance (33 automatic / 4 standalone / 3 helpers), hidden-process and
+  diff checks passed; no owned Named-fixture backend remained after the final run.
+- [ ] Original `492b61c` complete CD remains FAIL (420 tests, 418 passes, two
+  failures, 854 seconds). Restored SessionStart's `verified=false` did not recur
+  in the two targeted observations and is still unassigned; callback cleanup
+  does not establish its cause or claim that product path fixed. The separate
+  Claude failure and all earlier failure evidence remain recorded.
+- [ ] Independent Tester, exact-head Required, final complete CD and release /
+  installed-runtime acceptance remain pending; these Executor module results
+  are not independent or production acceptance.
+
 ## WORKBENCH-LISTEN-01: Windows port-denial recovery and CLI fixture lifecycle (2026-10-06)
 
 - [x] Preserve exact `a0a6e4d` local CD failure: the unchanged 900-second suite

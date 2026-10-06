@@ -23,7 +23,20 @@ const previousCeiling = process.env.GIT_CEILING_DIRECTORIES;
 process.env.GIT_CEILING_DIRECTORIES = path.join(cwd, 'temp');
 after(() => { if (previousCeiling === undefined) delete process.env.GIT_CEILING_DIRECTORIES; else process.env.GIT_CEILING_DIRECTORIES = previousCeiling; });
 const fixtureRoots = [];
-after(async () => { for (const root of fixtureRoots) await fs.rm(root, { recursive: true, force: true }); });
+const retainedFixtures = new Set();
+const ownedLifecycleFixtures = new Set();
+after(async () => {
+  for (const root of fixtureRoots) {
+    if (retainedFixtures.has(root)) continue;
+    if (!ownedLifecycleFixtures.has(root)) { await fs.rm(root, { recursive: true, force: true }); continue; }
+    try {
+      const resolved = await fs.realpath(root), parent = await fs.realpath(path.join(cwd, 'temp'));
+      assert.equal(path.dirname(resolved), parent);
+      assert.ok(path.basename(resolved).startsWith('named-test-'));
+      await fs.rm(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch (error) { retainedFixtures.add(root); throw error; }
+  }
+});
 async function fixture(t, name = 'Example Project') {
   await fs.mkdir(path.join(cwd, 'temp'), { recursive: true });
   const root = await fs.mkdtemp(path.join(cwd, 'temp/named-test-'));
@@ -693,24 +706,43 @@ test('explicit linked-worktree binding reuses server and hook context without ov
 });
 test('real SessionStart injects named URL and automatic browser opener is claimed only once', async t => {
   const root = await fixture(t, 'Hook Project'), dir = path.join(root, 'proxy');
+  let passed = false, backend, proxy, ownedChildPid;
+  retainedFixtures.add(root);
+  ownedLifecycleFixtures.add(root);
+  t.after(async () => {
+    const deadline = Date.now() + 12000;
+    try {
+      await stopServer(root);
+      if (ownedChildPid) {
+        for (;;) {
+          try { process.kill(ownedChildPid, 0); }
+          catch (error) { if (error.code === 'ESRCH') break; throw error; }
+          assert.ok(Date.now() < deadline, 'the owned restored backend exits within the original shutdown window');
+          await new Promise(resolve => setTimeout(resolve, Math.min(50, deadline - Date.now())));
+        }
+      }
+    } finally {
+      try { await backend?.close(); } finally { await proxy?.close(); }
+    }
+    if (passed) retainedFixtures.delete(root);
+  });
   execFileSync('git', ['init', '-b', 'trunk'], { cwd: root, stdio: 'pipe', windowsHide: true });
   execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe', windowsHide: true });
   await saveMainBinding(root, { mode: 'local', branch: 'trunk' });
-  const proxy = await startNamedProxy({ dir, port: 0 }); t.after(() => proxy.close());
-  t.after(() => stopServer(root));
+  proxy = await startNamedProxy({ dir, port: 0 });
   const python = process.platform === 'win32' ? 'python' : 'python3';
   const env = { ...process.env, CONTEXT_GUARD_NAMED_STATE_DIR: dir, CONTEXT_GUARD_NAMED_WORKBENCH: '1', CONTEXT_GUARD_DISABLE_WORKBENCH: '0', CONTEXT_GUARD_HEADLESS: '1' };
   const run = (args, input = '') => new Promise((resolve, reject) => {
     const child = spawn(python, args, { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); let stdout = '', stderr = '';
     child.stdout.on('data', d => stdout += d); child.stderr.on('data', d => stderr += d); child.on('error', reject);
-    child.on('exit', code => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr))); child.stdin.end(input);
+    child.on('close', code => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr))); child.stdin.end(input);
   });
   const hookArgs = [path.join(cwd, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'];
   const payload = JSON.stringify({ cwd: root, session_id: 'named-hook' });
   const unbound = await run(hookArgs, payload);
   assert.match(unbound.stdout + unbound.stderr, /no established workbench/);
   await assert.rejects(fs.access(path.join(root, '.codex/context/private/workbench.json')));
-  const backend = await startServer({ root, port: 0 }); t.after(() => backend.close());
+  backend = await startServer({ root, port: 0 });
   const known = await namedWorkbench(backend.state, request, { dir });
   const automaticallyBound = await run(hookArgs, payload);
   assert.match(automaticallyBound.stdout + automaticallyBound.stderr, new RegExp(known.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
@@ -724,10 +756,28 @@ test('real SessionStart injects named URL and automatic browser opener is claime
   await backend.close();
   const restored = await run(hookArgs, payload);
   assert.doesNotMatch(restored.stdout + restored.stderr, /Ask the user/);
-  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, true, restored.stdout + restored.stderr);
+  const restoredDiagnosis = await diagnoseWorkbench(root, 'named-hook');
+  const restoredService = restoredDiagnosis.runtime.services.find(service => service.status === 'ready'
+    && service.projectId === restoredDiagnosis.project.id && Number.isInteger(service.pid)
+    && service.pid > 0 && service.pid !== process.pid && typeof service.root === 'string');
+  if (restoredService && await fs.realpath(restoredService.root) === await fs.realpath(root)) ownedChildPid = restoredService.pid;
+  if (!restoredDiagnosis.session.verified) {
+    const output = restored.stdout + restored.stderr;
+    const codes = ['START_FAILED', 'UPGRADE_PENDING', 'HTTP_ERROR', 'FORBIDDEN', 'UNKNOWN_SESSION', 'EACCES', 'EADDRINUSE', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT'];
+    t.diagnostic(JSON.stringify({ phase: 'SessionStart-restored', node: process.version,
+      session: { bound: restoredDiagnosis.session.bound, verified: restoredDiagnosis.session.verified, state: restoredDiagnosis.session.state },
+      runtime: { status: restoredDiagnosis.runtime.status, namedStatus: restoredDiagnosis.runtime.named?.status,
+        serviceStatuses: restoredDiagnosis.runtime.services.map(service => service.status) },
+      sameNamedUrl: restoredDiagnosis.workbenchUrl === known.url,
+      hook: { includesKnownUrl: output.includes(known.url), bindingUnreadable: /binding unreadable/.test(output),
+        repairUnverified: /could not be verified or repaired|binding unverified/.test(output), codes: codes.filter(code => new RegExp(`\\b${code}\\b`).test(output)) },
+      fixtureRetained: true }));
+  }
+  assert.equal(restoredDiagnosis.session.verified, true, restored.stdout + restored.stderr);
   // Use a spy, not the user's browser, but exercise the real Python opener path.
   const code = `import sys,os,json; sys.path.insert(0,${JSON.stringify(path.join(cwd, 'scripts'))}); import context_guard as c; from pathlib import Path; os.environ.pop('CI',None); os.environ.pop('CONTEXT_GUARD_HEADLESS',None); calls=[]; c.webbrowser.open=lambda *a,**k:calls.append(a[0]); c.start_workbench(Path.cwd()); c.start_workbench(Path.cwd()); print(json.dumps(calls))`;
   const opened = await run(['-c', code]); assert.equal(JSON.parse(opened.stdout).length, 1);
+  passed = true;
 });
 
 test('named entry keeps Git Session views isolated and survives a backend worktree change', async t => {
