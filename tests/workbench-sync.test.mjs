@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, updateBugWithRecovery } from '../scripts/workbench/cli.mjs';
@@ -899,11 +899,9 @@ test('workbench listen retries only Windows loopback port denials within the ori
 
 test('owned HTTP listen denial uses the next loopback port on Windows and fails closed elsewhere', async t => {
   const f = await fixture();
-  const probe = http.createServer();
-  await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
-  const port = probe.address().port;
-  await new Promise(resolve => probe.close(resolve));
-  assert.ok(port < 65515, 'the OS-assigned fixture port has room for the bounded range');
+  // The actual owned backend, not a separate port-zero probe, checks availability.
+  const port = randomInt(49152, 65515);
+  assert.ok(port >= 49152 && port <= 65514, 'the high fixture candidate has room for the bounded range');
   const create = http.createServer, attempts = [], listenerCounts = [], warnings = [];
   let running, owned, listenMock, factoryMock, listeningBaseline, sentinelCalls = 0;
   const sentinel = () => { sentinelCalls++; };

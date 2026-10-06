@@ -1,5 +1,30 @@
 # CI TODO
 
+## WORKBENCH-LISTEN-FIXTURE-03: remove the independent port-zero probe (2026-10-06)
+
+- [x] Preserve the complete `66f5986` CD result: exit 1 in 888.48 seconds,
+  420 tests / 419 passes / one failure, not a suite timeout. The owned-listen
+  regression failed with native loopback `listen EACCES` before its assertions;
+  source ordering and timing strongly support the separate unhandled port-zero
+  probe as the stage, but the original log has no phase marker and does not
+  establish this as a runtime observation. Retained synthetic fixture `O6heNc`
+  and log SHA-256 `63a38f14d445033b08bbe92b8a583606b788dd20755e678b51bb301dbb4563e6`
+  remain failure evidence; no system or unrelated process was changed.
+- [x] Only test preparation changed: one high candidate in 49152..65514,
+  with no preliminary server and no candidate-selection retry. The actual
+  owned backend still injects eleven async denials, then must bind successfully
+  within the original 12..21 attempts and serve the real authorized HTTP read.
+  Native/persistent listener equality, sentinel, warning and non-Windows
+  fail-closed assertions remain. Production port-zero policy and budgets did
+  not change; exhausting the bounded candidate range still fails.
+- [x] Executor concentrated Node 18.20.8 / 22.18.0 / 24.19.0 runs each passed
+  6/6 selected cases with exit 0 (7610.5679 / 6333.4295 / 9189.5247 ms);
+  Node 18 separately reports 91 name exclusions. Logs:
+  `temp/listen-fixture-high-candidate-node{18,22,24}-20261006.log`.
+- [ ] Independent Tester, exact-head Required and final complete CD remain
+  pending. This removes a fragile test-preparation prerequisite, not evidence
+  that business communication or the earlier restored `verified=false` is fixed.
+
 ## WORKBENCH-LIFECYCLE-02: failed-listen callbacks and owned Hook fixture cleanup (2026-10-06)
 
 - [x] Failed listen attempts remove only their own error/listening callbacks;
