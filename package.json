@@ -56,8 +56,8 @@
     "node": ">=18"
   },
   "devDependencies": {
-    "@michelj/context-guard-core": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.1.3/michelj-context-guard-core-1.1.3.tgz",
-    "@michelj/context-guard-workbench": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.1.3/michelj-context-guard-workbench-1.1.3.tgz",
+    "@michelj/context-guard-core": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.1.4/michelj-context-guard-core-1.1.4.tgz",
+    "@michelj/context-guard-workbench": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.1.4/michelj-context-guard-workbench-1.1.4.tgz",
     "marked": "15.0.12",
     "playwright": "1.62.1"
   }

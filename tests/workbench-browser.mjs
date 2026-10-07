@@ -192,15 +192,18 @@ try {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: loginRequest.id, ok: true, data: { repositoryId: '123' } }) });
   });
   await page.locator('#cg-cloud-login').click();
-  assert.equal(await page.locator('dialog input').count(), 1);
-  assert.equal(await page.locator('dialog input').getAttribute('type'), 'password');
-  await page.locator('dialog input').fill('synthetic-browser-password');
-  await page.locator('dialog [type="submit"]').click();
-  await page.waitForFunction(() => document.querySelector('dialog [role="status"]')?.textContent.includes('后端已连接'));
+  const loginDialog = page.locator('dialog[open]');
+  assert.equal(await loginDialog.count(), 1);
+  assert.equal(await loginDialog.locator('h3').textContent(), '连接 Cloud');
+  assert.equal(await loginDialog.locator('input').count(), 1);
+  assert.equal(await loginDialog.locator('input').getAttribute('type'), 'password');
+  await loginDialog.locator('input').fill('synthetic-browser-password');
+  await loginDialog.locator('[type="submit"]').click();
+  await page.waitForFunction(dialog => dialog.querySelector('[role="status"]')?.textContent.includes('后端已连接'), await loginDialog.elementHandle());
   assert.equal(loginRequest.type, 'auth.open'); assert.equal(loginRequest.payload.repository, 'auto');
-  assert.equal(await page.locator('dialog input').inputValue(), '');
+  assert.equal(await loginDialog.locator('input').inputValue(), '');
   assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }).includes('synthetic-browser-password')), false);
-  await page.locator('dialog [data-cancel]').click(); await page.unroute(loginRoute);
+  await loginDialog.locator('[data-cancel]').click(); await page.unroute(loginRoute);
   recordCheck('backend-password-ui-no-manual-identities-or-password-storage');
   stage = 'bidirectional-sync';
   await fs.writeFile(mapPath, encode(doc));
@@ -1361,6 +1364,10 @@ try {
     assert.equal(await preview.evaluate(() => Object.keys(window.__CG_WORKBENCH_DATA.catalog).length), 1);
     assert.equal(await preview.evaluate(() => window.__CG_WORKBENCH_DATA.catalog['context-guard'].blueprint.bugs.length), 0);
     recordCheck('production-excludes-design-galleries');
+    // Gallery checks cover local layout and CSS font declarations, not remote
+    // font downloads or glyph rendering. Keep this preview independent of those CDNs.
+    await preview.route(url => url.origin === 'https://fonts.googleapis.com' && url.pathname === '/css2' ||
+      url.origin === 'https://fonts.gstatic.com', route => route.abort());
     await preview.goto(`http://127.0.0.1:${port}/design/workbench-gallery/index.html?https://raw.githubusercontent.com/example/repo/sha/index.html?gallery=1`);
     await preview.waitForSelector('.g-item');
     const gallery = await preview.evaluate(() => {
