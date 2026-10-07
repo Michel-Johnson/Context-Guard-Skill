@@ -15,7 +15,7 @@ import { memoryConfigPath } from '../scripts/workbench/memory.mjs';
 
 const repository = 'https://github.com/example/browser-login';
 const repositoryId = '123';
-async function fixture(t, { expiresIn = 600, startDelay = 0 } = {}) {
+async function fixture(t, { expiresIn = 600, startDelay = 0, persistent = false } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-browser-login-deadline-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   let elapsed = 0, approved = false, code = 0;
@@ -36,11 +36,14 @@ async function fixture(t, { expiresIn = 600, startDelay = 0 } = {}) {
       const route = new URL(url).pathname;
       calls.push({ route, body: JSON.parse(options.body), signal: options.signal });
       if (route === '/api/auth/device/start') {
+        assert.equal(options.headers['X-Context-Guard-Device-Grant'], 'persistent-v1');
+        assert.deepEqual(Object.keys(JSON.parse(options.body)).sort(), ['clientId', 'deviceCode', 'label', 'repository']);
         assert.equal(code, 0, 'a single wait invocation must never start a replacement grant');
         elapsed += startDelay;
         const userCode = `ABCD-${(++code).toString(16).toUpperCase().padStart(4, '0')}`;
-        return reply({ verificationPath: `/connect?code=${userCode}`, userCode, expiresIn,
-          expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() });
+        return reply({ verificationPath: `/connect?code=${userCode}`, userCode, ...(persistent ?
+          { persistent: true, status: 'pending', expiresIn: null, expiresAt: null } :
+          { expiresIn, expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() }) });
       }
       assert.equal(route, '/api/auth/device/poll');
       return approved ? reply({ projectId: 'fixture-project', repositoryId, capabilities: ['device-memory'] }, randomBytes(32).toString('base64url')) : reply({ status: 'pending' });
@@ -104,14 +107,15 @@ test('a competing invocation changing the pending grant makes a waiter fail rath
   assert.equal((await f.readPending()).deviceCode, changedCode, 'a waiter must not overwrite another invocation');
 });
 
-test('an explicitly retried command can replace an expired cached grant and displays its new code', async t => {
+test('an explicitly retried command renegotiates an expired finite grant using the same secret', async t => {
   const f = await fixture(t), oldCode = randomBytes(32).toString('base64url');
   await fs.writeFile(f.file, JSON.stringify({ origin: f.device.origin, repository, repositoryId, deviceCode: oldCode,
-    verificationUrl: `${f.device.origin}/connect?code=FFFF-0000`, userCode: 'FFFF-0000', expiresAt: new Date(0).toISOString() }));
+    verificationUrl: `${f.device.origin}/connect?code=FFFF-0000`, userCode: 'FFFF-0000', label: 'Fixture', expiresAt: new Date(0).toISOString() }));
   const pending = await browserLogin(f.device, { ...f.options, wait: false });
   assert.equal(pending.connected, false);
   assert.notEqual(pending.userCode, 'FFFF-0000');
-  assert.notEqual((await f.readPending()).deviceCode, oldCode);
+  assert.equal((await f.readPending()).deviceCode, oldCode);
+  assert.equal(f.calls.find(call => call.route.endsWith('/start')).body.deviceCode, oldCode);
   assert.equal(f.prompts.length, 1);
   assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
 });
@@ -239,7 +243,8 @@ test('denial still disconnects explicitly and never silently renews in the same 
       { status: 403, headers: { 'Content-Type': 'application/json' } });
     return fetcher(url, options);
   } }), { code: 'FORBIDDEN' });
-  assert.deepEqual(await f.readPending(), { status: 'FORBIDDEN' });
+  assert.equal((await f.readPending()).status, 'FORBIDDEN');
+  assert.equal((await f.readPending()).userCode, f.prompts[0].userCode);
   assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
   assert.equal(await fs.access(f.device.file).then(() => true, () => false), false);
 });
@@ -308,4 +313,169 @@ test('the public project connection entry expires without renewing or saving a d
   assert.equal(pending.userCode, prompts[0].userCode);
   assert.equal(await fs.access(path.join(directory, 'device-connection.json')).then(() => true, () => false), false);
   assert.equal(await fs.access(memoryConfigPath(project)).then(() => true, () => false), false);
+});
+
+test('explicitly persistent pending approval survives ten minutes while each HTTP request stays bounded', async t => {
+  const f = await fixture(t, { persistent: true });
+  const timeouts = [], timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, 'timeout', ms => { timeouts.push(ms); return timeout(ms); });
+  const result = await browserLogin(f.device, { ...f.options, sleep: async ms => {
+    assert.equal(ms, 5000); f.advance(700000); f.approve();
+  } });
+  assert.equal(result.connected, true);
+  assert.ok(f.now() > 600000);
+  assert.equal(f.prompts.length, 1);
+  assert.equal(f.prompts[0].persistent, true);
+  assert.equal(f.prompts[0].expiresAt, null);
+  assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
+  assert.deepEqual(timeouts, [15000, 15000, 15000]);
+});
+
+test('a stopped pending invocation resumes the same persistent request after a day', async t => {
+  const f = await fixture(t, { persistent: true });
+  await assert.rejects(browserLogin(f.device, { ...f.options, onPending: () => { throw new Error('Synthetic invocation stopped'); } }), /Synthetic invocation stopped/);
+  const original = await f.readPending(), later = Date.now() + 86400000;
+  t.mock.method(Date, 'now', () => later);
+  const result = await browserLogin(f.device, { ...f.options, wait: false });
+  assert.equal(result.userCode, original.userCode);
+  assert.equal((await f.readPending()).deviceCode, original.deviceCode);
+  assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
+  assert.equal(f.calls.filter(call => call.route.endsWith('/poll')).length, 1);
+  assert.equal(await fs.access(f.file + '.lock').then(() => true, () => false), false);
+});
+
+test('a lost start reply and an expired legacy cache renegotiate without rotating their secret', async t => {
+  for (const legacy of [false, true]) {
+    const f = await fixture(t, { persistent: true });
+    if (legacy) {
+      await fs.writeFile(f.file, JSON.stringify({ origin: f.device.origin, repository, repositoryId,
+        deviceCode: randomBytes(32).toString('base64url'), label: 'Fixture', userCode: 'ABCD-0001',
+        verificationUrl: `${f.device.origin}/connect?code=ABCD-0001`, expiresAt: new Date(0).toISOString() }));
+    } else {
+      await assert.rejects(browserLogin(f.device, { ...f.options, wait: false, fetcher: async () => { throw new Error('Synthetic lost start reply'); } }), { code: 'UNAVAILABLE' });
+    }
+    const original = await f.readPending(), later = Date.now() + 86400000;
+    t.mock.method(Date, 'now', () => later);
+    const result = await browserLogin(f.device, { ...f.options, wait: false });
+    assert.equal(result.persistent, true);
+    assert.equal((await f.readPending()).deviceCode, original.deviceCode);
+    assert.equal(f.calls.find(call => call.route.endsWith('/start')).body.deviceCode, original.deviceCode);
+    if (legacy) assert.equal(result.userCode, original.userCode);
+    t.mock.restoreAll();
+  }
+});
+
+test('persistent lifetime negotiation rejects mixed, missing and incorrectly typed fields', async t => {
+  const finite = { expiresAt: new Date(Date.now() + 600000).toISOString(), expiresIn: 600 };
+  const invalid = [
+    { persistent: true, status: 'pending', ...finite },
+    { persistent: true, status: 'pending', expiresAt: null },
+    { persistent: true, status: 'pending', expiresIn: null },
+    { persistent: true, expiresAt: null, expiresIn: null },
+    { persistent: true, status: 'approved', expiresAt: null, expiresIn: null },
+    { persistent: 'true', status: 'pending', expiresAt: null, expiresIn: null },
+    { persistent: null, ...finite },
+    { persistent: false, status: 'pending', ...finite },
+    { persistent: false, status: 'approved', expiresAt: null, expiresIn: null },
+    { expiresAt: null, expiresIn: null },
+    { ...finite, expiresIn: 601 }, { ...finite, expiresIn: '600' },
+  ];
+  for (const fields of invalid) {
+    const f = await fixture(t);
+    await assert.rejects(browserLogin(f.device, { ...f.options, wait: false, fetcher: async url => {
+      assert.ok(new URL(url).pathname.endsWith('/start'), 'invalid lifetime must never reach poll');
+      return f.reply({ verificationPath: '/connect?code=ABCD-1234', userCode: 'ABCD-1234', ...fields });
+    } }), { code: 'UNAVAILABLE' });
+    assert.equal((await f.readPending()).verificationUrl, undefined);
+    assert.equal(f.prompts.length, 0);
+    assert.equal(await fs.access(f.device.file).then(() => true, () => false), false);
+  }
+});
+
+test('temporary start rejection after a lost reply preserves the existing request across explicit retries', async t => {
+  const f = await fixture(t, { persistent: true }), codes = [];
+  let issued;
+  await assert.rejects(browserLogin(f.device, { ...f.options, wait: false, fetcher: async (url, options) => {
+    codes.push(JSON.parse(options.body).deviceCode);
+    if (!issued) issued = (await (await f.options.fetcher(url, options)).json()).data;
+    throw new Error('Synthetic lost start reply after the server saved its grant');
+  } }), { code: 'UNAVAILABLE' });
+  const original = await f.readPending();
+  await assert.rejects(browserLogin(f.device, { ...f.options, wait: false, fetcher: async (url, options) => {
+    assert.ok(new URL(url).pathname.endsWith('/start'));
+    codes.push(JSON.parse(options.body).deviceCode);
+    return new Response(JSON.stringify({ ok: false, error: { code: 'FORBIDDEN', reason: 'temporary-limit',
+      message: 'Authorization was already claimed; this untrusted message is not a terminal receipt' } }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } });
+  } }), { code: 'FORBIDDEN' });
+  const rejected = await f.readPending();
+  assert.equal(rejected.deviceCode, original.deviceCode);
+  assert.equal(rejected.status, undefined);
+  assert.equal(rejected.lastFailure.code, 'FORBIDDEN');
+  assert.equal(rejected.lastFailure.reason, undefined, 'never infer a terminal reason from arbitrary server text');
+  const resumed = await browserLogin(f.device, { ...f.options, wait: false, fetcher: async (url, options) => {
+    codes.push(JSON.parse(options.body).deviceCode);
+    return f.reply(new URL(url).pathname.endsWith('/start') ? issued : { status: 'pending' });
+  } });
+  assert.equal(resumed.userCode, issued.userCode);
+  assert.equal(new Set(codes).size, 1);
+  assert.equal((await f.readPending()).deviceCode, original.deviceCode);
+  assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1, 'only one server grant was created');
+});
+
+test('an already approved persistent request still obeys its finite claim window', async t => {
+  const f = await fixture(t, { expiresIn: 1 }), fetcher = f.options.fetcher;
+  await assert.rejects(browserLogin(f.device, { ...f.options, fetcher: async (url, options) => {
+    const response = await fetcher(url, options);
+    if (!new URL(url).pathname.endsWith('/start')) return response;
+    const { data } = await response.json();
+    return f.reply({ ...data, persistent: false, status: 'approved' });
+  }, sleep: async () => f.advance(5000) }), { code: 'UNAUTHORIZED' });
+  assert.equal(f.prompts[0].persistent, false);
+  assert.ok(f.prompts[0].expiresAt);
+  assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
+  assert.equal(f.calls.filter(call => call.route.endsWith('/poll')).length, 1);
+});
+
+test('uncertain claims retain their request; only a later explicit invocation starts fresh human approval after a terminal receipt', async t => {
+  for (const reason of ['authorization-already-claimed', 'authorization-denied', 'authorization-expired', 'repository-access-revoked']) {
+    const f = await fixture(t, { persistent: true }), fetcher = f.options.fetcher;
+    let polls = 0;
+    await assert.rejects(browserLogin(f.device, { ...f.options, fetcher: async (url, options) => {
+      if (new URL(url).pathname.endsWith('/start')) return fetcher(url, options);
+      polls++; throw Object.assign(new Error('Synthetic unknown claim'), { cause: { code: 'ECONNRESET' } });
+    } }), { code: 'UNAVAILABLE' });
+    const original = await f.readPending();
+    assert.equal(original.lastFailure.code, 'UNAVAILABLE');
+    assert.equal(original.status, undefined);
+    assert.equal(polls, 1);
+    const code = reason === 'authorization-denied' || reason === 'repository-access-revoked' ? 'FORBIDDEN' : 'UNAUTHORIZED';
+    await assert.rejects(browserLogin(f.device, { ...f.options, fetcher: async (url, options) => {
+      assert.ok(new URL(url).pathname.endsWith('/poll'));
+      assert.equal(JSON.parse(options.body).deviceCode, original.deviceCode);
+      polls++;
+      return new Response(JSON.stringify({ ok: false, error: { code, reason, message: 'Synthetic terminal receipt' } }),
+        { status: code === 'FORBIDDEN' ? 403 : 401, headers: { 'Content-Type': 'application/json' } });
+    } }), { code });
+    const terminal = await f.readPending();
+    assert.equal(terminal.deviceCode, original.deviceCode);
+    assert.equal(terminal.lastFailure.reason, reason);
+    assert.equal(terminal.status, code);
+    assert.equal(polls, 2);
+    assert.equal(f.calls.filter(call => call.route.endsWith('/start')).length, 1);
+    let starts = 0;
+    const next = await browserLogin(f.device, { ...f.options, wait: false, fetcher: async (url, options) => {
+      if (new URL(url).pathname.endsWith('/start')) {
+        starts++;
+        assert.notEqual(JSON.parse(options.body).deviceCode, original.deviceCode);
+        return f.reply({ userCode: 'ABCD-1234', verificationPath: '/connect?code=ABCD-1234', persistent: true,
+          status: 'pending', expiresAt: null, expiresIn: null });
+      }
+      return f.reply({ status: 'pending' });
+    } });
+    assert.equal(next.authorizationRequired, true, 'a terminal receipt must not silently issue a credential');
+    assert.equal(starts, 1);
+    assert.deepEqual((await f.readPending()).previousOutcome, terminal.lastFailure);
+    assert.equal(await fs.access(f.device.file).then(() => true, () => false), false);
+  }
 });

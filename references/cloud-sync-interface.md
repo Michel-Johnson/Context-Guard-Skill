@@ -11,6 +11,21 @@ Use `context-guard workbench connect --url <origin> --root <project> --session
 connection. The workbench owns the background connection; never start a separate
 project-wide Map daemon or point a Session at Main to bypass publication.
 
+Current Cloud keeps pending browser-device approval requests until a human decides.
+The CLI negotiates this explicitly and reuses the same private request after a
+stopped invocation or a later retry; the displayed code does not expire merely
+because ten minutes passed. Each HTTP request still has a 15-second limit. Stop
+the CLI to stop waiting; run the same connection command to resume. An approved
+request has a separate, finite claim window, and older Clouds retain their actual
+finite expiry. Upgrade an older Skill for persistent waiting.
+
+An uncertain claim never automatically creates another request or issues another
+credential. It preserves the request and reports failure. After a definite
+rejection or already-claimed receipt, a later explicit connection command starts
+fresh browser approval; it cannot bypass the human decision. None of this changes
+Session identity, existing device permissions, credential renewal or native Hook
+trust.
+
 Local edits enter a durable outbox. Cloud changes are read through events with
 heartbeat recovery. Receipts, queues and cursors remain isolated per Session:
 
