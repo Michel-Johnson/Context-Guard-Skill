@@ -1336,3 +1336,34 @@ pending independent gates.
 - [x] Executor 集中模块：Windows Node 18.20.8 / 22.18.0 分别独立运行 `node --test tests/claude-runtime.test.mjs`，各 12/12、退出 0，耗时 24.160 / 22.028 秒。该时点测试 SHA256 为 `ab8db2b9c62f81743d29af7d9d7585797e66dd4a7f8ead8228c9ea4d59dacc8c`；Node 18 active 的真实 ready 在 705ms、monitor 在 716ms，随后 12 条持续进度正常完成，不能假定 native 冷启动必定小于 400ms。
 - [x] Executor 最终收口：待上述两轮结束后，仅给新增 monitor 用例补充 passed 清理标志，失败保留目录；最终测试 SHA256 `39e3f2f9edb6d135c6c8fe32b5e63f6efcad9cb78b6d760b57ba5a915cd7329f`。Node 24.19.0 在最终源码完整模块 12/12、退出 0（24.087 秒）；18/22 各对受清理变更影响的 `Claude monitor catches spawn errors and retains idle limits before any native readiness` 定向 1/1、独立退出 0（18 另有 11 项名称排除），未重复全模块。三轮完整模块的生产 SHA256 均为 `faa79d32f3f3024ff15b6f89a172a9c198db9b3a13f22cbc7b20ba4ff24493e3`；治理（33 自动测试文件）、隐藏进程检查及 diff 检查通过。
 - [ ] 独立 Tester：基于最终提交，在 Node 18/22/24 集中复核完整 Claude 模块，再按 Coordinator 安排运行唯一完整 CD；保留原限制与此前失败记录。这里是监控职责提取与测试前提隔离，不宣称修复了生产超时分类或完成安装、发布、真实 Cloud 验收。
+
+### DEVICE-GRANT-PERSISTENT-CLIENT-01 · Cloud 设备申请持久等待兼容（2026-10-07）
+
+- [x] Executor：start 通过 `X-Context-Guard-Device-Grant: persistent-v1` 协商，保留原四字段 JSON；仅 `persistent:true/status:pending/expiresAt:null/expiresIn:null` 解除等待期限，旧 Cloud 有限期限及 approved 有限领取窗口仍严格执行。每 HTTP 至多 15 秒、原轮询/有限重试不变，不新增后台任务、续期权限、Session 身份更改或 Hook 配置。
+- [x] Executor：CLI 停止或 start 回复未知保留同一申请；过期旧缓存也先以原 secret 重新协商。未知 claim 不自动重试/重新 issue；确定终态保留原申请与安全失败记录，只有下一次显式连接才重新申请并再次人审。start 临时拒绝只有明确白名单终态 reason 才能结束申请，不能因通用限流 `FORBIDDEN` 换 secret；不解析任意错误文本。
+- [x] Executor 正式回归：保留旧 finite deadline/并发/未知回执与公共 HTTP 入口用例，新增持久等待超过十分钟、停止调用后一天复用、start 回复丢失/旧缓存复用、12 组非法期限组合、approved 有限期、未知领取→确定终态→显式再次申请及临时 start 拒绝的同请求恢复。时间推进和调用停止为合成模块夹具，不冒充真实 CLI 进程取消或生产 Cloud。
+- 初稿 Node 18.20.8 / 22.18.0 / 24.19.0 各完整 21/21、独立退出 0（18.165 / 12.447 / 11.034 秒）；初稿 runtime SHA256 `1614e762b1e7f719c838763c8c93fecba3ac6f1030f1589f9db659d62ef77091`、test `5c07cd48ee668a6c945d2ca89879c273508866558b776b365a7e62e9b1f3c08b`。随后 Review 发现 start 通用限流可能被错误归为终态，在所有测试进程结束后收窄 phase/reason 并补正式回归；不能把初稿三版结果拼为最终源码三版完整通过。
+- [x] Executor 最终集中验证：Node 22.18.0 `node --test tests/browser-login.test.mjs` 为 22/22、退出 0（15.653 秒）；Node 18.20.8 / 24.19.0 分别以 `--test-name-pattern="temporary start rejection after a lost reply|uncertain claims retain their request"` 对同文件执行受影响两项，各 2/2、独立退出 0（2.157 / 2.213 秒，18 另有 20 项名称排除）。最终 runtime SHA256 `edfd169b3461e5a8ed52c096ac246907108afd569959dfc19179eb8bf6c1a686`、test `c5bac2808bd0eab91793f33c6d0a64d89ec854f4580e47d89cf6d0379fa28656`；治理、隐藏进程及 diff 检查通过，未跑整仓全量。
+- [ ] 独立 Tester：最终源码与 Cloud 同一 wire 契约的公共入口联调，验证真实 CLI 取消/重启不丢 pending 或多发申请、Cloud 重启/旧记录迁移、工具 UI 人审、批准领取/过期/拒绝/未知领取保持权限与单次 issue；覆盖新旧服务和客户端限制。最终安装产物/Required/生产部署另行验收，本模块通过不代表上述链路完成。
+- [x] 独立阶段验收（上述最终 runtime/test 哈希）：Node 22 完整正式模块 22/22，18/24 五个兼容目标各 5/5，分别独立退出 0；另一次隔离真实 Cloud HTTP 联调 7 项通过，覆盖真实 worker 内函数取消、Cloud 重启后同申请恢复、人类 Cookie/CSRF/项目边界、单次领取、拒绝后显式新审批、领取回复丢失和旧固定客户端兼容。两项目 Main/Session 摘要前后不变。跨仓脚本位于本机忽略的 temp，仅作独立证据，不是新增正式 CI 用例；没有公开 CLI 进程终止、安装版本或生产 Native 验收，因此上一项仍待收口。长等待来自合成时钟，不冒称长期生产观察。
+
+### DEVICE-GRANT-PERSISTENT-RELEASE-01 · 0.6.5 分阶段发布验收（2026-10-07）
+
+- 固定 Core/UI 1.1.3 来自 Cloud Main `5784e47d0b9c997b1652153be3cf502fee4e69ff` 的公开 `shared-v1.1.3` 制品，独立核验官方 URL、源文件字节与锁 SRI。Skill 只机械更新版本和这两项依赖；生成运行时 55 文件，不手改生成物或使用本地依赖回退。
+- 唯一 Windows Node 22.18.0 完整 `npm run test:cd` **退出 1**：441/441 Node 用例、零跳过（883.596 秒），安全 39 项、治理、ci-smoke、101 文件打包契约及制品安全扫描通过；随后官方 0.6.4 基线 tar 下载触发原 20 秒超时，未进入安装升级。获批的 Node 24 原生代理基线补验也退出 1，保留两次失败；没有重跑 441 用例或扩大 900 秒/30 分钟总预算。
+- [x] 必要阶段补验：Coordinator 在隔离服务器 Node 18.20.4 执行同源码原 `prepareBaseline`，保留真实官方 HTTP、20 秒/32 MiB/SRI 校验，取回官方 0.6.4 基线；独立 Tester 核实 SHA256 `70925c53f7fb4d31822c7cf28874760e5a58ac990313b1e7a005cfb6fca7ea1c` 及官方 SRI。随后仅在本地 Node 22 对原同一候选包执行正式 fresh/upgrade 入口，各保持 300 秒限制、实际退出 0；三客户端 payload、settings/context、第三方 Hooks 保留和安装后工作台检查通过。
+- 同一候选 0.6.5 包 SHA256 `e889d628a13a417334439f7461adb579766691f88bbbe8451584949eb87d6312`，各阶段产品/测试/锁/生成物指纹未变，未重打包。完整报告 `temp/tester-skill065-split-final-acceptance-20261007.md`；原 CD 日志 SHA256 `0b3adbb0d2d8b3afba20dc13b89c2aa3d5fb5640a69314d36007a0a84b1e8bfe`、本地安装升级日志 `6c0e6aaf734d1036f8a567aec9988a630f6a6f4674c9ff01789b7ebd82261f31`。这是跨环境基线加同制品分阶段验收，不将原完整 CD 改记通过；本段仅在验收后追加，不影响 npm 内容。
+- [ ] 精确 PR/Main/标签的 Required 与正式 npm CD、公开 exact/latest 包及摘要、个人安装和真实入口验收仍需完成。上述隔离安装不代表个人配置已升级、生产审批或 Native 链路已验收；失败证据保留，不触碰个人 Hooks 或运行中的工作台。
+
+### DEVICE-GRANT-BROWSER-SCOPE-01 · 登录弹窗与静态预览回归（2026-10-07）
+
+- PR #454 首轮 `37584180785`：Browser 在 `backend-password-ui` 失败、Required 因此失败；其他功能、包、最低版本、三系统安装与三客户端无对话检查通过。旧测试使用所有 dialog 中第一个 status，误选新增但未打开的设备申请弹窗，不是登录成功状态本身缺失。
+- [x] Executor：仅给该正式登录测试限定当前打开的 dialog，先核唯一数量及“连接 Cloud”标题，输入、提交、状态、清空与取消均作用于该弹窗；原 10 秒等待、auth.open 消息和密码不持久化断言不变，不改产品或生成物。
+- Executor 一次 Node 22.18.0 正式 `npm run test:browser` **退出 1**：修复的登录项通过，前 36 项通过；随后 `static-preview-clicks` 等待 root 节点 30 秒超时，第二 journal 入口未执行。报告的实际页面异常为读取未定义对象的 `interfaceCapabilities`；Core/UI 1.1.3 的 `installDeviceApprovals` 直接访问 `sync.config`，静态预览没有该配置。失败合成现场及浏览器结果保留，不能把本轮写为 Browser 通过，也不能在 Skill 手改生成物掩盖共享 UI 回归。
+- [ ] Coordinator：修复 Cloud canonical 静态预览缺省配置并发布新的固定共享制品；之后更新 Skill 锁/生成物，交独立 Tester 复核正式 Browser 两入口及受影响发布验收。原 CI/本地失败保留，Required 未通过不得合并。
+- [x] Cloud canonical 修复随正式 Core/UI 1.1.4 发布（Main `ce3b1a9b1bbce081e80141712ba44d110093fd57`），独立公开资产/source/SRI 核验通过；Skill 机械更新两固定 URL/锁并正式构建 55 文件，未手改生成物。新候选包 SHA256 `a9d4dd9faca1a8eab4315cc7f5907d4a2f76ab1fbebb2cc416da279c44b7be88`，101 文件精确契约、摘要复核和安全扫描通过。授权 runtime/test 仍为上述 `edfd169b`/`c5bac280` 指纹，旧 Node 模块证据仅对应未变源码，不冒充新版本全量通过。
+- 新 1.1.4 输入上 Executor 一次 Node 22 正式 Browser **仍退出 1**：登录和静态预览修复均通过，共 51 项通过；随后 `workbench-browser.mjs:1367` 的设计 gallery 导航等待 load 30 秒超时，journal 入口未到。该报告无旧配置读取异常或其他页面 JS 错误；gallery 引用外部 Google Fonts 仅是静态线索，未据此确认超时根因。保留 `cg-browser-ci-7Kb8rH` 与自动浏览器报告，停止重复整轮，等待定向诊断及独立验收。
+- 获批的唯一隔离 gallery 诊断在原 30 秒内加载成功（8.639 秒、50 条目、无页面异常），没有复现前次超时。实际本地 CSS/JS 约 1.25 秒完成，远端 Google CSS 约 3.82 秒、字体至 8.29 秒完成；不能据此声称已确定首次超时根因。随后仅在正式测试的 preview 页面进入非分发 gallery 前阻断明确的 Google Fonts CSS/字体源；不拦本地资源、不返回伪造 CSS、不改生产字体或超时。保留全部结构、颜色、尺寸、hover 和 CSS 字体声明断言；不宣称该用例验证远端字体加载或实际字形渲染。
+- [x] Executor 最终一次 Node 22.18.0 `npm run test:browser` 两入口实际退出 0：工作台 55 checks、errors 为空，Journal recovery 通过。新 1.1.4 候选包及授权产品源码未变，没有重跑 441 项或完整本地 CD；前述所有失败仍保留。
+- [ ] 独立 Tester：复核最终 Browser 两入口和同一 `a9d4dd9f` 候选包的原 fresh/upgrade 阶段，复用已验证的官方不可变 0.6.4 基线；随后精确 PR/Main/tag Required 和官方 npm CD 必须全部满足，仍未完成个人安装与真实入口交付。
+- [x] 独立受影响验收：最终 browser SHA256 `40fde957ca9e3b62297e47da667ee607919c208743ddd7050fe9d127728d11f2`，Node 22 正式两入口实际退出 0，55 checks、errors 为空、body/cleanup/passed 均 true，Journal 通过；同一新 `a9d4dd9f` 制品的原 fresh/upgrade 阶段分别退出 0、各保留 300 秒限制，核对基线摘要/SRI、三客户端与个人设置/context/第三方 Hooks 保留。源码/锁/生成物/制品指纹前后相同，未重跑 441 用例、打包或基线下载。报告 `temp/tester-skill065-shared114-independent-acceptance-20261007.md`；Browser 日志 SHA256 `bc2d28d02305117c7732da179ebf7084f44a720caf70a040aa31e658e63f88cd`，安装升级日志 `0eab1bbd488e706e87bf85862877cb7164d765d8f8268c982451b82693a8daf2`。原失败记录不变；PR/Main/tag、官方 npm 和实际个人安装仍另行收口。
