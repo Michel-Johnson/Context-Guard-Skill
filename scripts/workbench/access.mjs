@@ -179,9 +179,19 @@ export class Access {
     const sessionsFile = path.join(root, '.codex/context/sessions.jsonl');
     const text = await fs.readFile(sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
     const sessions = new Map();
-    for (const line of text.split('\n').filter(Boolean)) {
+    const events = text.split('\n').filter(Boolean).flatMap(line => {
+      try { const event = JSON.parse(line); return event && typeof event === 'object' ? [event] : []; } catch { return []; }
+    });
+    const nativePlatforms = new Map();
+    for (const event of events) {
+      const expected = { 'cursor-acp-provision': 'cursor', 'claude-runtime-provision': 'claude' }[event.source];
+      const id = typeof event.session_id === 'string' ? event.session_id.trim() : '';
+      if (!id || event.event !== 'session-start' || !expected || event.platform !== expected ||
+          normalizeHostPath(event.worktree_root) !== normalizeHostPath(root)) continue;
+      nativePlatforms.set(id, nativePlatforms.has(id) && nativePlatforms.get(id) !== expected ? 'unknown' : expected);
+    }
+    for (const event of events) {
       try {
-        const event = JSON.parse(line);
         const id = typeof event.session_id === 'string' ? event.session_id.trim() : '';
         if (!id || event.event === 'maintenance' || id.startsWith('maintenance-')) continue;
         const at = typeof event.at === 'string' && event.at ? event.at : new Date(0).toISOString();
@@ -195,9 +205,10 @@ export class Access {
         sessions.set(id, {
           id,
           name: typeof event.thread_name === 'string' && event.thread_name.trim() ? event.thread_name.trim() : previous?.name || '',
-          // CLI plan/archive records describe activity, not a different host.
-          platform: event.platform === 'cli' && ['codex', 'cursor', 'claude'].includes(previous?.platform) ? previous.platform
-            : typeof event.platform === 'string' && event.platform ? event.platform : previous?.platform || 'unknown',
+          // Cursor can import Claude hooks. Creation identifies the native host;
+          // imported hooks and CLI commands describe activity, not migration.
+          platform: nativePlatforms.get(id) || (event.platform === 'cli' && ['codex', 'cursor', 'claude'].includes(previous?.platform) ? previous.platform
+            : typeof event.platform === 'string' && event.platform ? event.platform : previous?.platform || 'unknown'),
           status,
           statusSeen: stopped || activated ? at : previous?.statusSeen || '',
           statusSource: 'hook',
