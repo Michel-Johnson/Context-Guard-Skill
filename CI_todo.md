@@ -1,5 +1,16 @@
 # CI 待验证
 
+## COORDINATOR-SHORT-TEST-LABELS-01 · 测试标签与日期短名称（2026-10-09）
+
+- [x] 保留真实遗留失败：Cloud 1.3.1 / Slack 0.2.1 默认 TODO 已保留七项、共同状态只报一次、无节点 ID 或未问 Bug，但仍原样展示一条测试标签与日期编号标题；旧成功结果不代替短名称效果。
+- [x] 基于最新 main `1fa3859faaeed634ea3bfade208ed82c111f1442`，仅原位替换 canonical `Coordinator.md` 两 profile 的既有短名段：测试标签/编号/日期不限位置，用途不明不猜，同名可识别；明确索要技术编号及工具参数/URL/代码/命令/回执/执行提示仍保留原值。每段仍不超过原 107 字符，不增加静态规则，不改 Main 标题、Cloud context、生成角色或最终正文。
+- [x] 开发后一次既有 `.github/scripts/shared-package.test.mjs` 四目标窄验证，Node 24 actual exit 0、4/4 passed、0 failed/skipped/cancelled、146.4949 ms；日志 `temp/coordinator-short-test-labels-executor-1fa3859-20261009.log`。每段 107→107 字符，自动/人工 profile 2619/1278 不增加；规则匹配与分发映射只能证明静态合同，不证明真实模型必然改写。
+- [x] 独立静态 P2 阻断旧候选：泛称去日期可能误删业务期限/版本；旧四项通过与日志/hash仍对应旧文字，不改写为最终通过。返工仅原位缩短两段，删除对象明确为测试标签及其编号/日期和内部 ID/哈希，必要业务日期/版本保留；省去具体样例、不根据标签猜用途，其他门禁及工具真值不变。
+- [x] P2 更正开发后一次同四项目验证，实际 terminal chunk `6fb8a3`、exit 0、4/4 passed、0 failed/skipped/cancelled、116.2749 ms；新日志 `temp/coordinator-short-test-labels-p2-executor-1fa3859-20261009.log`，两段94/94字符、auto2606/manual1265。旧结果保留旧语境，文字匹配仍不证明真实模型遵循。Root 同期准备 core2.1.3 / Skill0.7.4 发布元数据，无依赖变更；本轮 Executor 未打包或发布。
+- [x] 独立 Tester 最终冻结六文件、HEAD `1fa3859` 前后 hash 全同；唯一正式四项目 actual exit 0、4/4 passed、0 failed/skipped、140.3759 ms，日志 `temp/coordinator-short-test-labels-p2-independent-1fa3859-20261009.log`。静态消除 P2、两段各94字符、唯一核心角色映射及 Skill0.7.4/core2.1.3/锁元数据一致；未打包或声称模型语义验收。
+- [ ] Required/正常合并/公开固定 core/Skill/Cloud 消费由 Coordinator 统一完成。本轮 Executor 不打包、提交、发布或部署。
+- [ ] 合并后安装/doctor 与新版本真实 Slack 默认 TODO 验收：保留七项及用途、无逐项相同状态/测试标签/日期编号；未知用途不得编造，同名和用户明确要技术详情仍能识别。当前未绑定产品任务，不伪造 Map Main、审批或完成回执。
+
 ## LOCAL-RECORDS-01 · 原生客户端验收
 
 - [ ] 在已登录的 Claude Code CLI 与 Cursor 中验证完整生命周期：会话笔记落在本地，归档、压缩及结束均无笔记上传；Cloud 上下文读取与收工检查仍可用。公共 CLI、Hook 函数和隔离归档已有正式回归，不能替代原生宿主验收。
