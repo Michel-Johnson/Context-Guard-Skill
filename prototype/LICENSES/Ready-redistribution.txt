@@ -1,0 +1,14 @@
+Ready-derived loading animation
+
+Source: Michel-Johnson/Ready
+Revision: d0771a1c8dc8086f49fbe924c2b5cbb621d0fd8b
+Source component: platform/frontend/src/components/WorkingBlot.tsx
+Distributed files: coordinator-working-blot.mjs and working-blot-atlas.png
+
+The project maintainer explicitly authorized public distribution of these
+Ready-derived files in Context Guard and its shared workbench package.
+This authorization was recorded during the repository split on 2026-10-05.
+
+This notice records permission for the files above only. It does not assign
+a license to the rest of the Ready repository or to unrelated assets.
+Keep this attribution and authorization notice with redistributed copies.

@@ -129,18 +129,18 @@ export function initialBase(root, head) {
   return base.status === 0 ? commit(root, base.stdout.trim()) : null;
 }
 
-export function scanPackage(tarball) {
+export function scanPackage(tarball, expectedFiles = packedFiles) {
   const absolute = path.resolve(tarball);
   const before = sha256(fs.readFileSync(absolute));
   return temporary(directory => {
     const expected = path.join(directory, "expected.json");
     const extracted = path.join(directory, "files");
-    fs.writeFileSync(expected, JSON.stringify(packedFiles));
+    fs.writeFileSync(expected, JSON.stringify(expectedFiles));
     const python = pythonInvocation();
     command(python.command, [...python.prefix, path.join(toolRoot, ".github/scripts/security-extract.py"), absolute, extracted, expected]);
-    checkPaths(packedFiles, true);
+    checkPaths(expectedFiles, true);
     scan("dir", extracted);
     if (sha256(fs.readFileSync(absolute)) !== before) throw new SecurityError("Release package changed while being scanned.");
-    return { files: packedFiles.length, sha256: before };
+    return { files: expectedFiles.length, sha256: before };
   });
 }

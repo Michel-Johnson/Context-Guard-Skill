@@ -150,7 +150,7 @@ Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在推理�
 
 配置 Cloud 后，它是唯一的人类工作台前端。同步基于事件（项目级 SSE），不是定时全量覆盖。开发前 `sync prepare`，验证后 `sync finish`。不相交的变更会重放；重叠的节点、字段或文件返回 `WORK_IMPACT` 并保持未验证。
 
-服务端、Slack 和部署维护在独立的 [Context Guard Cloud](https://github.com/Michel-Johnson/Context-Guard-Cloud) 仓库。本仓库只维护 Skill、本地后端和宿主适配；公共运行库、工作台页面和角色资料由固定 Cloud 发布包生成。开发和打包前执行 `npm ci --ignore-scripts`、`npm run build:runtime`，不要修改生成文件。连接：[Cloud Sync](references/design/design-cloud-sync-v1.0.1.md)。记忆权威：[服务器记忆](references/design/design-memory-server-v1.0.1.md)。
+[Cloud](https://github.com/Michel-Johnson/Context-Guard-Cloud) 是可选的云端扩展：负责托管、账号与权限、多设备服务、云端模型服务和 Slack。Skill 维护 Map、共享协议、工作台 UI、角色提示词、CLI、hooks、本地后端与客户端同步。共享包由 Skill 发布，Cloud 固定版本使用；部署在云端不改变源码归属。
 
 ## 文档
 

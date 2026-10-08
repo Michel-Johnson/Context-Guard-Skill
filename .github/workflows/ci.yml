@@ -102,7 +102,7 @@ jobs:
       - name: Install fixed dependencies without personal Skill installation
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
       - name: Setup Python
@@ -140,7 +140,7 @@ jobs:
       - name: Install fixed dependencies without personal Skill installation
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
       - name: CI | 准备安全检查
@@ -158,13 +158,22 @@ jobs:
       - name: CI | 上传前检查最终制品的敏感内容
         shell: bash
         run: node .github/scripts/security-scan.mjs package "$PACKAGE_TARBALL"
+      - name: 检查核心与 UI 共享包
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run pack:shared
+          core=$(node -p "'michelj-context-guard-core-'+require('./scripts/shared/package.json').version+'.tgz'")
+          ui=$(node -p "'michelj-context-guard-workbench-'+require('./prototype/package.json').version+'.tgz'")
+          node .github/scripts/security-scan.mjs package "dist/$core" core
+          node .github/scripts/security-scan.mjs package "dist/$ui" workbench
 
       - name: Store validated package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: context-guard-ci-package
           path: |
-            dist/*.tgz
+            ${{ env.PACKAGE_TARBALL }}
             dist/package.sha256
           if-no-files-found: error
           retention-days: 3
@@ -203,7 +212,7 @@ jobs:
       - name: Install fixed dependencies without personal Skill installation
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
       - name: Setup Python
@@ -243,7 +252,7 @@ jobs:
       - name: Install fixed dependencies without personal Skill installation
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
       - name: Setup minimum Python
@@ -279,7 +288,7 @@ jobs:
       - name: Install locked test dependencies without installing a personal Skill
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
 
@@ -334,7 +343,7 @@ jobs:
       - name: Install fixed dependencies without personal Skill installation
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
       - name: Setup Python

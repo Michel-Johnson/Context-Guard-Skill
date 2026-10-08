@@ -1,11 +1,11 @@
-// Exact standalone Skill payload; generated Cloud packages are materialized before packing.
+// Skill 自有源码的精确安装与分发清单。
 export const installedFiles = [
+  "scripts/shared/package.json",
+  "prototype/package.json",
+  "references/design/design-repository-v1.0.0.md",
   "references/design/README.md",
   "references/design/design-agent-v1.0.1.md",
   "references/design/design-interface-v1.2.1.md",
-  "references/design/design-cloud-attachments-v1.0.0.md",
-  "references/design/design-coordinator-compaction-v1.0.0.md",
-  "references/design/design-slack-integration-v1.0.0.md",
   "references/claude-runtime.md",
   "scripts/workbench/claude-runtime.mjs",
   "roles.md",

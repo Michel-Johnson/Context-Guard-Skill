@@ -1,0 +1,19 @@
+{
+  "name": "@michelj/context-guard-workbench",
+  "version": "1.1.6",
+  "type": "module",
+  "description": "Context Guard 本地与云端共用工作台 UI",
+  "repository": "github:Michel-Johnson/Context-Guard-Skill",
+  "files": [
+    "*.html",
+    "*.js",
+    "*.mjs",
+    "*.css",
+    "*.png",
+    "vendor/",
+    "LICENSES/"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

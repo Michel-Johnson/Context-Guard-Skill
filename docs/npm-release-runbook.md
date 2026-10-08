@@ -1,23 +1,12 @@
 # npm 发布与恢复手册
 
-Skill 通过 npm 交付。Cloud 独立部署；Skill 构建依赖的固定共享运行时产物由 Cloud GitHub Releases 提供。Skill 的 npm 发布不会部署 Cloud，也不会把服务端代码放入安装包。
+Skill 通过 npm 交付。Cloud 独立部署，固定使用 Skill 发布的共享核心与 UI 包。Skill 的 npm 发布不会部署 Cloud，也不会把服务端代码放入安装包。
 
-## 拆分后的构建边界
+## 两仓库的构建与发布边界
 
-在干净的 Skill 源码检出中先执行：
+Skill 不依赖 Cloud 包。`npm ci --ignore-scripts` 安装开发依赖，`npm run build:runtime` 只检查自有源码，不下载或覆盖它们。`npm run pack:shared` 从同一份源码打包 core 与 workbench，按精确白名单检查后发布到 Skill 的 GitHub Releases。
 
-```bash
-npm ci --ignore-scripts
-npm run build:runtime
-```
-
-`@michelj/context-guard-core` 和 `@michelj/context-guard-workbench` 使用明确的 Cloud 发布版本及锁文件，不跟随 `main` 或 `latest`。`build:runtime` 将共享协议、工作台 UI、角色与多数 references 生成到原运行路径；`references/design/design-cloud-sync-v1.0.1.md` 仍由 Skill 维护，不得被生成物覆盖。
-
-`scripts/shared/`、`prototype/`、角色文件及生成参考不提交进 Skill Git；它们须进入最终安装产物，安装后的本地工作台不能依赖另一个 Cloud 源码目录。不要直接修生成物；在 Cloud 源码修复、发布新共享包，再更新 Skill 依赖与锁文件。构建检测到生成物被手工修改时应停止，保留修改待核对，不能强行覆盖。
-
-首次拆分发布顺序是：Cloud 共享包的准确版本可下载并通过校验 → Skill 锁文件确定该版本 → 干净构建 → 原有测试和 tarball 安装验收 → Skill npm 发布。共享包不可下载、锁文件不符、产物缺失或夹带 Cloud/Slack 服务端都阻止发布；不从本机旧目录补文件求通过。
-
-记录 Cloud 源码 SHA、共享包版本/锁文件校验和 Skill 提交及产物哈希。两个仓库各自通过 Required；跨仓库验收绑定这些版本，不能沿用拆分前的测试结果冒充新发布成功。Cloud 部署与服务版本核验见 [独立部署手册](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/cloud-deployment.md)。
+Cloud 使用固定发布 URL 和锁文件中的完整性摘要；先合并 Skill 并发布可下载、通过校验的共享包，再更新 Cloud。Skill npm 发布、共享包发布、Cloud 部署是三个独立动作。不得从另一个本地检出补文件，也不得修改 Cloud 中的生成物。记录两仓库提交、共享包版本和哈希；双方 Required 分别通过。
 
 ## 超时与清理
 

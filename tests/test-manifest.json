@@ -77,6 +77,11 @@
     "tests/workbench-attachments.test.mjs",
     "tests/crash-worker.mjs",
     "tests/win-file-lock.py",
-    "tests/fixtures/workbench-fixtures.js"
+    "tests/fixtures/workbench-fixtures.js",
+    "tests/shared-interface-protocol.test.mjs",
+    "tests/shared-interface-store.test.mjs",
+    "tests/shared-interface-blobs.test.mjs",
+    "tests/shared-interface-snapshots.test.mjs",
+    "tests/shared-workbench-ui-sync.test.mjs"
   ]
 }

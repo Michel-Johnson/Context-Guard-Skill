@@ -39,15 +39,5 @@ node_modules/
 output/
 .cloud-data/
 
-# Generated from fixed Cloud release packages, never a second source.
+# 共享核心、UI 和参考文档由本仓库维护。
 /.runtime-generated.json
-/scripts/shared/
-/prototype/
-/roles.md
-/Coordinator.md
-/Executor.md
-/Tester.md
-/references/*
-!/references/design/
-/references/design/*
-!/references/design/design-cloud-sync-v1.0.1.md
