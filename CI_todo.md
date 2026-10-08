@@ -4,6 +4,7 @@
 
 - [x] Skill #466/#467 已按准确 Required 合入 main `cee8e4e`，三平台官方 no-hooks 安装各100文件与该main一致，原安装完整副本保留、Hook/config字节不变。Doctor 不再崩溃，但本任务项目缺有效Map/Session/绑定仍未就绪；未重建项目。Cloud #33 当前准确组合完整468项/466pass/0fail/2skip及独立2/2、Required通过并正常合并，不代表生产部署或厂商验收。
 - [x] 安装0.8.2后恢复原Session再次实际403：Cursor加载用户Claude兼容Hook，pre/post-tool-use带platform:claude覆盖真实Cursor身份。官方第三方Hook契约与本地现场一致，未禁用或修改用户Hook。正式注册表及公共HTTP两目标先实际失败；创建来源/宿主/根路径匹配时固定原生平台，冲突创建来源显示unknown，CLI-only与普通Hook不伪造身份；保留活动、停止、时间。候选Skill0.8.3，core/UI与依赖不变；准确回归、独立Review、Required、安装后原Session恢复待完成。
+- 保留候选首轮失败：注册表通过，公共HTTP夹具写入 /var 路径别名，而真实原生创建写 fs.realpath 后 /private/var；源根匹配拒绝该错配，完整回归实际517项/514pass/1fail/2skip、exit1。夹具改成真实创建入口的规范根，不放宽生产校验。原厂商进程实际finished、父子PID均退出、回复已落盘；不是重启理由。
 
 - [x] `2ccae20` 真实 installed Cursor 工作台创建原生会话并实际生成 multiply 文件，但调用 plan-start 后 sessions.jsonl 的通用 platform:cli 覆盖原生Cursor身份，GET回显返回403；本次验收 failed，关闭本任务backend后原生job为interrupted。失败日志与现场保留，未宣称完成或重建替代会话。
 - [x] 正式公共HTTP加入后到cli活动先实际失败；保留原生平台仅针对已有 codex/cursor/claude 与 cli活动，不从只有cli的记录伪造宿主。新平台/时间/活动测试与HTTP两个目标实际2/2 exit0。Skill候选0.8.2，shared包与依赖不变；独立Review/完整回归/Required/安装后的原Session恢复待完成。

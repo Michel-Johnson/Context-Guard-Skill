@@ -1445,7 +1445,7 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
   retainedFixtures.add(f.root); // 用户要求保留本地文件；仅关闭本测试服务。
   for (const [id, platform] of [[sessionId, 'cursor'], [otherSessionId, 'claude']]) {
     await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform, session_id: id, event: 'session-start',
-      ...(platform === 'cursor' ? { source: 'cursor-acp-provision', worktree_root: f.root } : {}) }) + '\n');
+      ...(platform === 'cursor' ? { source: 'cursor-acp-provision', worktree_root: await fs.realpath(f.root) } : {}) }) + '\n');
   }
   const running = await startServer({ root: f.root, port: 0 });
   const base = new URL(running.state.url).origin;
@@ -1466,7 +1466,8 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
     assert.equal((await call(running.state.adminToken, input, { Origin: base })).status, 401);
     assert.equal((await call(running.state.adminToken, { ...input, sessionId: otherSessionId })).status, 409);
     assert.equal((await call(running.state.adminToken, { ...input, config: { ...config, root: os.tmpdir() } })).status, 409);
-    assert.equal((await call(running.state.adminToken, input)).data.configured, true);
+    const configured = await call(running.state.adminToken, input);
+    assert.equal(configured.status, 200, JSON.stringify(configured.data)); assert.equal(configured.data.configured, true);
     const status = await call(running.state.adminToken, { sessionId, action: 'status' });
     assert.equal(status.status, 200); assert.equal(status.data.status, 'stopped'); assert.equal(status.data.nativeSessionId, sessionId);
     assert.equal((await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'bad', message: 'No invocation', root: '/foreign' } })).status, 400);
