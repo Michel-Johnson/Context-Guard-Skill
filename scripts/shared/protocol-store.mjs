@@ -15,6 +15,12 @@ const requireIdentity = p => {
   if (!p || ['repositoryId', 'deviceId', 'agentId'].some(k => typeof p[k] !== 'string' || !p[k])) fail('UNAUTHORIZED', 'Authenticated identity required');
 };
 const bindingKey = (p, id) => key([p.repositoryId, id]);
+function requireNativePromptAvailable(state, principal, session) {
+  if (principal.role !== 'human') fail('FORBIDDEN', 'Only the project human can submit native prompts');
+  const active = Object.values(state.tasks).some(task => task.repositoryId === principal.repositoryId && canonical(task.session) === canonical(session) && !['closed', 'finished', 'cancelled'].includes(task.stage));
+  const local = state.localExecutions?.[queueKey(principal, session)];
+  if (active || local && !local.closed) fail('CONFLICT', 'Use the existing approved task conversation for this assigned Session');
+}
 export function hasCiReceiver(state, principal, session, config = {}) {
   const executor = state.bindings[bindingKey(principal, session.id)];
   if (!executor || executor.generation !== session.generation) return false;
@@ -125,7 +131,7 @@ export class ProtocolStore extends EventEmitter {
     return reply;
   }
   async receiveNotification(principal, message) {
-    if (principal.role !== 'device' || !message.session || !workflowTypes.has(message.type)) fail('FORBIDDEN', 'Unsupported downstream notification');
+    if (principal.role !== 'device' || !message.session || !(workflowTypes.has(message.type) || message.type === 'native.prompt' || message.type === 'native.result')) fail('FORBIDDEN', 'Unsupported downstream notification');
     // Persist transport receipt and inbox entry together; this is NOT task completion.
     return this.execute(principal, message, (state, p, input, emit) => {
       state.localExecutions ||= {};
@@ -439,6 +445,22 @@ export class ProtocolStore extends EventEmitter {
   async handle(principal, input, options = {}) {
     return this.execute(principal, input, async (state, p, message, emit) => {
       const payload = message.payload;
+      if (message.type === 'native.prompt') {
+        const seq = emit(message);
+        return { state: 'queued', requestId: message.id, seq };
+      }
+      if (message.type === 'native.result') {
+        if (p.role !== 'device') fail('FORBIDDEN', 'Native results require the owning device');
+        const request = queueFor(state, p, message.session).items.find(item => item.message.type === 'native.prompt' && item.message.id === payload.requestId);
+        if (!request) fail('NOT_FOUND', 'Native result does not match an accepted prompt');
+        const previous = queueFor(state, p, message.session).items.find(item => item.message.type === 'native.result' && item.message.payload.requestId === payload.requestId);
+        if (previous) {
+          if (canonical(previous.message.payload) !== canonical(payload)) fail('CONFLICT', 'Native request already has a different terminal result');
+          return { recorded: true, requestId: payload.requestId };
+        }
+        emit(message);
+        return { recorded: true, requestId: payload.requestId };
+      }
       if (message.type === 'workbench.read' && options.workbenchRead) return options.workbenchRead(p, message);
       if (workflowTypes.has(message.type)) {
         const taskId = payload?.taskId;
@@ -539,11 +561,30 @@ export class ProtocolStore extends EventEmitter {
         return { ref: payload.ref, version };
       }
       fail('INVALID_ARGUMENT', 'This message is not implemented by this endpoint yet');
-    }, options.authorize);
+    }, async (state, p, message) => {
+      // A cached acceptance is not renewed permission to start native work:
+      // a workflow assignment may have arrived since a failed delivery.
+      if (message.type === 'native.prompt') requireNativePromptAvailable(state, p, message.session);
+      await options.authorize?.(state, p, message);
+    });
   }
   async authorizeSession(principal, session) {
     requireIdentity(principal);
     return this.transaction(state => requireBinding(state, principal, session), { readOnly: true });
+  }
+  async nativeConversation(principal, session) {
+    if (!['human', 'device'].includes(principal.role)) fail('FORBIDDEN', 'Native conversations require the project human or owning device');
+    await this.authorizeSession(principal, session);
+    return this.transaction(state => {
+      requireBinding(state, principal, session);
+      const items = queueFor(state, principal, session).items.filter(item => ['native.prompt', 'native.result'].includes(item.message.type));
+      const results = new Map(items.filter(item => item.message.type === 'native.result').map(item => [item.message.payload.requestId, item.message.payload]));
+      const requests = items.filter(item => item.message.type === 'native.prompt').slice(-20);
+      return { sessionId: session.id, messages: requests.flatMap(({ message }) => [
+        { id: message.id + ':user', role: 'user', text: message.payload.text },
+        ...(results.has(message.id) ? [{ id: message.id + ':assistant', role: 'assistant', ...results.get(message.id) }] : []),
+      ]), pending: requests.some(item => !results.has(item.message.id)) };
+    }, { readOnly: true });
   }
   async recoverySnapshot(principal, session, load) {
     requireIdentity(principal);

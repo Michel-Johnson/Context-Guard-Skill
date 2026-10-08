@@ -31,5 +31,8 @@ test('shared contracts have no dependency on either service and install excludes
   const oldContext = { ...current, buildId: 'project-workbench-v22', capabilities: current.capabilities.filter(c => c !== 'executor-on-demand-context') };
   assert.equal(compatibleRuntime(oldContext), false, '旧工作台没有上下文接口，不能继续复用');
   assert.equal(upgradeableRuntime(oldContext), true, '沿原有安全退出与升级流程保留数据');
+  const oldCursor = { ...current, buildId: 'project-workbench-v23', capabilities: current.capabilities.filter(c => c !== 'cursor-native-conversation') };
+  assert.equal(compatibleRuntime(oldCursor), false, '旧工作台不支持 Cursor 接口，不能继续复用');
+  assert.equal(upgradeableRuntime(oldCursor), true, '保留已有数据，沿原升级入口重启');
   assert.equal(upgradeableRuntime(previous), true);
 });

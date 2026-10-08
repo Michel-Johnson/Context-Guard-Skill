@@ -86,6 +86,8 @@ export const payloadRules = {
   'review.result': object({ kind: choice('brief', 'plan', 'acceptance'), ref: id, version, decision: choice('approved', 'rejected'), reason: text, receiptId: optional(id) }),
   'task.assign': object({ taskId: id, briefRef: id, briefVersion: version, sessionId: id, nodeIds: ids, mainVersion: version, mode: optional(choice('session', 'reviewed')) }),
   'task.message': object({ taskId: id, text, planRef: optional(id), planVersion: optional(version) }),
+  'native.prompt': object({ text: string(16000) }),
+  'native.result': object({ requestId: id, status: choice('finished', 'failed', 'interrupted'), text: string(40000, true), error: optional(string(100)), truncated: choice(true, false) }),
   'task.report': v => { object({ taskId: id, stage: choice(...Object.keys(reportData)), data: jsonObject })(v); reportData[v.stage](v.data); },
   'task.rework': v => { object({ taskId: id, sourceSha: sha, ciResultRef: id, failedTestIds: refs, reason: optional(text) })(v); check(v.failedTestIds.length > 0 || !!v.reason, 'rework evidence or human feedback'); check(new Set(v.failedTestIds).size === v.failedTestIds.length, 'unique failed tests'); },
   'ci.request': object({ taskId: id, sourceSha: sha, ciTodoRef: id, unitTestRefs: refs, references: optional(jsonObject) }),

@@ -20,6 +20,7 @@
 | 服务器记忆 | [design-memory-server-v1.1.0.md](design-memory-server-v1.1.0.md) | 服务器数据权威、权限、同步和发布规则 |
 | 工作台接口 | [design-workbench-interface-v1.1.0.md](design-workbench-interface-v1.1.0.md) | Map 操作、计划、归档、通知和恢复契约 |
 | 本机工作台 | [design-workbench-v1.0.1.md](design-workbench-v1.0.1.md) | 项目命名、Session 绑定和进程复用 |
+| Cursor 接入 | [design-cursor-workbench-v0.1.0.md](design-cursor-workbench-v0.1.0.md) | 已批准的分阶段接入；首版只验收连接、通讯、完成任务 |
 | Cloud 同步 | [design-cloud-sync-v1.0.1.md](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/references/design/design-cloud-sync-v1.0.1.md) | Session 同步、兼容传输、冲突和授权 |
 | Coordinator 压缩 | [design-coordinator-compaction-v1.0.0.md](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/design/design-coordinator-compaction-v1.0.0.md) | 普通 Cloud 对话的历史压缩与原文保留 |
 | Slack 插件 | [design-slack-integration-v1.1.0.md](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/design/design-slack-integration-v1.1.0.md) | 插件隔离、网关、自然语言对话和人工执行模式 |

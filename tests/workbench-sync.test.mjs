@@ -11,9 +11,12 @@ import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, upd
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { definitiveMemoryRejection } from '../scripts/workbench/memory.mjs';
-import { canRetryWorkbenchListen, prepareSessionCommit, startServer } from '../scripts/workbench/server.mjs';
+import { canRetryWorkbenchListen, prepareSessionCommit, startServer, receiverExecutionHeartbeat } from '../scripts/workbench/server.mjs';
 import { canRetryWorkbenchListen as sharedListenGuard } from '../scripts/workbench/listen.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
+import { ProtocolDelivery } from '../scripts/workbench/protocol-delivery.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/shared/io.mjs';
@@ -22,6 +25,15 @@ import { WorkbenchSync, reconcileRecoveryDraft, workbenchTimeoutMs } from '../pr
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
 const retainedFixtures = new Set();
+
+test('Cursor heartbeat uses actual receiver state instead of a newer lifecycle intent', () => {
+  const identity = { platform: 'cursor', status: 'active', statusSeen: '2026-10-09T02:00:02Z' };
+  for (const status of ['stopped', 'active', 'failed', 'interrupted', 'unknown']) {
+    const native = { configured: true, status, at: '2026-10-09T02:00:01Z' };
+    assert.deepEqual(receiverExecutionHeartbeat(identity, native), { status, at: native.at });
+  }
+  assert.equal(receiverExecutionHeartbeat({ ...identity, platform: 'claude' }, { configured: true, status: 'stopped', at: '2026-10-09T02:00:01Z' }).status, 'active', 'existing Claude lifecycle precedence is unchanged');
+});
 
 // Exercise the actual classic-script status functions without starting a browser.
 // Function boundaries are checked explicitly; a missing function is a test failure.
@@ -1386,6 +1398,94 @@ test('Session work-item scope hides other assignments and preserves them during 
 
   const changes = scopeChangesToSession({ changes: [{ operations: [{ type: 'update', id: 'N1', fields: { bugs: doc.root.children[0].bugs } }] }] }, doc, 'session-a');
   assert.deepEqual(changes.changes[0].operations[0].fields.bugs.map(item => item.id), ['B1', 'B3']);
+});
+
+test('Cursor runtime HTTP requires local CLI authority and an exact Cursor binding', async () => {
+  const f = await fixture(), sessionId = randomUUID(), otherSessionId = randomUUID();
+  retainedFixtures.add(f.root); // 用户要求保留本地文件；仅关闭本测试服务。
+  for (const [id, platform] of [[sessionId, 'cursor'], [otherSessionId, 'claude']]) {
+    await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform, session_id: id, event: 'session-start' }) + '\n');
+  }
+  const running = await startServer({ root: f.root, port: 0 });
+  const base = new URL(running.state.url).origin;
+  const call = async (credential, input, headers = {}) => {
+    const response = await fetch(base + '/api/cursor-runtime', { method: 'POST', headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(input) });
+    return { status: response.status, data: await response.json() };
+  };
+  try {
+    const register = async id => {
+      const response = await fetch(base + '/api/session', { method: 'POST', headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: id }) });
+      assert.equal(response.status, 200); return response.json();
+    };
+    const registered = await register(sessionId); await register(otherSessionId);
+    const config = { command: process.execPath, root: f.root, name: 'Cursor fixture' }, input = { sessionId, action: 'configure', config };
+    for (const credential of [running.humanToken, registered.token, 'invalid']) assert.equal((await call(credential, input)).status, 401);
+    assert.equal((await call(running.state.adminToken, input, { Origin: base })).status, 401);
+    assert.equal((await call(running.state.adminToken, { ...input, sessionId: otherSessionId })).status, 409);
+    assert.equal((await call(running.state.adminToken, { ...input, config: { ...config, root: os.tmpdir() } })).status, 409);
+    assert.equal((await call(running.state.adminToken, input)).data.configured, true);
+    const status = await call(running.state.adminToken, { sessionId, action: 'status' });
+    assert.equal(status.status, 200); assert.equal(status.data.status, 'stopped'); assert.equal(status.data.nativeSessionId, sessionId);
+    assert.equal((await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'bad', message: 'No invocation', root: '/foreign' } })).status, 400);
+    const chat = async (route, credential, input) => {
+      const response = await fetch(base + route, { method: input ? 'POST' : 'GET', headers: { Authorization: `Bearer ${credential}`, ...(input ? { 'Content-Type': 'application/json' } : {}) }, ...(input ? { body: JSON.stringify(input) } : {}) });
+      return { status: response.status, data: await response.json() };
+    };
+    assert.equal((await chat('/api/cursor-chat', registered.token)).status, 403);
+    assert.equal((await chat('/api/cursor-chat', 'invalid')).status, 401);
+    assert.deepEqual((await chat('/api/cursor-chat', running.humanToken)).data.sessions, [{ id: sessionId, name: config.name, kind: 'local' }]);
+    assert.equal((await chat('/api/cursor-chat?session=' + otherSessionId, running.humanToken)).status, 403);
+    const module = await fetch(base + '/prototype/cursor-chat.mjs');
+    assert.equal(module.status, 200); assert.match(module.headers.get('content-type'), /javascript/);
+    // Both public direct-chat entrances must obey the existing workflow gate,
+    // even while the actual native receiver is idle. Only synthetic state is used.
+    const protocol = new ProtocolStore(path.join(f.ctx, 'private/project-workbench/interface-v2'));
+    const principal = { repositoryId: running.state.projectId, deviceId: running.state.projectId, agentId: sessionId, role: 'device' };
+    const protocolSession = registered.protocolBinding.session;
+    const taskKey = scopedObjectKey(principal, protocolSession, 'task:assigned');
+    const replay = { v: 2, id: 'accepted-before-assignment', type: 'native.prompt', session: protocolSession, payload: { text: 'Earlier direct task' } };
+    await protocol.handle({ ...principal, role: 'human', agentId: 'local-human' }, replay);
+    const delivery = new ProtocolDelivery(path.join(f.ctx, 'private/project-workbench/interface-v2/task-deliveries'), {
+      cursor: () => { throw Object.assign(new Error('Fixture busy before acceptance'), { code: 'RUNTIME_BUSY' }); },
+    });
+    const priorInput = { id: 'local-native:' + replay.id, platform: 'cursor', sessionId, root: await fs.realpath(f.root), message: replay.payload.text };
+    await assert.rejects(delivery.deliver(priorInput), { code: 'UNAVAILABLE' });
+    const priorFile = path.join(delivery.directory, hash(priorInput.id) + '.json'), priorBytes = await fs.readFile(priorFile, 'utf8');
+    for (const stage of ['awaiting-plan-review', 'executing']) {
+      await protocol.transaction(state => { state.tasks[taskKey] = { id: 'assigned', repositoryId: principal.repositoryId, session: protocolSession, stage }; });
+      const retry = await call(running.state.adminToken, { sessionId, action: 'message', message: { id: replay.id, message: replay.payload.text } });
+      assert.equal(retry.status, 409); assert.equal(retry.data.error.code, 'CONFLICT');
+      assert.equal(await fs.readFile(priorFile, 'utf8'), priorBytes, 'a saved acceptance receipt cannot authorize retrying an earlier rejected native invocation');
+      const blocked = await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'blocked-' + stage, message: 'Unrelated task' } });
+      assert.equal(blocked.status, 409); assert.equal(blocked.data.error.code, 'CONFLICT');
+      assert.equal((await chat('/api/cursor-chat', running.humanToken, { id: 'ui-blocked-' + stage, sessionId, text: 'Unrelated task' })).status, 409);
+      assert.deepEqual((await chat('/api/cursor-chat?session=' + sessionId, running.humanToken)).data.messages, [], 'rejected messages must not start native work');
+    }
+    await protocol.transaction(state => { state.tasks[taskKey].stage = 'closed'; });
+    await protocol.receiveNotification(principal, { v: 2, id: 'paired-assigned', type: 'task.assign', session: protocolSession, payload: { taskId: 'paired-task', briefRef: 'brief', briefVersion: 'version', sessionId, nodeIds: ['N1'], mainVersion: 'main', mode: 'reviewed' } });
+    assert.equal((await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'paired-blocked', message: 'Unrelated task' } })).status, 409);
+    assert.deepEqual((await chat('/api/cursor-chat?session=' + sessionId, running.humanToken)).data.messages, []);
+    await protocol.receiveNotification(principal, { v: 2, id: 'paired-finished', type: 'task.report', session: protocolSession, payload: { taskId: 'paired-task', stage: 'finished', data: { deliveryId: 'paired-assigned', outcome: 'success', summary: 'Fixture result' } } });
+    const sent = await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Synthetic boundary task' });
+    assert.equal(sent.status, 200); assert.equal(sent.data.state, 'received');
+    // Node is intentionally not a Cursor executable. A provider failure must
+    // produce a terminal failure, not a green successful task or missing prompt.
+    let view;
+    const deadline = Date.now() + 6000;
+    do {
+      view = await chat('/api/cursor-chat?session=' + sessionId, running.humanToken);
+      if (view.data.status === 'failed') break;
+      assert.ok(Date.now() < deadline, 'failed native process did not reach its public terminal state');
+      await pause(25);
+    } while (true);
+    assert.equal(view.status, 200); assert.equal(view.data.error, 'CURSOR_DISCONNECTED');
+    assert.deepEqual(view.data.messages, [{ id: 'local-native:fixture-turn:user', role: 'user', text: 'Synthetic boundary task' }]);
+    const duplicate = await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Synthetic boundary task' });
+    assert.deepEqual(duplicate, sent);
+    assert.equal((await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Changed task' })).data.error.code, 'ID_REUSED');
+    const cliDuplicate = await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'fixture-turn', message: 'Synthetic boundary task' } });
+    assert.deepEqual(cliDuplicate, sent, 'CLI and UI share one durable prompt identity and guard');
+  } finally { await running.close(); }
 });
 
 test('Claude recovery HTTP is local-operator-only and requires a bound interrupted receiver', async () => {

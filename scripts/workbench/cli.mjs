@@ -85,6 +85,16 @@ export function wantsHelp(args) {
 }
 const HELP_EXIT_NOTE = '  -h, --help             Print usage and exit. Does not init, start a service, or write .codex/context.';
 function commandHelp(command, parts = []) {
+  if (command === 'workbench' && parts[0] === 'cursor') return `Usage: context-guard workbench cursor --root <project> --session <id> --input <private-config.json|->
+  --new --input <file|->    Create {operationId,config} via the official native Session API.
+  --status                 Read the native Cursor turn and latest result.
+  --message --input <file|-> Send {id,message} to the same configured Session.
+
+Configuration/status/messages require an existing Cursor Session binding; --new creates and binds one explicitly.
+Use an absolute official Cursor CLI path, not a guessed PATH agent.
+Configuration: {command,root,name,model?,environmentFile?,nativeSessionId?,permissionPolicy?,permissionsApproved?,timeoutMs?}.
+Tool permissions default to reject; allow-once requires explicit local permissionsApproved:true.
+${HELP_EXIT_NOTE}`;
   if (command === 'sync') return `Usage: context-guard sync [status|ensure|prepare|pull|checkpoint|finish] --root <project> --session <id>
 
 Uses the project workbench and current Session memory protocol. Authentication:
@@ -809,6 +819,17 @@ async function main(args) {
     const project = await resolveProject(root);
     if (!(await bindingStatus(project, String(opt.session || ''))).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind the real Claude Session before configuring delivery', 409);
     return request(await ensureServer(root), '/api/claude-runtime', { method: 'POST', body: { sessionId: opt.session, [opt.recover ? 'recovery' : 'config']: await inputJSON(opt.input) } });
+  }
+  if (command === 'workbench' && opt._[0] === 'cursor') {
+    const project = await resolveProject(root);
+    if (opt.new) {
+      const input = await inputJSON(opt.input);
+      return request(await ensureServer(root), '/api/cursor-runtime', { method: 'POST', body: { ...input, action: 'create' } });
+    }
+    if (!(await bindingStatus(project, String(opt.session || ''))).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind the real Cursor Session before configuring delivery', 409);
+    const action = opt.status ? 'status' : opt.message ? 'message' : 'configure';
+    return request(await ensureServer(root), '/api/cursor-runtime', { method: 'POST', body: { sessionId: opt.session, action,
+      ...(action === 'status' ? {} : { [action === 'message' ? 'message' : 'config']: await inputJSON(opt.input) }) } });
   }
   if (command === 'workbench' && (opt['bind-main'] || opt['local-main'])) {
     const project = await saveMainBinding(root, {
