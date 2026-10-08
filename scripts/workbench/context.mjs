@@ -32,6 +32,7 @@ export async function executorContext(project, session, action, options = {}, { 
     if (cache && cache.origin !== origin && !options.restart) throw new MapError('CONTEXT_SOURCE_CHANGED', '上下文来源已切换，请用 --restart 建立新的读取基线', 409);
     if (options.restart) cache = null;
     if (!cache && options.ifStarted) return { clear: true, active: false };
+    if (!cache && action === 'check') throw new MapError('CONTEXT_NOT_STARTED', '尚未建立开工上下文基线，不能判断开发期间的变化', 409);
     const read = async (node, version) => {
       const result = config ? await memoryRequest(project, `context?${new URLSearchParams({ session, ...(node ? { node } : {}), ...(version ? { version } : {}) })}`)
         : await localRead?.(node, version);
@@ -127,6 +128,7 @@ export async function executorContext(project, session, action, options = {}, { 
 
 export const contextFailure = error => `无法检查：${({ MEMORY_UNAVAILABLE: 'Cloud 暂时不可用', UNAUTHORIZED: '登录已失效', FORBIDDEN: '没有读取权限', VERSION_CONFLICT: '读取期间版本已变化，请重试', SESSION_BINDING_REQUIRED: '请先绑定当前 Session',
   CLOUD_LOGIN_REQUIRED: '请先登录项目 Cloud', CONTEXT_SOURCE_CHANGED: '来源已切换，请明确重建读取基线', INBOX_PENDING: '先处理旧流程的待确认通知',
+  CONTEXT_NOT_STARTED: '尚未建立开工上下文基线，不能判断开发期间的变化',
   CONTEXT_UNAVAILABLE: '上下文读取结果不完整或损坏', CONTEXT_CHANGED: '上下文有变化，请查看差异并处理后重查', INVALID_ARGUMENT: '命令参数不正确', NOT_FOUND: '节点已删除或不可读取',
   AMBIGUOUS_NODE: '节点重名，请使用完整模块路径', ENOENT: '本地读取状态缺失', SESSION_REQUIRED: '请先绑定真实 Session', STATE_BUSY: '读取缓存正被占用，请重试',
 })[error.code] || '读取失败，请检查连接或本地状态'}`;

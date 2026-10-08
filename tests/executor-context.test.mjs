@@ -165,6 +165,7 @@ test('断连或读错版本必须失败，不能冒充无变化；旧片段仍�
 
 test('没有启用新读取流程时收尾兼容；Session 缓存彼此隔离', async t => {
   const { project, call } = await clientFixture(t);
+  await assert.rejects(call('check'), { code: 'CONTEXT_NOT_STARTED' });
   assert.deepEqual(await call('check', { ifStarted: true, requireClear: true }), { clear: true, active: false });
   await call('read');
   assert.deepEqual(await executorContext(project, 'other', 'check', { ifStarted: true, requireClear: true }), { clear: true, active: false });
