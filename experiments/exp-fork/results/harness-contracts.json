@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "name": "harness-contracts",
+  "originalStudy": "optimization-evaluations/1790538560259",
+  "exportPolicy": "Whitelisted numeric metrics, statuses, public task labels and measurement metadata. No answers, user history, provider credentials, source packets or filesystem paths.",
+  "at": "2026-09-27T19:49:20.259Z",
+  "commit": "e72da2b53805894878023d01949a25a082e0a5cb",
+  "model": "glm-5.3",
+  "prefixMessages": 20,
+  "prefixHash": "497bc037af43e63ffeb39ecb6373515db5ec98e5ac928cd605ced1b87e639986",
+  "exploratory": true,
+  "contracts": true,
+  "implementationHash": "44fde2c10e50b46b28dc91a068c94f4d7be0c3d812ca1d34b8b3789f08c02232",
+  "order": [
+    {
+      "id": "files",
+      "repeat": 1,
+      "variant": "grounded"
+    },
+    {
+      "id": "files",
+      "repeat": 1,
+      "variant": "contracted"
+    },
+    {
+      "id": "config-holdout",
+      "repeat": 1,
+      "variant": "contracted"
+    },
+    {
+      "id": "config-holdout",
+      "repeat": 1,
+      "variant": "grounded"
+    }
+  ],
+  "runs": [
+    {
+      "sample": 1,
+      "task": "files",
+      "repeat": 1,
+      "variant": "grounded",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 15373,
+      "modelCalls": 2,
+      "toolCalls": 1,
+      "prefetchMs": 1769,
+      "prefetchBytes": 38590,
+      "selectedNodes": [
+        "codex",
+        "memory"
+      ],
+      "modelMs": 13468,
+      "toolMs": 101.00520000000051,
+      "toolErrors": [],
+      "modelInputTokens": 61105,
+      "outputTokens": 580
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "repeat": 1,
+      "variant": "contracted",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 12427,
+      "modelCalls": 2,
+      "toolCalls": 1,
+      "prefetchMs": 2277,
+      "prefetchBytes": 38590,
+      "selectedNodes": [
+        "codex",
+        "memory"
+      ],
+      "modelMs": 10036,
+      "toolMs": 91.57390000000305,
+      "toolErrors": [],
+      "modelInputTokens": 61353,
+      "outputTokens": 600
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "repeat": 1,
+      "variant": "contracted",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 30741,
+      "modelCalls": 6,
+      "toolCalls": 6,
+      "prefetchMs": 3501,
+      "prefetchBytes": 47087,
+      "selectedNodes": [
+        "codex",
+        "sandbox"
+      ],
+      "modelMs": 26386,
+      "toolMs": 776.113099999995,
+      "toolErrors": [
+        {
+          "name": "read_file",
+          "code": "NOT_FOUND"
+        }
+      ],
+      "modelInputTokens": 205927,
+      "outputTokens": 512
+    },
+    {
+      "sample": 4,
+      "task": "config-holdout",
+      "repeat": 1,
+      "variant": "grounded",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 11722,
+      "modelCalls": 2,
+      "toolCalls": 1,
+      "prefetchMs": 2995,
+      "prefetchBytes": 47087,
+      "selectedNodes": [
+        "codex",
+        "sandbox"
+      ],
+      "modelMs": 8605,
+      "toolMs": 90.4945000000007,
+      "toolErrors": [],
+      "modelInputTokens": 65179,
+      "outputTokens": 420
+    }
+  ]
+}

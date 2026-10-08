@@ -1,0 +1,398 @@
+{
+  "schemaVersion": 1,
+  "name": "web-strategies",
+  "originalStudy": "web-strategy-evaluations/1790537062194",
+  "exportPolicy": "Whitelisted numeric metrics, statuses, public task labels and measurement metadata. No answers, user history, provider credentials, source packets or filesystem paths.",
+  "at": "2026-09-27T19:24:22.194Z",
+  "commit": "e72da2b53805894878023d01949a25a082e0a5cb",
+  "model": "glm-5.3",
+  "prefixMessages": 20,
+  "prefixBytes": 50088,
+  "prefixHash": "497bc037af43e63ffeb39ecb6373515db5ec98e5ac928cd605ced1b87e639986",
+  "deadlineMs": 180000,
+  "provider": {
+    "model": "glm-5.3",
+    "thinking": {
+      "type": "disabled"
+    },
+    "maxTokens": 8192
+  },
+  "order": [
+    {
+      "id": "single",
+      "repeat": 1,
+      "arm": "fork"
+    },
+    {
+      "id": "single",
+      "repeat": 1,
+      "arm": "direct"
+    },
+    {
+      "id": "comparison",
+      "repeat": 1,
+      "arm": "direct"
+    },
+    {
+      "id": "comparison",
+      "repeat": 1,
+      "arm": "fork"
+    },
+    {
+      "id": "single",
+      "repeat": 2,
+      "arm": "direct"
+    },
+    {
+      "id": "single",
+      "repeat": 2,
+      "arm": "fork"
+    },
+    {
+      "id": "comparison",
+      "repeat": 2,
+      "arm": "fork"
+    },
+    {
+      "id": "comparison",
+      "repeat": 2,
+      "arm": "direct"
+    },
+    {
+      "id": "single",
+      "repeat": 3,
+      "arm": "fork"
+    },
+    {
+      "id": "single",
+      "repeat": 3,
+      "arm": "direct"
+    },
+    {
+      "id": "comparison",
+      "repeat": 3,
+      "arm": "direct"
+    },
+    {
+      "id": "comparison",
+      "repeat": 3,
+      "arm": "fork"
+    }
+  ],
+  "runs": [
+    {
+      "sample": 1,
+      "task": "single",
+      "repeat": 1,
+      "arm": "fork",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 53678,
+      "modelCalls": 7,
+      "toolCalls": 8,
+      "forkMs": 3.236000000000786,
+      "searches": 7,
+      "successfulSearches": 5,
+      "searchMs": 9528,
+      "searchErrors": [],
+      "parentSearches": 0,
+      "parentModelMs": 14054,
+      "synthesisMs": 8339,
+      "children": [
+        {
+          "child": 1,
+          "status": "completed",
+          "forkMs": 3.236000000000786,
+          "durationMs": 39572
+        }
+      ]
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "repeat": 1,
+      "arm": "direct",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 43931,
+      "modelCalls": 8,
+      "toolCalls": 7,
+      "forkMs": 0,
+      "searches": 7,
+      "successfulSearches": 3,
+      "searchMs": 10906,
+      "searchErrors": [],
+      "parentSearches": 7,
+      "parentModelMs": 32808,
+      "synthesisMs": 0,
+      "children": []
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "repeat": 1,
+      "arm": "direct",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 31497,
+      "modelCalls": 5,
+      "toolCalls": 7,
+      "forkMs": 0,
+      "searches": 7,
+      "successfulSearches": 4,
+      "searchMs": 9845,
+      "searchErrors": [],
+      "parentSearches": 7,
+      "parentModelMs": 21538,
+      "synthesisMs": 0,
+      "children": []
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "repeat": 1,
+      "arm": "fork",
+      "status": "completed-with-errors",
+      "timedOut": false,
+      "readyMs": 116652,
+      "modelCalls": 25,
+      "toolCalls": 26,
+      "forkMs": 5.018699999985984,
+      "searches": 24,
+      "successfulSearches": 16,
+      "searchMs": 35771,
+      "searchErrors": [
+        "SEARCH_INVALID_RESPONSE",
+        "SEARCH_INVALID_RESPONSE"
+      ],
+      "parentSearches": 5,
+      "parentModelMs": 28464,
+      "synthesisMs": 4516,
+      "children": [
+        {
+          "child": 1,
+          "status": "failed",
+          "error": "STEP_LIMIT",
+          "forkMs": 2.4126999999862164,
+          "durationMs": 79623
+        },
+        {
+          "child": 2,
+          "status": "completed",
+          "forkMs": 2.605999999999767,
+          "durationMs": 39176
+        }
+      ]
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "repeat": 2,
+      "arm": "direct",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 54654,
+      "modelCalls": 10,
+      "toolCalls": 9,
+      "forkMs": 0,
+      "searches": 9,
+      "successfulSearches": 6,
+      "searchMs": 12623,
+      "searchErrors": [],
+      "parentSearches": 9,
+      "parentModelMs": 41856,
+      "synthesisMs": 0,
+      "children": []
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "repeat": 2,
+      "arm": "fork",
+      "status": "cancelled",
+      "timedOut": true,
+      "readyMs": 180007,
+      "modelCalls": 16,
+      "toolCalls": 20,
+      "forkMs": 2.5473000000347383,
+      "searches": 19,
+      "successfulSearches": 12,
+      "searchMs": 26191,
+      "searchErrors": [
+        "INVALID_ARGUMENT"
+      ],
+      "parentSearches": 4,
+      "parentModelMs": 101795,
+      "synthesisMs": 6941,
+      "children": [
+        {
+          "child": 1,
+          "status": "failed",
+          "error": "STEP_LIMIT",
+          "forkMs": 2.5473000000347383,
+          "durationMs": 73178
+        }
+      ]
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "repeat": 2,
+      "arm": "fork",
+      "status": "completed-with-errors",
+      "timedOut": false,
+      "readyMs": 69693,
+      "modelCalls": 28,
+      "toolCalls": 38,
+      "forkMs": 5.500300000014249,
+      "searches": 36,
+      "successfulSearches": 5,
+      "searchMs": 23042,
+      "searchErrors": [
+        "INVALID_ARGUMENT",
+        "INVALID_ARGUMENT",
+        "SEARCH_INVALID_RESPONSE",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_INVALID_RESPONSE",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR"
+      ],
+      "parentSearches": 3,
+      "parentModelMs": 16980,
+      "synthesisMs": 4275,
+      "children": [
+        {
+          "child": 1,
+          "status": "failed",
+          "error": "STEP_LIMIT",
+          "forkMs": 2.6583000000100583,
+          "durationMs": 52026
+        },
+        {
+          "child": 2,
+          "status": "failed",
+          "error": "STEP_LIMIT",
+          "forkMs": 2.842000000004191,
+          "durationMs": 51358
+        }
+      ]
+    },
+    {
+      "sample": 8,
+      "task": "comparison",
+      "repeat": 2,
+      "arm": "direct",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 13465,
+      "modelCalls": 3,
+      "toolCalls": 3,
+      "forkMs": 0,
+      "searches": 3,
+      "successfulSearches": 0,
+      "searchMs": 285,
+      "searchErrors": [
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR"
+      ],
+      "parentSearches": 3,
+      "parentModelMs": 13124,
+      "synthesisMs": 0,
+      "children": []
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "repeat": 3,
+      "arm": "fork",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 18785,
+      "modelCalls": 5,
+      "toolCalls": 4,
+      "forkMs": 2.6769000000786036,
+      "searches": 3,
+      "successfulSearches": 0,
+      "searchMs": 312,
+      "searchErrors": [
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR"
+      ],
+      "parentSearches": 0,
+      "parentModelMs": 8098,
+      "synthesisMs": 3039,
+      "children": [
+        {
+          "child": 1,
+          "status": "completed",
+          "forkMs": 2.6769000000786036,
+          "durationMs": 10640
+        }
+      ]
+    },
+    {
+      "sample": 10,
+      "task": "single",
+      "repeat": 3,
+      "arm": "direct",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 8761,
+      "modelCalls": 3,
+      "toolCalls": 2,
+      "forkMs": 0,
+      "searches": 2,
+      "successfulSearches": 0,
+      "searchMs": 621,
+      "searchErrors": [
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR"
+      ],
+      "parentSearches": 2,
+      "parentModelMs": 8082,
+      "synthesisMs": 0,
+      "children": []
+    },
+    {
+      "sample": 11,
+      "task": "comparison",
+      "repeat": 3,
+      "arm": "direct",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 13601,
+      "modelCalls": 3,
+      "toolCalls": 3,
+      "forkMs": 0,
+      "searches": 3,
+      "successfulSearches": 0,
+      "searchMs": 345,
+      "searchErrors": [
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR",
+        "SEARCH_PROVIDER_ERROR"
+      ],
+      "parentSearches": 3,
+      "parentModelMs": 13200,
+      "synthesisMs": 0,
+      "children": []
+    }
+  ]
+}

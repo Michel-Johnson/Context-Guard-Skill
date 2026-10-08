@@ -1,0 +1,430 @@
+{
+  "schemaVersion": 1,
+  "name": "harness-contracts",
+  "events": [
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:49:26.748Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4657.3784,
+      "queueMs": 0.054799999999886495,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 53,
+        "output_tokens": 66,
+        "cache_read_input_tokens": 29568
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:49:26.859Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 101.00520000000051,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:49:35.677Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 8812.9518,
+      "queueMs": 0.010299999999915599,
+      "firstTextAt": 1790538570902,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 60,
+        "output_tokens": 514,
+        "cache_read_input_tokens": 31424
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:49:35.687Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 15373,
+      "status": "completed"
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "contracted",
+      "at": "2026-09-27T19:49:42.252Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4232.3007,
+      "queueMs": 0.008200000000215368,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 25073,
+        "output_tokens": 24,
+        "cache_read_input_tokens": 4672
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "contracted",
+      "at": "2026-09-27T19:49:42.349Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 91.57390000000305,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "contracted",
+      "at": "2026-09-27T19:49:48.160Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5805.232800000002,
+      "queueMs": 0.0239000000001397,
+      "firstTextAt": 1790538583376,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1912,
+        "output_tokens": 576,
+        "cache_read_input_tokens": 29696
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "contracted",
+      "at": "2026-09-27T19:49:48.164Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 12427,
+      "status": "completed"
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:49:56.198Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4481.563100000003,
+      "queueMs": 0.007600000000820728,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 14123,
+        "output_tokens": 50,
+        "cache_read_input_tokens": 18112
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:49:56.298Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 95.78789999999572,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/config/src/lib.rs",
+        "limit": 80
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:01.164Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4860.197899999999,
+      "queueMs": 0.010799999996379483,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1000,
+        "output_tokens": 50,
+        "cache_read_input_tokens": 32192
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:01.173Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 2.4642000000021653,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/config/src/loader.rs",
+        "limit": 40
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:01.265Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 89.44279999999708,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/execpolicy/src/policy.rs",
+        "limit": 40
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:06.615Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5344.5674,
+      "queueMs": 0.011500000000523869,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 899,
+        "output_tokens": 38,
+        "cache_read_input_tokens": 33152
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:06.724Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 104.04929999999877,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/config/src",
+        "query": "load_config_as_toml"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:10.567Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3839.375199999995,
+      "queueMs": 0.012800000004062895,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 70,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 34048
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:10.670Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 96.47530000000552,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/config/src",
+        "query": "pub struct ConfigLoader"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:14.535Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3861.199800000002,
+      "queueMs": 0.009700000002339948,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 71,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 34112
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:14.934Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 387.8935999999958,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/config/src",
+        "query": "config.toml"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:18.942Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4003.458599999998,
+      "queueMs": 0.01620000000548316,
+      "firstTextAt": 1790538616129,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 3972,
+        "output_tokens": 323,
+        "cache_read_input_tokens": 34176
+      }
+    },
+    {
+      "sample": 3,
+      "task": "config-holdout",
+      "variant": "contracted",
+      "at": "2026-09-27T19:50:18.948Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 30741,
+      "status": "completed"
+    },
+    {
+      "sample": 4,
+      "task": "config-holdout",
+      "variant": "grounded",
+      "at": "2026-09-27T19:50:23.526Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1532.6628000000055,
+      "queueMs": 0.006599999993341044,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 14063,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 18048
+      }
+    },
+    {
+      "sample": 4,
+      "task": "config-holdout",
+      "variant": "grounded",
+      "at": "2026-09-27T19:50:23.622Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 90.4945000000007,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/config/src/lib.rs",
+        "limit": 80
+      }
+    },
+    {
+      "sample": 4,
+      "task": "config-holdout",
+      "variant": "grounded",
+      "at": "2026-09-27T19:50:30.701Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 7074.537300000004,
+      "queueMs": 0.009899999997287523,
+      "firstTextAt": 1790538627650,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1004,
+        "output_tokens": 395,
+        "cache_read_input_tokens": 32064
+      }
+    },
+    {
+      "sample": 4,
+      "task": "config-holdout",
+      "variant": "grounded",
+      "at": "2026-09-27T19:50:30.711Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 11722,
+      "status": "completed"
+    }
+  ]
+}

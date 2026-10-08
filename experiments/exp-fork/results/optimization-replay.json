@@ -1,0 +1,87 @@
+{
+  "at": "2026-09-27T19:46:04.242Z",
+  "checks": [
+    "bounded concurrency=2; preserves tool-result order; mutation is a serial barrier",
+    "worker failure waits for in-flight work and stops scheduling additional work",
+    "circuit prevents more provider requests after two consecutive failures",
+    "successful empty search resets provider-failure count; empty search is not provider failure",
+    "pinned source path validation, stale README detection, invalid paths rejected, prefetch byte bound"
+  ],
+  "retrievalCoverage": {
+    "passed": false,
+    "expected": [
+      "fork",
+      "memory"
+    ],
+    "actual": [
+      "fork",
+      "history"
+    ],
+    "limitation": "Lexical Map ranker misses an independently requested topic; preserve this negative result."
+  },
+  "audit": {
+    "runs": 12,
+    "models": 136,
+    "tools": 187,
+    "toolErrors": {
+      "NOT_FOUND": 21,
+      "INVALID_ARGUMENT": 3
+    },
+    "exactRepeatedTools": 2,
+    "multiToolBatches": 62,
+    "readContinuationPairs": 18
+  },
+  "replay": [
+    {
+      "repeat": 1,
+      "variant": "serial",
+      "toolWallMs": 9896.4896,
+      "modelCallsUnchanged": 5
+    },
+    {
+      "repeat": 1,
+      "variant": "parallel",
+      "toolWallMs": 7278.718799999999,
+      "modelCallsUnchanged": 5
+    },
+    {
+      "repeat": 2,
+      "variant": "parallel",
+      "toolWallMs": 7278.2199,
+      "modelCallsUnchanged": 5
+    },
+    {
+      "repeat": 2,
+      "variant": "serial",
+      "toolWallMs": 9898.539000000004,
+      "modelCallsUnchanged": 5
+    },
+    {
+      "repeat": 3,
+      "variant": "serial",
+      "toolWallMs": 9903.2362,
+      "modelCallsUnchanged": 5
+    },
+    {
+      "repeat": 3,
+      "variant": "parallel",
+      "toolWallMs": 7291.443099999997,
+      "modelCallsUnchanged": 5
+    }
+  ],
+  "replayScope": "Recorded search durations reproduced with timers, stable original tool batches. No model/provider calls. Live-model next steps could differ; predicted total is not a measured fresh user answer.",
+  "originalReadyMs": 31497,
+  "recordedModelMs": 21538,
+  "circuit": {
+    "before": {
+      "models": 3,
+      "searches": 3
+    },
+    "after": {
+      "models": 1,
+      "searches": 2
+    },
+    "scope": "Replay halts the harness with explicit unavailable status when circuit opens. This improves failure response, NOT successful answer delivery. A wrapper without loop termination only saves network calls."
+  },
+  "elapsedMs": 52106.1659
+}

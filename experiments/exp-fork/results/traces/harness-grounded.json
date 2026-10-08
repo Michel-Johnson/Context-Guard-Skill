@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "name": "harness-grounded",
+  "events": [
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:47:26.289Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 7643.5337,
+      "queueMs": 0.058799999999905594,
+      "firstTextAt": 1790538443079,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 57,
+        "output_tokens": 366,
+        "cache_read_input_tokens": 25920
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:47:26.298Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 7967,
+      "status": "completed"
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:32.496Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3858.7608999999993,
+      "queueMs": 0.007999999999810825,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 7797,
+        "output_tokens": 28,
+        "cache_read_input_tokens": 21824
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:32.599Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 92.48559999999998,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:41.232Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 8629.0614,
+      "queueMs": 0.010800000000017462,
+      "firstTextAt": 1790538457096,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1916,
+        "output_tokens": 413,
+        "cache_read_input_tokens": 29568
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:41.237Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 14895,
+      "status": "completed"
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:45.273Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 2143.8145000000004,
+      "queueMs": 0.01929999999993015,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 53,
+        "output_tokens": 47,
+        "cache_read_input_tokens": 29568
+      }
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:45.379Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 95.76900000000023,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:45.476Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 93.87950000000274,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:53.150Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 7670.090499999998,
+      "queueMs": 0.012100000003556488,
+      "firstTextAt": 1790538469276,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 4121,
+        "output_tokens": 398,
+        "cache_read_input_tokens": 29632
+      }
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "variant": "grounded",
+      "at": "2026-09-27T19:47:53.155Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 11871,
+      "status": "completed"
+    },
+    {
+      "sample": 4,
+      "task": "files",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:48:03.487Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 9958.643499999998,
+      "queueMs": 0.010099999999511056,
+      "firstTextAt": 1790538478503,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 57,
+        "output_tokens": 586,
+        "cache_read_input_tokens": 25920
+      }
+    },
+    {
+      "sample": 4,
+      "task": "files",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:48:03.497Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 10296,
+      "status": "completed"
+    }
+  ]
+}

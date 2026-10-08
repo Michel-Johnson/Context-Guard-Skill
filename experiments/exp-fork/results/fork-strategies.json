@@ -1,0 +1,832 @@
+{
+  "schemaVersion": 1,
+  "name": "fork-strategies",
+  "originalStudy": "strategy-evaluations/1790533599501",
+  "exportPolicy": "Whitelisted numeric metrics, statuses, public task labels and measurement metadata. No answers, user history, provider credentials, source packets or filesystem paths.",
+  "at": "2026-09-27T18:26:39.501Z",
+  "commit": "e72da2b53805894878023d01949a25a082e0a5cb",
+  "model": "glm-5.3",
+  "prefixMessages": 20,
+  "prefixBytes": 50088,
+  "prefixHash": "497bc037af43e63ffeb39ecb6373515db5ec98e5ac928cd605ced1b87e639986",
+  "deadlineMs": 180000,
+  "followupAfterMs": 5000,
+  "provider": {
+    "model": "glm-5.3",
+    "thinking": {
+      "type": "disabled"
+    },
+    "maxTokens": 8192,
+    "timeoutMs": 120000
+  },
+  "order": [
+    {
+      "id": "files",
+      "repeat": 1,
+      "arm": "direct"
+    },
+    {
+      "id": "files",
+      "repeat": 1,
+      "arm": "adaptive"
+    },
+    {
+      "id": "files",
+      "repeat": 1,
+      "arm": "forced"
+    },
+    {
+      "id": "parallel",
+      "repeat": 1,
+      "arm": "adaptive"
+    },
+    {
+      "id": "parallel",
+      "repeat": 1,
+      "arm": "forced"
+    },
+    {
+      "id": "parallel",
+      "repeat": 1,
+      "arm": "direct"
+    },
+    {
+      "id": "files",
+      "repeat": 2,
+      "arm": "adaptive"
+    },
+    {
+      "id": "files",
+      "repeat": 2,
+      "arm": "direct"
+    },
+    {
+      "id": "files",
+      "repeat": 2,
+      "arm": "forced"
+    },
+    {
+      "id": "parallel",
+      "repeat": 2,
+      "arm": "forced"
+    },
+    {
+      "id": "parallel",
+      "repeat": 2,
+      "arm": "adaptive"
+    },
+    {
+      "id": "parallel",
+      "repeat": 2,
+      "arm": "direct"
+    }
+  ],
+  "runs": [
+    {
+      "sample": 1,
+      "task": "files",
+      "repeat": 1,
+      "arm": "direct",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 25821,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 18066,
+          "modelCalls": 4,
+          "modelMs": 25487.3782,
+          "modelQueueMs": 0.2252000000025305,
+          "toolCalls": 7,
+          "toolMs": 248.15419999999813,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 25487.3782,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 1138,
+          "cacheReadTokens": 58368,
+          "uncachedInputTokens": 22738
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 25519,
+          "initialQueueMs": 20803,
+          "finalAnswerFirstTextMs": 24688,
+          "modelCalls": 1,
+          "modelMs": 4703.517599999999,
+          "modelQueueMs": 0.009099999999307329,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 4703.517599999999,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 62,
+          "cacheReadTokens": 22656,
+          "uncachedInputTokens": 1065
+        }
+      ],
+      "children": []
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "repeat": 1,
+      "arm": "adaptive",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 31365,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 25268,
+          "modelCalls": 4,
+          "modelMs": 31080.329299999994,
+          "modelQueueMs": 0.16139999999722932,
+          "toolCalls": 7,
+          "toolMs": 220.42670000000362,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 31080.329299999994,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 870,
+          "cacheReadTokens": 60032,
+          "uncachedInputTokens": 21708
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 31364,
+          "initialQueueMs": 26363,
+          "finalAnswerFirstTextMs": 30281,
+          "modelCalls": 1,
+          "modelMs": 4988.367900000005,
+          "modelQueueMs": 0.010600000001431908,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 4988.367900000005,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 91,
+          "cacheReadTokens": 22848,
+          "uncachedInputTokens": 771
+        }
+      ],
+      "children": []
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "repeat": 1,
+      "arm": "forced",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 40659,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 31736,
+          "modelCalls": 7,
+          "modelMs": 40037.302700000015,
+          "modelQueueMs": 0.12539999998989515,
+          "toolCalls": 8,
+          "toolMs": 528.850999999966,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 40037.302700000015,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 1342,
+          "cacheReadTokens": 126016,
+          "uncachedInputTokens": 18361
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 41255,
+          "initialQueueMs": 35644,
+          "finalAnswerFirstTextMs": 40464,
+          "modelCalls": 1,
+          "modelMs": 5602.611099999995,
+          "modelQueueMs": 0.09130000000004657,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 5602.611099999995,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 72,
+          "cacheReadTokens": 22784,
+          "uncachedInputTokens": 1177
+        }
+      ],
+      "children": []
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "repeat": 1,
+      "arm": "adaptive",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 71457,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 65385,
+          "modelCalls": 19,
+          "modelMs": 108987.00269999997,
+          "modelQueueMs": 0.17289999999047723,
+          "toolCalls": 29,
+          "toolMs": 3048.3432999999786,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 16634.433299999975,
+          "childModelMs": 92352.5694,
+          "synthesisMs": 9737,
+          "outputTokens": 3892,
+          "cacheReadTokens": 371200,
+          "uncachedInputTokens": 81689
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 10673,
+          "initialQueueMs": 1931,
+          "finalAnswerFirstTextMs": 10069,
+          "modelCalls": 2,
+          "modelMs": 8715.90920000001,
+          "modelQueueMs": 0.01739999998244457,
+          "toolCalls": 1,
+          "toolMs": 0.11520000000018626,
+          "toolErrors": [],
+          "parentModelMs": 8715.90920000001,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 69,
+          "cacheReadTokens": 36608,
+          "uncachedInputTokens": 810
+        }
+      ],
+      "children": [
+        {
+          "child": 1,
+          "status": "completed",
+          "forkMs": 2.437999999994645,
+          "queueMs": 18,
+          "durationMs": 54772
+        },
+        {
+          "child": 2,
+          "status": "completed",
+          "forkMs": 2.4296999999933178,
+          "queueMs": 16,
+          "durationMs": 40890
+        }
+      ]
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "repeat": 1,
+      "arm": "forced",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed-with-errors",
+          "readyMs": 93634,
+          "initialQueueMs": 5,
+          "finalAnswerFirstTextMs": 84752,
+          "modelCalls": 28,
+          "modelMs": 139269.80169999995,
+          "modelQueueMs": 0.27270000003045425,
+          "toolCalls": 40,
+          "toolMs": 4686.211900000053,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "search_code",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "read_file",
+              "code": "INVALID_ARGUMENT"
+            }
+          ],
+          "parentModelMs": 32967.22889999996,
+          "childModelMs": 106302.5728,
+          "synthesisMs": 4816,
+          "outputTokens": 4042,
+          "cacheReadTokens": 626240,
+          "uncachedInputTokens": 57962
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 13933,
+          "initialQueueMs": 4313,
+          "finalAnswerFirstTextMs": 13430,
+          "modelCalls": 2,
+          "modelMs": 9590.097999999998,
+          "modelQueueMs": 0.017900000006193295,
+          "toolCalls": 1,
+          "toolMs": 0.030100000003585592,
+          "toolErrors": [],
+          "parentModelMs": 9590.097999999998,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 56,
+          "cacheReadTokens": 36864,
+          "uncachedInputTokens": 1195
+        }
+      ],
+      "children": [
+        {
+          "child": 1,
+          "status": "failed",
+          "error": "STEP_LIMIT",
+          "forkMs": 2.4072000000160187,
+          "queueMs": 17,
+          "durationMs": 50746
+        },
+        {
+          "child": 2,
+          "status": "completed",
+          "forkMs": 2.271600000007311,
+          "queueMs": 16,
+          "durationMs": 60148
+        }
+      ]
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "repeat": 1,
+      "arm": "direct",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 53615,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 46893,
+          "modelCalls": 10,
+          "modelMs": 51942.52560000005,
+          "modelQueueMs": 0.07709999999497086,
+          "toolCalls": 14,
+          "toolMs": 1529.928399999917,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 51942.52560000005,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 1134,
+          "cacheReadTokens": 226816,
+          "uncachedInputTokens": 10008
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 55241,
+          "initialQueueMs": 48599,
+          "finalAnswerFirstTextMs": 54369,
+          "modelCalls": 1,
+          "modelMs": 6632.1236999999965,
+          "modelQueueMs": 0.007099999987985939,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 6632.1236999999965,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 86,
+          "cacheReadTokens": 27584,
+          "uncachedInputTokens": 771
+        }
+      ],
+      "children": []
+    },
+    {
+      "sample": 7,
+      "task": "files",
+      "repeat": 2,
+      "arm": "adaptive",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 24048,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 21441,
+          "modelCalls": 4,
+          "modelMs": 23673.227700000047,
+          "modelQueueMs": 0.03299999993760139,
+          "toolCalls": 7,
+          "toolMs": 216.60309999994934,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 23673.227700000047,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 515,
+          "cacheReadTokens": 76800,
+          "uncachedInputTokens": 3285
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 24778,
+          "initialQueueMs": 19040,
+          "finalAnswerFirstTextMs": 23902,
+          "modelCalls": 1,
+          "modelMs": 5727.766499999969,
+          "modelQueueMs": 0.00810000003548339,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 5727.766499999969,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 83,
+          "cacheReadTokens": 21184,
+          "uncachedInputTokens": 407
+        }
+      ],
+      "children": []
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "repeat": 2,
+      "arm": "direct",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 25593,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 20182,
+          "modelCalls": 6,
+          "modelMs": 25197.366900000023,
+          "modelQueueMs": 0.04689999995753169,
+          "toolCalls": 8,
+          "toolMs": 312.15709999989485,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 25197.366900000023,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 776,
+          "cacheReadTokens": 118208,
+          "uncachedInputTokens": 4947
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 26789,
+          "initialQueueMs": 20584,
+          "finalAnswerFirstTextMs": 25997,
+          "modelCalls": 1,
+          "modelMs": 6191.987399999984,
+          "modelQueueMs": 0.005900000047404319,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 6191.987399999984,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 92,
+          "cacheReadTokens": 22720,
+          "uncachedInputTokens": 654
+        }
+      ],
+      "children": []
+    },
+    {
+      "sample": 9,
+      "task": "files",
+      "repeat": 2,
+      "arm": "forced",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 15595,
+          "initialQueueMs": 2,
+          "finalAnswerFirstTextMs": 12395,
+          "modelCalls": 3,
+          "modelMs": 15360.782800000045,
+          "modelQueueMs": 0.02789999998640269,
+          "toolCalls": 4,
+          "toolMs": 189.21340000000782,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 15360.782800000045,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 506,
+          "cacheReadTokens": 54656,
+          "uncachedInputTokens": 3313
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 19420,
+          "initialQueueMs": 10595,
+          "finalAnswerFirstTextMs": 19369,
+          "modelCalls": 1,
+          "modelMs": 8812.178899999999,
+          "modelQueueMs": 0.006699999968986958,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 8812.178899999999,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 53,
+          "cacheReadTokens": 21312,
+          "uncachedInputTokens": 486
+        }
+      ],
+      "children": []
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "repeat": 2,
+      "arm": "forced",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 58283,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 53940,
+          "modelCalls": 16,
+          "modelMs": 73714.22710000008,
+          "modelQueueMs": 0.16279999999096617,
+          "toolCalls": 19,
+          "toolMs": 2324.2536999998265,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 16334.502199999988,
+          "childModelMs": 57379.72490000009,
+          "synthesisMs": 8356,
+          "outputTokens": 2877,
+          "cacheReadTokens": 341824,
+          "uncachedInputTokens": 26767
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 11976,
+          "initialQueueMs": 3015,
+          "finalAnswerFirstTextMs": 11592,
+          "modelCalls": 2,
+          "modelMs": 8937.962300000072,
+          "modelQueueMs": 0.013599999947473407,
+          "toolCalls": 1,
+          "toolMs": 0.04330000001937151,
+          "toolErrors": [],
+          "parentModelMs": 8937.962300000072,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 40,
+          "cacheReadTokens": 36672,
+          "uncachedInputTokens": 811
+        }
+      ],
+      "children": [
+        {
+          "child": 1,
+          "status": "completed",
+          "forkMs": 3.647400000016205,
+          "queueMs": 20,
+          "durationMs": 18008
+        },
+        {
+          "child": 2,
+          "status": "completed",
+          "forkMs": 3.073099999979604,
+          "queueMs": 20,
+          "durationMs": 41894
+        }
+      ]
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "repeat": 2,
+      "arm": "adaptive",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed-with-errors",
+          "readyMs": 80300,
+          "initialQueueMs": 3,
+          "finalAnswerFirstTextMs": 72005,
+          "modelCalls": 27,
+          "modelMs": 116673.41610000015,
+          "modelQueueMs": 0.2670999999390915,
+          "toolCalls": 35,
+          "toolMs": 5033.372000000032,
+          "toolErrors": [
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "read_file",
+              "code": "INVALID_ARGUMENT"
+            },
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "read_file",
+              "code": "INVALID_ARGUMENT"
+            },
+            {
+              "name": "list_files",
+              "code": "NOT_FOUND"
+            },
+            {
+              "name": "search_code",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 33823.47110000008,
+          "childModelMs": 82849.94500000007,
+          "synthesisMs": 4232,
+          "outputTokens": 3034,
+          "cacheReadTokens": 584512,
+          "uncachedInputTokens": 34749
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 7917,
+          "initialQueueMs": 3030,
+          "finalAnswerFirstTextMs": 7160,
+          "modelCalls": 1,
+          "modelMs": 4874.455900000001,
+          "modelQueueMs": 0.008600000001024455,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 4874.455900000001,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 79,
+          "cacheReadTokens": 18112,
+          "uncachedInputTokens": 393
+        }
+      ],
+      "children": [
+        {
+          "child": 1,
+          "status": "completed",
+          "forkMs": 2.2999999999883585,
+          "queueMs": 26,
+          "durationMs": 45741
+        },
+        {
+          "child": 2,
+          "status": "failed",
+          "error": "STEP_LIMIT",
+          "forkMs": 3.390399999974761,
+          "queueMs": 25,
+          "durationMs": 42033
+        }
+      ]
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "repeat": 2,
+      "arm": "direct",
+      "timedOut": false,
+      "requests": [
+        {
+          "id": "primary",
+          "status": "completed",
+          "readyMs": 42749,
+          "initialQueueMs": 4,
+          "finalAnswerFirstTextMs": 33645,
+          "modelCalls": 8,
+          "modelMs": 41065.198300000164,
+          "modelQueueMs": 0.0713000000687316,
+          "toolCalls": 9,
+          "toolMs": 1583.2887000001501,
+          "toolErrors": [
+            {
+              "name": "search_code",
+              "code": "NOT_FOUND"
+            }
+          ],
+          "parentModelMs": 41065.198300000164,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 1227,
+          "cacheReadTokens": 179648,
+          "uncachedInputTokens": 9416
+        },
+        {
+          "id": "followup",
+          "status": "completed",
+          "readyMs": 42242,
+          "initialQueueMs": 37743,
+          "finalAnswerFirstTextMs": 41674,
+          "modelCalls": 1,
+          "modelMs": 4487.1732000000775,
+          "modelQueueMs": 0.007400000002235174,
+          "toolCalls": 0,
+          "toolMs": 0,
+          "toolErrors": [],
+          "parentModelMs": 4487.1732000000775,
+          "childModelMs": 0,
+          "synthesisMs": 0,
+          "outputTokens": 68,
+          "cacheReadTokens": 27136,
+          "uncachedInputTokens": 961
+        }
+      ],
+      "children": []
+    }
+  ]
+}

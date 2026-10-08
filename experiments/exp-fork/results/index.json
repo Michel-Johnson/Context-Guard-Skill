@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "studies": [
+    {
+      "name": "query-comparison",
+      "originalStudy": "comparisons/1790443904569",
+      "samples": 4,
+      "file": "results/query-comparison.json"
+    },
+    {
+      "name": "fork-policy",
+      "originalStudy": "policy-probes/1790447012873",
+      "samples": 9,
+      "file": "results/fork-policy.json"
+    },
+    {
+      "name": "reception-initial",
+      "originalStudy": "latency-studies/1790448237732",
+      "samples": 12,
+      "file": "results/reception-initial.json"
+    },
+    {
+      "name": "reception-restricted",
+      "originalStudy": "latency-studies/1790448659813",
+      "samples": 8,
+      "file": "results/reception-restricted.json"
+    },
+    {
+      "name": "fork-strategies",
+      "originalStudy": "strategy-evaluations/1790533599501",
+      "samples": 12,
+      "file": "results/fork-strategies.json"
+    },
+    {
+      "name": "web-strategies",
+      "originalStudy": "web-strategy-evaluations/1790537062194",
+      "samples": 11,
+      "file": "results/web-strategies.json"
+    },
+    {
+      "name": "harness-main",
+      "originalStudy": "optimization-evaluations/1790538119070",
+      "samples": 12,
+      "file": "results/harness-main.json"
+    },
+    {
+      "name": "harness-grounded",
+      "originalStudy": "optimization-evaluations/1790538438290",
+      "samples": 4,
+      "file": "results/harness-grounded.json"
+    },
+    {
+      "name": "harness-contracts",
+      "originalStudy": "optimization-evaluations/1790538560259",
+      "samples": 4,
+      "file": "results/harness-contracts.json"
+    }
+  ]
+}

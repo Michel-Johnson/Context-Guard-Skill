@@ -1,0 +1,25 @@
+/* Reuse workbench.css for the Coordinator shell, messages, history and composer. */
+#coordinator-panel.learning-coordinator [hidden]{display:none!important}
+#coordinator-panel.learning-coordinator .coordinator-toolbar{flex-wrap:wrap;gap:8px}
+#coordinator-panel.learning-coordinator .coordinator-heading{white-space:nowrap;font-size:18px;letter-spacing:0}
+#coordinator-panel.learning-coordinator .coordinator-toolbar-action{flex:none}
+#coordinator-panel.learning-coordinator .coordinator-history{flex:none;max-height:32%;overflow:auto}
+#coordinator-panel.learning-coordinator .coordinator-history-list button{overflow-wrap:anywhere}
+#coordinator-panel.learning-coordinator .coordinator-compose{flex:none}
+#coordinator-panel.learning-coordinator .coordinator-message.user .coordinator-markdown{white-space:pre-wrap}
+#coordinator-panel.learning-coordinator .coordinator-message.system{color:#95432a}
+#coordinator-panel.learning-coordinator .coordinator-markdown pre{white-space:pre-wrap;overflow-wrap:anywhere}
+#coordinator-panel.learning-coordinator .coordinator-markdown h1{font-size:18px;letter-spacing:0}
+#coordinator-panel.learning-coordinator .learning-send-arrow{font:24px/1 system-ui;grid-area:1/1;transition:opacity .2s}
+#coordinator-panel.learning-coordinator .is-working-ready .learning-send-arrow{opacity:0}
+#coordinator-panel.learning-coordinator .learning-answer-feedback{display:flex;gap:8px;margin-top:8px}
+#coordinator-panel.learning-coordinator .learning-answer-feedback button{margin:0;padding:2px 0;border:0;background:transparent;box-shadow:none;color:var(--muted);font-size:12px;border-radius:0}
+#coordinator-panel.learning-coordinator .learning-answer-feedback button[aria-pressed=true]{color:#27624b;text-decoration:underline}
+#coordinator-panel.learning-coordinator .learning-feedback-options{display:flex;flex-wrap:wrap;gap:6px}
+#coordinator-panel.learning-coordinator .learning-feedback-options button{margin:0;padding:5px 8px;font-size:13px;box-shadow:none}
+#coordinator-panel.learning-coordinator .coordinator-planning{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0;min-height:20px}
+#coordinator-panel.learning-coordinator .learning-fork-status{font-size:12px;color:var(--muted);letter-spacing:0;overflow-wrap:anywhere}
+#coordinator-panel.learning-coordinator .learning-node-links{display:flex;flex-wrap:wrap;gap:8px}
+.learning-readonly .add-child,.learning-readonly #detail [data-act]:not([data-act="enter"]),.learning-readonly #detail .state-chip,.learning-readonly #detail [data-fold="mem"],.learning-readonly #detail [data-fold="inherited"],.learning-readonly #detail [data-fold="idea"],.learning-readonly #detail [data-fold="todo"],.learning-readonly #detail [data-fold="bug"]{display:none!important}
+.learning-source{width:min(980px,94vw);height:86dvh;padding:0;border:1px solid #777;border-radius:4px;box-sizing:border-box;background:white;color:#222}.learning-source[open]{display:flex;flex-direction:column}.learning-source::backdrop{background:#0006}.learning-source header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #ddd;font:14px system-ui}.learning-source button{width:32px;height:32px;cursor:pointer}.learning-source iframe{width:100%;flex:1;min-height:0;border:0}
+@media(max-width:700px){#detail.coordinator-open{position:fixed!important;inset:var(--learning-top,92px) 0 0!important;width:100%!important;height:calc(100dvh - var(--learning-top,92px))!important;z-index:20;padding:12px!important;background:var(--paper,#fffdf8)}.learning-chat-open #drawer-split{display:none!important}}

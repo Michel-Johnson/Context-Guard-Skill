@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 1,
+  "name": "fork-policy",
+  "originalStudy": "policy-probes/1790447012873",
+  "exportPolicy": "Whitelisted numeric metrics, statuses, public task labels and measurement metadata. No answers, user history, provider credentials, source packets or filesystem paths.",
+  "createdAt": "2026-09-26T18:23:32.873Z",
+  "commit": "e72da2b53805894878023d01949a25a082e0a5cb",
+  "timeoutMs": 240000,
+  "order": [
+    {
+      "id": "cross-module",
+      "repeat": 1
+    },
+    {
+      "id": "lookup",
+      "repeat": 1
+    },
+    {
+      "id": "independent",
+      "repeat": 1
+    },
+    {
+      "id": "single-flow",
+      "repeat": 1
+    },
+    {
+      "id": "lookup",
+      "repeat": 2
+    },
+    {
+      "id": "single-flow",
+      "repeat": 2
+    },
+    {
+      "id": "independent",
+      "repeat": 2
+    },
+    {
+      "id": "cross-module",
+      "repeat": 2
+    },
+    {
+      "id": "explicit-control",
+      "repeat": 1
+    }
+  ],
+  "runs": [
+    {
+      "sample": 1,
+      "task": "cross-module",
+      "run": 1,
+      "case": "cross-module",
+      "repeat": 1,
+      "status": "completed",
+      "error": null,
+      "timedOut": false,
+      "readyMs": 91438,
+      "modelCalls": 25,
+      "toolCalls": 38,
+      "forks": 2,
+      "firstForkDecisionMs": 9611,
+      "rootModelCallsAtFirstFork": 1,
+      "rootSourceCallsBeforeFirstFork": 0,
+      "children": [
+        {
+          "child": 1,
+          "status": "completed",
+          "error": null,
+          "forkMs": 2.0385000000005675
+        },
+        {
+          "child": 2,
+          "status": "completed",
+          "error": null,
+          "forkMs": 1.9056000000000495
+        }
+      ]
+    },
+    {
+      "sample": 2,
+      "task": "lookup",
+      "run": 2,
+      "case": "lookup",
+      "repeat": 1,
+      "status": "completed",
+      "error": null,
+      "timedOut": false,
+      "readyMs": 11017,
+      "modelCalls": 2,
+      "toolCalls": 1,
+      "forks": 0,
+      "firstForkDecisionMs": null,
+      "rootModelCallsAtFirstFork": null,
+      "rootSourceCallsBeforeFirstFork": null,
+      "children": []
+    },
+    {
+      "sample": 3,
+      "task": "independent",
+      "run": 3,
+      "case": "independent",
+      "repeat": 1,
+      "status": "failed",
+      "error": "STEP_LIMIT",
+      "timedOut": false,
+      "readyMs": 96263,
+      "modelCalls": 27,
+      "toolCalls": 36,
+      "forks": 2,
+      "firstForkDecisionMs": 6768,
+      "rootModelCallsAtFirstFork": 1,
+      "rootSourceCallsBeforeFirstFork": 0,
+      "children": [
+        {
+          "child": 1,
+          "status": "completed",
+          "error": null,
+          "forkMs": 2.530799999993178
+        },
+        {
+          "child": 2,
+          "status": "completed",
+          "error": null,
+          "forkMs": 3.1006000000052154
+        }
+      ]
+    },
+    {
+      "sample": 4,
+      "task": "single-flow",
+      "run": 4,
+      "case": "single-flow",
+      "repeat": 1,
+      "status": "completed",
+      "error": null,
+      "timedOut": false,
+      "readyMs": 32423,
+      "modelCalls": 7,
+      "toolCalls": 7,
+      "forks": 0,
+      "firstForkDecisionMs": null,
+      "rootModelCallsAtFirstFork": null,
+      "rootSourceCallsBeforeFirstFork": null,
+      "children": []
+    },
+    {
+      "sample": 5,
+      "task": "lookup",
+      "run": 5,
+      "case": "lookup",
+      "repeat": 2,
+      "status": "completed",
+      "error": null,
+      "timedOut": false,
+      "readyMs": 29563,
+      "modelCalls": 6,
+      "toolCalls": 7,
+      "forks": 0,
+      "firstForkDecisionMs": null,
+      "rootModelCallsAtFirstFork": null,
+      "rootSourceCallsBeforeFirstFork": null,
+      "children": []
+    },
+    {
+      "sample": 6,
+      "task": "single-flow",
+      "run": 6,
+      "case": "single-flow",
+      "repeat": 2,
+      "status": "completed",
+      "error": null,
+      "timedOut": false,
+      "readyMs": 25900,
+      "modelCalls": 5,
+      "toolCalls": 6,
+      "forks": 0,
+      "firstForkDecisionMs": null,
+      "rootModelCallsAtFirstFork": null,
+      "rootSourceCallsBeforeFirstFork": null,
+      "children": []
+    },
+    {
+      "sample": 7,
+      "task": "independent",
+      "run": 7,
+      "case": "independent",
+      "repeat": 2,
+      "status": "failed",
+      "error": "STEP_LIMIT",
+      "timedOut": false,
+      "readyMs": 92440,
+      "modelCalls": 29,
+      "toolCalls": 47,
+      "forks": 2,
+      "firstForkDecisionMs": 6193,
+      "rootModelCallsAtFirstFork": 1,
+      "rootSourceCallsBeforeFirstFork": 0,
+      "children": [
+        {
+          "child": 1,
+          "status": "failed",
+          "error": "STEP_LIMIT",
+          "forkMs": 2.467499999969732
+        },
+        {
+          "child": 2,
+          "status": "completed",
+          "error": null,
+          "forkMs": 2.195400000025984
+        }
+      ]
+    },
+    {
+      "sample": 8,
+      "task": "cross-module",
+      "run": 8,
+      "case": "cross-module",
+      "repeat": 2,
+      "status": "completed-with-errors",
+      "error": null,
+      "timedOut": false,
+      "readyMs": 111885,
+      "modelCalls": 25,
+      "toolCalls": 44,
+      "forks": 1,
+      "firstForkDecisionMs": 6028,
+      "rootModelCallsAtFirstFork": 1,
+      "rootSourceCallsBeforeFirstFork": 0,
+      "children": [
+        {
+          "child": 1,
+          "status": "failed",
+          "error": "STEP_LIMIT",
+          "forkMs": 2.6823000000440516
+        }
+      ]
+    },
+    {
+      "sample": 9,
+      "task": "explicit-control",
+      "run": 9,
+      "case": "explicit-control",
+      "repeat": 1,
+      "status": "completed",
+      "error": null,
+      "timedOut": false,
+      "readyMs": 21229,
+      "modelCalls": 6,
+      "toolCalls": 4,
+      "forks": 2,
+      "firstForkDecisionMs": 4798,
+      "rootModelCallsAtFirstFork": 1,
+      "rootSourceCallsBeforeFirstFork": 0,
+      "children": [
+        {
+          "child": 1,
+          "status": "completed",
+          "error": null,
+          "forkMs": 3.2043000000412576
+        },
+        {
+          "child": 2,
+          "status": "completed",
+          "error": null,
+          "forkMs": 3.186199999996461
+        }
+      ]
+    }
+  ]
+}

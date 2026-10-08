@@ -1,0 +1,353 @@
+{
+  "schemaVersion": 1,
+  "name": "harness-main",
+  "originalStudy": "optimization-evaluations/1790538119070",
+  "exportPolicy": "Whitelisted numeric metrics, statuses, public task labels and measurement metadata. No answers, user history, provider credentials, source packets or filesystem paths.",
+  "at": "2026-09-27T19:41:59.070Z",
+  "commit": "e72da2b53805894878023d01949a25a082e0a5cb",
+  "model": "glm-5.3",
+  "prefixMessages": 20,
+  "prefixHash": "497bc037af43e63ffeb39ecb6373515db5ec98e5ac928cd605ced1b87e639986",
+  "order": [
+    {
+      "id": "files",
+      "repeat": 1,
+      "variant": "baseline"
+    },
+    {
+      "id": "files",
+      "repeat": 1,
+      "variant": "evidence"
+    },
+    {
+      "id": "files",
+      "repeat": 1,
+      "variant": "prefetch"
+    },
+    {
+      "id": "parallel",
+      "repeat": 1,
+      "variant": "evidence"
+    },
+    {
+      "id": "parallel",
+      "repeat": 1,
+      "variant": "prefetch"
+    },
+    {
+      "id": "parallel",
+      "repeat": 1,
+      "variant": "baseline"
+    },
+    {
+      "id": "files",
+      "repeat": 2,
+      "variant": "evidence"
+    },
+    {
+      "id": "files",
+      "repeat": 2,
+      "variant": "baseline"
+    },
+    {
+      "id": "files",
+      "repeat": 2,
+      "variant": "prefetch"
+    },
+    {
+      "id": "parallel",
+      "repeat": 2,
+      "variant": "prefetch"
+    },
+    {
+      "id": "parallel",
+      "repeat": 2,
+      "variant": "evidence"
+    },
+    {
+      "id": "parallel",
+      "repeat": 2,
+      "variant": "baseline"
+    }
+  ],
+  "runs": [
+    {
+      "sample": 1,
+      "task": "files",
+      "repeat": 1,
+      "variant": "baseline",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 12025,
+      "modelCalls": 4,
+      "toolCalls": 6,
+      "prefetchMs": 0,
+      "prefetchBytes": 0,
+      "selectedNodes": [],
+      "modelMs": 11860,
+      "toolMs": 97.13150000000019,
+      "toolErrors": [
+        {
+          "name": "list_files",
+          "code": "NOT_FOUND"
+        },
+        {
+          "name": "list_files",
+          "code": "NOT_FOUND"
+        }
+      ],
+      "modelInputTokens": 79116,
+      "outputTokens": 521
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "repeat": 1,
+      "variant": "evidence",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 18464,
+      "modelCalls": 3,
+      "toolCalls": 4,
+      "prefetchMs": 0,
+      "prefetchBytes": 0,
+      "selectedNodes": [],
+      "modelMs": 18309,
+      "toolMs": 108.54040000000532,
+      "toolErrors": [
+        {
+          "name": "list_files",
+          "code": "NOT_FOUND"
+        }
+      ],
+      "modelInputTokens": 59433,
+      "outputTokens": 745
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "repeat": 1,
+      "variant": "prefetch",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 9166,
+      "modelCalls": 1,
+      "toolCalls": 0,
+      "prefetchMs": 292,
+      "prefetchBytes": 27220,
+      "selectedNodes": [
+        "codex",
+        "memory"
+      ],
+      "modelMs": 8859,
+      "toolMs": 0,
+      "toolErrors": [],
+      "modelInputTokens": 25977,
+      "outputTokens": 550
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "repeat": 1,
+      "variant": "evidence",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 57840,
+      "modelCalls": 10,
+      "toolCalls": 13,
+      "prefetchMs": 0,
+      "prefetchBytes": 0,
+      "selectedNodes": [],
+      "modelMs": 54755,
+      "toolMs": 2936.8075000000317,
+      "toolErrors": [
+        {
+          "name": "list_files",
+          "code": "NOT_FOUND"
+        }
+      ],
+      "modelInputTokens": 272404,
+      "outputTokens": 1809
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "repeat": 1,
+      "variant": "prefetch",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 33723,
+      "modelCalls": 5,
+      "toolCalls": 7,
+      "prefetchMs": 908,
+      "prefetchBytes": 30403,
+      "selectedNodes": [
+        "rollout",
+        "fork"
+      ],
+      "modelMs": 31256,
+      "toolMs": 1481.1972999999853,
+      "toolErrors": [],
+      "modelInputTokens": 154783,
+      "outputTokens": 1078
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "repeat": 1,
+      "variant": "baseline",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 34209,
+      "modelCalls": 6,
+      "toolCalls": 8,
+      "prefetchMs": 0,
+      "prefetchBytes": 0,
+      "selectedNodes": [],
+      "modelMs": 32713,
+      "toolMs": 1405.6303999999946,
+      "toolErrors": [
+        {
+          "name": "search_code",
+          "code": "NOT_FOUND"
+        }
+      ],
+      "modelInputTokens": 134465,
+      "outputTokens": 1219
+    },
+    {
+      "sample": 7,
+      "task": "files",
+      "repeat": 2,
+      "variant": "evidence",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 13203,
+      "modelCalls": 2,
+      "toolCalls": 2,
+      "prefetchMs": 0,
+      "prefetchBytes": 0,
+      "selectedNodes": [],
+      "modelMs": 12968,
+      "toolMs": 202.6015999999945,
+      "toolErrors": [],
+      "modelInputTokens": 40136,
+      "outputTokens": 551
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "repeat": 2,
+      "variant": "baseline",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 22664,
+      "modelCalls": 5,
+      "toolCalls": 6,
+      "prefetchMs": 0,
+      "prefetchBytes": 0,
+      "selectedNodes": [],
+      "modelMs": 21802,
+      "toolMs": 794.4378999999608,
+      "toolErrors": [
+        {
+          "name": "list_files",
+          "code": "NOT_FOUND"
+        },
+        {
+          "name": "list_files",
+          "code": "NOT_FOUND"
+        }
+      ],
+      "modelInputTokens": 97001,
+      "outputTokens": 1048
+    },
+    {
+      "sample": 9,
+      "task": "files",
+      "repeat": 2,
+      "variant": "prefetch",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 4890,
+      "modelCalls": 1,
+      "toolCalls": 0,
+      "prefetchMs": 291,
+      "prefetchBytes": 27220,
+      "selectedNodes": [
+        "codex",
+        "memory"
+      ],
+      "modelMs": 4578,
+      "toolMs": 0,
+      "toolErrors": [],
+      "modelInputTokens": 25977,
+      "outputTokens": 357
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "repeat": 2,
+      "variant": "prefetch",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 29940,
+      "modelCalls": 5,
+      "toolCalls": 6,
+      "prefetchMs": 376,
+      "prefetchBytes": 30403,
+      "selectedNodes": [
+        "rollout",
+        "fork"
+      ],
+      "modelMs": 28152,
+      "toolMs": 1328.3070000000298,
+      "toolErrors": [],
+      "modelInputTokens": 160293,
+      "outputTokens": 1303
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "repeat": 2,
+      "variant": "evidence",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 25329,
+      "modelCalls": 4,
+      "toolCalls": 4,
+      "prefetchMs": 0,
+      "prefetchBytes": 0,
+      "selectedNodes": [],
+      "modelMs": 24503,
+      "toolMs": 764.1948999999731,
+      "toolErrors": [],
+      "modelInputTokens": 91227,
+      "outputTokens": 909
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "repeat": 2,
+      "variant": "baseline",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 30847,
+      "modelCalls": 8,
+      "toolCalls": 11,
+      "prefetchMs": 0,
+      "prefetchBytes": 0,
+      "selectedNodes": [],
+      "modelMs": 29444,
+      "toolMs": 1290.349099999934,
+      "toolErrors": [
+        {
+          "name": "list_files",
+          "code": "NOT_FOUND"
+        }
+      ],
+      "modelInputTokens": 185352,
+      "outputTokens": 1166
+    }
+  ]
+}

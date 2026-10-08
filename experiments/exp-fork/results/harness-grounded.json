@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "name": "harness-grounded",
+  "originalStudy": "optimization-evaluations/1790538438290",
+  "exportPolicy": "Whitelisted numeric metrics, statuses, public task labels and measurement metadata. No answers, user history, provider credentials, source packets or filesystem paths.",
+  "at": "2026-09-27T19:47:18.290Z",
+  "commit": "e72da2b53805894878023d01949a25a082e0a5cb",
+  "model": "glm-5.3",
+  "prefixMessages": 20,
+  "prefixHash": "497bc037af43e63ffeb39ecb6373515db5ec98e5ac928cd605ced1b87e639986",
+  "exploratory": true,
+  "implementationHash": "44fde2c10e50b46b28dc91a068c94f4d7be0c3d812ca1d34b8b3789f08c02232",
+  "order": [
+    {
+      "id": "files",
+      "repeat": 1,
+      "variant": "prefetch"
+    },
+    {
+      "id": "files",
+      "repeat": 1,
+      "variant": "grounded"
+    },
+    {
+      "id": "files",
+      "repeat": 2,
+      "variant": "grounded"
+    },
+    {
+      "id": "files",
+      "repeat": 2,
+      "variant": "prefetch"
+    }
+  ],
+  "runs": [
+    {
+      "sample": 1,
+      "task": "files",
+      "repeat": 1,
+      "variant": "prefetch",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 7967,
+      "modelCalls": 1,
+      "toolCalls": 0,
+      "prefetchMs": 305,
+      "prefetchBytes": 27220,
+      "selectedNodes": [
+        "codex",
+        "memory"
+      ],
+      "modelMs": 7642,
+      "toolMs": 0,
+      "toolErrors": [],
+      "modelInputTokens": 25977,
+      "outputTokens": 366
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "repeat": 1,
+      "variant": "grounded",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 14895,
+      "modelCalls": 2,
+      "toolCalls": 1,
+      "prefetchMs": 2288,
+      "prefetchBytes": 38590,
+      "selectedNodes": [
+        "codex",
+        "memory"
+      ],
+      "modelMs": 12486,
+      "toolMs": 92.48559999999998,
+      "toolErrors": [],
+      "modelInputTokens": 61105,
+      "outputTokens": 441
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "repeat": 2,
+      "variant": "grounded",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 11871,
+      "modelCalls": 2,
+      "toolCalls": 2,
+      "prefetchMs": 1838,
+      "prefetchBytes": 38590,
+      "selectedNodes": [
+        "codex",
+        "memory"
+      ],
+      "modelMs": 9812,
+      "toolMs": 189.64850000000297,
+      "toolErrors": [],
+      "modelInputTokens": 63374,
+      "outputTokens": 445
+    },
+    {
+      "sample": 4,
+      "task": "files",
+      "repeat": 2,
+      "variant": "prefetch",
+      "status": "completed",
+      "timedOut": false,
+      "readyMs": 10296,
+      "modelCalls": 1,
+      "toolCalls": 0,
+      "prefetchMs": 317,
+      "prefetchBytes": 27220,
+      "selectedNodes": [
+        "codex",
+        "memory"
+      ],
+      "modelMs": 9958,
+      "toolMs": 0,
+      "toolErrors": [],
+      "modelInputTokens": 25977,
+      "outputTokens": 586
+    }
+  ]
+}

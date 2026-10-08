@@ -1,0 +1,4384 @@
+{
+  "schemaVersion": 1,
+  "name": "web-strategies",
+  "events": [
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:27.959Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5715.7711,
+      "queueMs": 0.04899999999997817,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 16915,
+        "output_tokens": 130,
+        "cache_read_input_tokens": 0
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:27.968Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "fork_task",
+      "durationMs": 0.11750000000029104,
+      "error": null,
+      "session": "session-1",
+      "input": {}
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:27.977Z",
+      "type": "session.fork",
+      "request": "primary",
+      "durationMs": 3.236000000000786,
+      "child": "session-2",
+      "through": 23,
+      "parent": "session-1"
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:34.758Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 6775.810600000001,
+      "queueMs": 0.01069999999981519,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 17439,
+        "output_tokens": 54,
+        "cache_read_input_tokens": 0
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:35.941Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1173.0874000000003,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI resume session fork session documentation",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:36.899Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 950.8477000000003,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex CLI codex resume fork command",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:41.136Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4225.4074,
+      "queueMs": 0.008499999999912689,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 177,
+        "output_tokens": 33,
+        "cache_read_input_tokens": 17408
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:43.010Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1864.9331999999995,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI resume conversation official docs"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:43.722Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 704.6920999999966,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI fork session command"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:48.647Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4913.017,
+      "queueMs": 0.010000000002037268,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 801,
+        "output_tokens": 48,
+        "cache_read_input_tokens": 17536
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:50.216Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1563.714,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "\"codex resume\" site:developers.openai.com"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:51.517Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1294.4611000000004,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "\"codex\" \"--fork-session\" OR \"fork\" resume docs github openai"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:56.999Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5474.388200000001,
+      "queueMs": 0.009900000000925502,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 604,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 18304
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:24:58.981Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1976.9049000000014,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "developers.openai.com codex cli resume fork sessions guide"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:25:07.540Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 8550.7667,
+      "queueMs": 0.00930000000516884,
+      "firstTextAt": 1790537104267,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 447,
+        "output_tokens": 339,
+        "cache_read_input_tokens": 18880
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:25:15.900Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 8339.952400000002,
+      "queueMs": 0.00960000000486616,
+      "firstTextAt": 1790537114622,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 17367,
+        "output_tokens": 132,
+        "cache_read_input_tokens": 1280
+      }
+    },
+    {
+      "sample": 1,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:25:15.911Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 53678,
+      "status": "completed"
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:19.971Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4015.506300000001,
+      "queueMs": 0.07080000000132713,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 13356,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 4608
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:21.935Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1955.220500000003,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "OpenAI Codex CLI resume session fork session official docs"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:26.427Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4479.2929,
+      "queueMs": 0.10469999999622814,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 442,
+        "output_tokens": 27,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:27.653Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1220.9727000000057,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI resume fork session docs",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:31.682Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4017.7929000000004,
+      "queueMs": 0.01900000000023283,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 130,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 18304
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:33.229Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1513.627999999997,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex resume fork session README",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:34.686Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1418.8564000000042,
+      "queueMs": 0.0239000000001397,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 74,
+        "output_tokens": 27,
+        "cache_read_input_tokens": 18432
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:37.211Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2515.0046999999904,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex cli \"codex resume\" \"codex fork\" documentation"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:41.766Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4541.140200000009,
+      "queueMs": 0.012199999997392297,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 361,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 18496
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:42.905Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1129.3896999999997,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI getting started resume",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:47.234Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4319.1299,
+      "queueMs": 0.013800000000628643,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 111,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 18816
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:48.406Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1162.613400000002,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI resume session",
+        "domain": "help.openai.com"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:52.559Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4140.648300000001,
+      "queueMs": 0.0102000000042608,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 115,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 18880
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:53.978Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1410.0378999999957,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai/codex resume session",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:59.870Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5879.788799999995,
+      "queueMs": 0.012499999997089617,
+      "firstTextAt": 1790537157794,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 190,
+        "output_tokens": 217,
+        "cache_read_input_tokens": 18944
+      }
+    },
+    {
+      "sample": 2,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:25:59.879Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 43931,
+      "status": "completed"
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:04.364Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4440.3956000000035,
+      "queueMs": 0.06079999999201391,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 117,
+        "output_tokens": 38,
+        "cache_read_input_tokens": 17856
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:05.735Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1360.7554999999993,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "OpenAI Codex CLI resume session fork official docs"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:06.628Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 885.8652999999904,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "Claude Code resume session fork official documentation"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:08.365Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1728.4377999999997,
+      "queueMs": 0.012000000002444722,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 919,
+        "output_tokens": 54,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:09.200Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 824.4296999999933,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "codex CLI codex resume fork session",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:10.930Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1721.6463999999978,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "claude code resume --fork-session",
+        "domain": "docs.anthropic.com"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:15.214Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4272.2035999999935,
+      "queueMs": 0.01810000000114087,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 165,
+        "output_tokens": 49,
+        "cache_read_input_tokens": 18816
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:16.655Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1433.8959000000032,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex resume command documentation",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:17.544Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 885.0554999999877,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "claude resume fork session",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:21.502Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3945.066599999991,
+      "queueMs": 0.01959999999962747,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 236,
+        "output_tokens": 23,
+        "cache_read_input_tokens": 18944
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:24.244Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2733.213400000008,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "site:developers.openai.com codex-cli resume picker fork"
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:31.409Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 7153.399999999994,
+      "queueMs": 0.011599999997997656,
+      "firstTextAt": 1790537188500,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 403,
+        "output_tokens": 222,
+        "cache_read_input_tokens": 19136
+      }
+    },
+    {
+      "sample": 3,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:26:31.414Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 31497,
+      "status": "completed"
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:38.517Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 7057.842600000018,
+      "queueMs": 0.07629999998607673,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 16939,
+        "output_tokens": 270,
+        "cache_read_input_tokens": 0
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:38.523Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "fork_task",
+      "durationMs": 0.07980000000679865,
+      "error": null,
+      "session": "session-1",
+      "input": {}
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:38.525Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "fork_task",
+      "durationMs": 0.020300000003771856,
+      "error": null,
+      "session": "session-1",
+      "input": {}
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:38.535Z",
+      "type": "session.fork",
+      "request": "primary",
+      "durationMs": 2.4126999999862164,
+      "child": "session-2",
+      "through": 23,
+      "parent": "session-1"
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:38.535Z",
+      "type": "session.fork",
+      "request": "primary",
+      "durationMs": 2.605999999999767,
+      "child": "session-3",
+      "through": 23,
+      "parent": "session-1"
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:40.196Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1653.4475000000093,
+      "queueMs": 0.012499999982537702,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 469,
+        "output_tokens": 27,
+        "cache_read_input_tokens": 17152
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:41.775Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1563.5670999999857,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "OpenAI Codex CLI resume session fork documentation",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:43.114Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4565.726300000009,
+      "queueMs": 0.006400000012945384,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 91,
+        "output_tokens": 56,
+        "cache_read_input_tokens": 17536
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:44.639Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1520.6034999999974,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code resume session --continue --resume documentation",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:45.708Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3925.899999999994,
+      "queueMs": 0.01029999999445863,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 95,
+        "output_tokens": 18,
+        "cache_read_input_tokens": 17600
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:46.389Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1739.8550999999861,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code fork session documentation",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:46.601Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 888.5893999999971,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI resume previous session fork"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:50.796Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4393.715300000011,
+      "queueMs": 0.00889999998616986,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 305,
+        "output_tokens": 60,
+        "cache_read_input_tokens": 17600
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:50.869Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4260.285700000008,
+      "queueMs": 0.007399999973131344,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 309,
+        "output_tokens": 19,
+        "cache_read_input_tokens": 17664
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:51.610Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 808.72570000001,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "claude --resume --continue CLI flag docs.anthropic.com",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:52.245Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1371.2315999999992,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "developers.openai.com codex cli resume"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:53.308Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1690.5436000000045,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code fork session resume documentation",
+        "domain": "docs.anthropic.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:57.734Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5480.184199999989,
+      "queueMs": 0.007199999992735684,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 414,
+        "output_tokens": 24,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:58.007Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4687.601999999984,
+      "queueMs": 0.010000000009313226,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 202,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 17856
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:58.767Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1027.8530000000028,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "site:developers.openai.com codex cli \"/resume\" fork"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:26:59.177Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1164.205500000011,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code \"work with sessions\" resume continue fork"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:03.437Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4658.056899999996,
+      "queueMs": 0.01009999998495914,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 176,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 18304
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:03.541Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4354.113799999992,
+      "queueMs": 0.0076000000117346644,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 150,
+        "output_tokens": 27,
+        "cache_read_input_tokens": 18048
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:04.551Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1104.7393999999913,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex cli \"codex resume\" \"fork\" documentation"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:04.628Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1080.9563999999955,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "common-workflows resume previous conversation",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:09.111Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4474.635899999994,
+      "queueMs": 0.009000000020023435,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 149,
+        "output_tokens": 27,
+        "cache_read_input_tokens": 18176
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:09.479Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4920.40340000001,
+      "queueMs": 0.006199999974342063,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 190,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 18432
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:10.304Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1183.756299999979,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "session-management fork new session id",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:10.457Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 972.7247000000207,
+      "error": "SEARCH_INVALID_RESPONSE",
+      "session": "session-2",
+      "input": {
+        "query": "openai codex getting started resume session",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:14.797Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4331.212799999979,
+      "queueMs": 0.013000000006286427,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 106,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 18560
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:16.058Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1251.1179999999877,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex CLI github README resume picker"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:17.708Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 7394.580600000016,
+      "queueMs": 0.01919999998062849,
+      "firstTextAt": 1790537234506,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 91,
+        "output_tokens": 250,
+        "cache_read_input_tokens": 18304
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:20.359Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4294.132800000021,
+      "queueMs": 0.00789999999688007,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 235,
+        "output_tokens": 21,
+        "cache_read_input_tokens": 18624
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:21.917Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1553.467800000013,
+      "error": "SEARCH_INVALID_RESPONSE",
+      "session": "session-2",
+      "input": {
+        "query": "developers.openai.com/codex resume sessions guide"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:26.234Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4307.040099999984,
+      "queueMs": 0.012799999996786937,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 82,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 18816
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:27.563Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1323.7724000000162,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex resume subcommand fork conversation"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:32.481Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4906.9087,
+      "queueMs": 0.010000000009313226,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 395,
+        "output_tokens": 28,
+        "cache_read_input_tokens": 18880
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:36.409Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 3917.727600000013,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "\"codex\" \"resume\" \"last\" OR \"--last\" documentation openai"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:38.511Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 2094.861900000018,
+      "queueMs": 0.007399999973131344,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 459,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 19264
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:40.581Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2065.080500000011,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex docs slash command /fork documentation official"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:57.026Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 16433.815099999978,
+      "queueMs": 0.00770000001648441,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 424,
+        "output_tokens": 23,
+        "cache_read_input_tokens": 19712
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:27:58.152Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1114.289999999979,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "developers.openai.com codex \"resume\" sessions docs page"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:02.684Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4516.468800000002,
+      "queueMs": 0.006599999993341044,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 14317,
+        "output_tokens": 66,
+        "cache_read_input_tokens": 4608
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:04.752Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2057.1538,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI resume session fork documentation",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:06.408Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1645.8669999999984,
+      "queueMs": 0.004899999999906868,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 117,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 18880
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:07.261Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 847.1866999999911,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex CLI resume fork session",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:11.349Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4081.9484999999986,
+      "queueMs": 0.006300000008195639,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 125,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 18944
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:12.025Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 670.9941999999864,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "OpenAI Codex CLI \"codex resume\" fork session official docs"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:15.999Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3958.5253000000084,
+      "queueMs": 0.0062000000034458935,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 210,
+        "output_tokens": 30,
+        "cache_read_input_tokens": 19008
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:18.345Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2340.1345999999903,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex \"codex resume\" sessions site:github.com/openai/codex"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:22.429Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4068.711500000005,
+      "queueMs": 0.00789999999688007,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 442,
+        "output_tokens": 28,
+        "cache_read_input_tokens": 19200
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:24.950Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2513.5524999999907,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex docs \"resume\" \"fork\" site:developers.openai.com"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:28.094Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3135.959199999983,
+      "queueMs": 0.00810000000637956,
+      "firstTextAt": 1790537306269,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 452,
+        "output_tokens": 231,
+        "cache_read_input_tokens": 19584
+      }
+    },
+    {
+      "sample": 4,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:28:28.104Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 116652,
+      "status": "completed-with-errors"
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:32.499Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4347.641700000007,
+      "queueMs": 0.07049999997252598,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 44,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:33.809Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1304.5427999999956,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "OpenAI Codex CLI resume session fork documentation"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:37.918Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4100.868799999997,
+      "queueMs": 0.008399999991524965,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 189,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:38.878Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 951.5432999999903,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex resume conversation fork command",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:42.862Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3971.771700000012,
+      "queueMs": 0.006900000007590279,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 214,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 18048
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:44.100Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1231.6308999999892,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "codex CLI resume session",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:48.088Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3978.817299999995,
+      "queueMs": 0.00789999999688007,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 89,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 18240
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:49.356Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1261.9659000000102,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "site:developers.openai.com codex resume"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:50.713Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1350.4561000000103,
+      "queueMs": 0.006300000008195639,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 489,
+        "output_tokens": 30,
+        "cache_read_input_tokens": 18304
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:53.888Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 3170.7712000000174,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "\"codex\" CLI \"codex resume\" \"codex fork\" 官方文档"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:58.745Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4845.314500000037,
+      "queueMs": 0.007699999958276749,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 549,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 18752
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:28:59.722Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 966.4480999999796,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "codex resume fork CLI sessions",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:29:04.160Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4427.5238000000245,
+      "queueMs": 0.006999999983236194,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 107,
+        "output_tokens": 24,
+        "cache_read_input_tokens": 19264
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:29:05.312Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1141.5022999999928,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex CLI \"resume\" session docs.openai.com"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:29:09.382Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4058.1746000000276,
+      "queueMs": 0.0076000000117346644,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 331,
+        "output_tokens": 29,
+        "cache_read_input_tokens": 19328
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:29:10.385Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 993.3289999999688,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai/codex codex resume last fork README",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:29:14.548Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4155.0527,
+      "queueMs": 0.005999999993946403,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 89,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 19648
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:29:16.159Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1601.1138999999966,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI resume session fork thread官方用法"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:29:22.792Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 6624.852399999974,
+      "queueMs": 0.00810000003548339,
+      "firstTextAt": 1790537359938,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 547,
+        "output_tokens": 250,
+        "cache_read_input_tokens": 19712
+      }
+    },
+    {
+      "sample": 5,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:29:22.797Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 54654,
+      "status": "completed"
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:27.760Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4916.968899999978,
+      "queueMs": 0.01560000004246831,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 19,
+        "output_tokens": 110,
+        "cache_read_input_tokens": 16896
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:27.770Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "fork_task",
+      "durationMs": 0.035900000017136335,
+      "error": null,
+      "session": "session-1",
+      "input": {}
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:27.776Z",
+      "type": "session.fork",
+      "request": "primary",
+      "durationMs": 2.5473000000347383,
+      "child": "session-2",
+      "through": 23,
+      "parent": "session-1"
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:32.026Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4244.503800000006,
+      "queueMs": 0.005899999989196658,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 325,
+        "output_tokens": 52,
+        "cache_read_input_tokens": 17152
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:33.008Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 976.9071000000113,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex CLI resume session fork documentation",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:34.706Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1691.9746999999625,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "codex CLI resume previous session fork",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:39.086Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4369.446800000034,
+      "queueMs": 0.008600000001024455,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 147,
+        "output_tokens": 35,
+        "cache_read_input_tokens": 17472
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:39.859Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 764.3201999999583,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "codex cli \"codex resume\" session"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:40.840Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 972.4798999999766,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "codex cli fork session documentation"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:45.628Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4776.008299999987,
+      "queueMs": 0.007299999997485429,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 637,
+        "output_tokens": 42,
+        "cache_read_input_tokens": 17600
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:46.635Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 997.1100999999908,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "site:developers.openai.com codex cli resume"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:49.142Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2497.559200000018,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "github openai codex \"codex resume --last\""
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:53.636Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4482.51860000001,
+      "queueMs": 0.00829999998677522,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 358,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 18176
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:54.847Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1201.4071999999578,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex cli documentation resume getting started"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:29:59.650Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4795.026500000036,
+      "queueMs": 0.007199999992735684,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 258,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 18496
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:01.242Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1581.57150000002,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI sessions resume",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:06.174Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4922.107900000003,
+      "queueMs": 0.0076000000117346644,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 70,
+        "output_tokens": 27,
+        "cache_read_input_tokens": 18752
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:06.183Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 0.23310000001220033,
+      "error": "INVALID_ARGUMENT",
+      "session": "session-2",
+      "input": {
+        "query": "resume fork session CLI",
+        "domain": "github.com/openai/codex"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:10.931Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4743.874699999986,
+      "queueMs": 0.009799999999813735,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 60,
+        "output_tokens": 23,
+        "cache_read_input_tokens": 18816
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:11.775Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 837.1796999999788,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "\"openai/codex\" getting started resume session fork"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:16.242Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4454.842100000009,
+      "queueMs": 0.008199999982025474,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 189,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 18816
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:18.398Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2146.1268000000273,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI \"codex resume\" 官方文档 会话恢复"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:22.356Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3947.2895000000135,
+      "queueMs": 0.007500000006984919,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 576,
+        "output_tokens": 21,
+        "cache_read_input_tokens": 18944
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:23.635Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1270.1261999999988,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "developers.openai.com codex cli \"resume\""
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:31.921Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 8275.805799999973,
+      "queueMs": 0.006999999983236194,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 459,
+        "output_tokens": 23,
+        "cache_read_input_tokens": 19456
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:33.642Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1706.6435000000056,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "github.com openai codex docs resume fork getting started README"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:34.937Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1282.2471000000369,
+      "queueMs": 0.0094999999855645,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 146,
+        "output_tokens": 23,
+        "cache_read_input_tokens": 19904
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:38.790Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 3847.929599999974,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex \"codex fork\" CLI command session"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:40.184Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1379.567800000019,
+      "queueMs": 0.006999999983236194,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 444,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 20032
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:40.949Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 755.4794000000111,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI resume sessions guide",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:47.905Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 6941.389100000029,
+      "queueMs": 0.006399999954737723,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 402,
+        "output_tokens": 69,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:48.733Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 817.7889999999898,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI resume session official docs",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:49.989Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1247.1863999999478,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "openai codex CLI resume fork session docs",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:54.151Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4150.6507000000565,
+      "queueMs": 0.008699999947566539,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 160,
+        "output_tokens": 38,
+        "cache_read_input_tokens": 18368
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:55.607Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1446.2550999999512,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI codex resume command documentation"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:30:57.049Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1432.0613000000012,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "\"codex\" CLI resume --last fork session"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:22.853Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 85785.59469999996,
+      "queueMs": 0.00770000001648441,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": "MODEL_UNAVAILABLE",
+      "session": "session-1"
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:29.151Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 6245.808799999999,
+      "queueMs": 0.009000000020023435,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 43,
+        "output_tokens": 243,
+        "cache_read_input_tokens": 16896
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:29.162Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "fork_task",
+      "durationMs": 0.07750000001396984,
+      "error": null,
+      "session": "session-1",
+      "input": {}
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:29.165Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "fork_task",
+      "durationMs": 0.014499999990221113,
+      "error": null,
+      "session": "session-1",
+      "input": {}
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:29.174Z",
+      "type": "session.fork",
+      "request": "primary",
+      "durationMs": 2.6583000000100583,
+      "child": "session-2",
+      "through": 23,
+      "parent": "session-1"
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:29.175Z",
+      "type": "session.fork",
+      "request": "primary",
+      "durationMs": 2.842000000004191,
+      "child": "session-3",
+      "through": 23,
+      "parent": "session-1"
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:33.918Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4732.041399999987,
+      "queueMs": 0.007800000021234155,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 406,
+        "output_tokens": 56,
+        "cache_read_input_tokens": 17216
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:33.952Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4771.737199999974,
+      "queueMs": 0.013600000005681068,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 414,
+        "output_tokens": 53,
+        "cache_read_input_tokens": 17216
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:35.377Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1445.5678999999654,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code resume session --continue --resume",
+        "domain": "docs.anthropic.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:35.454Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1497.6950999999535,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI resume session codex resume documentation",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:36.689Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1228.4358000000357,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI fork session documentation",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:37.362Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1979.7178999999887,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code rewind checkpoint fork session",
+        "domain": "docs.anthropic.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:40.791Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4091.573000000033,
+      "queueMs": 0.007500000006984919,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 172,
+        "output_tokens": 45,
+        "cache_read_input_tokens": 17600
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:42.002Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1202.3066000000108,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai codex CLI resume fork session docs",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:42.813Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 801.493199999968,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "OpenAI Codex CLI resume session official documentation"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:42.867Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5497.059400000027,
+      "queueMs": 0.02079999999841675,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 168,
+        "output_tokens": 57,
+        "cache_read_input_tokens": 17600
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:43.937Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1066.494400000025,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code resume session --continue --resume documentation",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:45.330Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1385.8078000000096,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code rewind checkpoint restore conversation",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:47.345Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 2008.3967999999877,
+      "queueMs": 0.00810000003548339,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 187,
+        "output_tokens": 54,
+        "cache_read_input_tokens": 17728
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:47.354Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 0.09700000000884756,
+      "error": "INVALID_ARGUMENT",
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code resume session --continue --resume site:docs.anthropic.com OR site:code.claude.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:47.358Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 0.11609999998472631,
+      "error": "INVALID_ARGUMENT",
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code rewind checkpoint restore earlier conversation official docs"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:47.825Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5000.432099999976,
+      "queueMs": 0.00969999999506399,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 243,
+        "output_tokens": 40,
+        "cache_read_input_tokens": 17728
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:48.725Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1362.5143999999855,
+      "queueMs": 0.00969999999506399,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 165,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 17856
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:49.467Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1632.5925999999745,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "codex resume last --fork openai codex docs"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:50.160Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1424.7816999999923,
+      "error": "SEARCH_INVALID_RESPONSE",
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code resume session continue resume docs"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:51.086Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1611.7799999999697,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "developers.openai.com codex cli reference resume"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:51.497Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1329.0652000000118,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code rewind checkpoint restore conversation docs"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:53.363Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1853.4932000000263,
+      "queueMs": 0.01049999997485429,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 464,
+        "output_tokens": 47,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:54.760Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1392.1110000000335,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "common workflows resume conversation",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:55.094Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3995.291900000011,
+      "queueMs": 0.007099999987985939,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 626,
+        "output_tokens": 30,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:56.210Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 1104.6459000000032,
+      "error": null,
+      "session": "session-2",
+      "input": {
+        "query": "openai/codex docs getting-started resume picker session",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:57.057Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 2288.542299999972,
+      "error": null,
+      "session": "session-3",
+      "input": {
+        "query": "rewind checkpoints",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:57.577Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1359.591000000015,
+      "queueMs": 0.007799999963026494,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 183,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 18496
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:57.646Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 62.84500000003027,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "\"codex resume\" \"codex fork\" openai docs site"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:58.887Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1822.8171999999904,
+      "queueMs": 0.007199999992735684,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 144,
+        "output_tokens": 37,
+        "cache_read_input_tokens": 18432
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:58.959Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 66.32219999999506,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-3",
+      "input": {
+        "query": "anthropic claude code common workflows resume conversation"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:32:59.023Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 57.13860000000568,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-3",
+      "input": {
+        "query": "anthropic claude code checkpoints rewind documentation"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:00.911Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1879.5826000000234,
+      "queueMs": 0.006599999964237213,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 101,
+        "output_tokens": 19,
+        "cache_read_input_tokens": 18560
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:00.987Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 65.70219999999972,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code --resume --continue documentation"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:01.671Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4016.3187000000034,
+      "queueMs": 0.005600000033155084,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 105,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 18624
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:01.738Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 61.16830000001937,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI \"codex resume\" documentation"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:04.874Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3877.954800000007,
+      "queueMs": 0.011700000031851232,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 81,
+        "output_tokens": 18,
+        "cache_read_input_tokens": 18624
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:04.981Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 99.5053000000189,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code resume previous session documentation"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:05.880Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4135.089099999983,
+      "queueMs": 0.0076000000117346644,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 86,
+        "output_tokens": 19,
+        "cache_read_input_tokens": 18688
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:05.955Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 64.42180000001099,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI codex resume fork session"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:06.218Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1229.720399999991,
+      "queueMs": 0.006300000008195639,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 60,
+        "output_tokens": 17,
+        "cache_read_input_tokens": 18688
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:06.295Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 69.67169999994803,
+      "error": "SEARCH_INVALID_RESPONSE",
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code resume session documentation"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:07.503Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1539.3495000000112,
+      "queueMs": 0.007400000002235174,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 66,
+        "output_tokens": 19,
+        "cache_read_input_tokens": 18752
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:07.585Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 73.0964999999851,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "openai codex resume subcommand docs"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:11.836Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5535.15989999997,
+      "queueMs": 0.012100000050850213,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 95,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 18688
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:11.901Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 54.16870000003837,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-3",
+      "input": {
+        "query": "claude code cli resume continue flag anthropic"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:14.600Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 7007.805099999998,
+      "queueMs": 0.007800000021234155,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 46,
+        "output_tokens": 26,
+        "cache_read_input_tokens": 18816
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:14.678Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 66.35129999998026,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "openai codex cli resume session",
+        "recency": "oneYear"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:15.931Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1244.7798000000184,
+      "queueMs": 0.008199999923817813,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 97,
+        "output_tokens": 19,
+        "cache_read_input_tokens": 18816
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:15.997Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 56.317700000014156,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "openai codex cli session resume fork"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:16.573Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4663.0299999999115,
+      "queueMs": 0.010800000047311187,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 76,
+        "output_tokens": 17,
+        "cache_read_input_tokens": 18752
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:16.643Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 65.14549999998417,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code session management docs"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:17.259Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1252.1014000000432,
+      "queueMs": 0.00969999993685633,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 77,
+        "output_tokens": 18,
+        "cache_read_input_tokens": 18880
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:17.322Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 53.71959999995306,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "codex cli resume session fork docs"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:20.444Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3794.0751000000164,
+      "queueMs": 0.016499999910593033,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-3",
+      "usage": {
+        "input_tokens": 54,
+        "output_tokens": 17,
+        "cache_read_input_tokens": 18816
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:20.527Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 76.32570000004489,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-3",
+      "input": {
+        "query": "Claude Code checkpointing docs"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:21.116Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3785.5718000000343,
+      "queueMs": 0.00849999999627471,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 56,
+        "output_tokens": 17,
+        "cache_read_input_tokens": 18944
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:21.195Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 69.10719999996945,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "codex resume fork openai"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:25.485Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4274.274500000058,
+      "queueMs": 0.00809999997727573,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 616,
+        "output_tokens": 55,
+        "cache_read_input_tokens": 18048
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:25.947Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 451.0163000000175,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI resume session fork official docs",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:26.020Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 67.81170000007842,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "Claude Code resume session rewind fork docs",
+        "domain": "code.claude.com"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:30.001Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3969.472800000105,
+      "queueMs": 0.007499999948777258,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 143,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 18624
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:30.082Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 75.04000000003725,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "OpenAI Codex CLI resume session fork documentation"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:32.582Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 2492.011899999925,
+      "queueMs": 0.005899999989196658,
+      "firstTextAt": 1790537611271,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 60,
+        "output_tokens": 100,
+        "cache_read_input_tokens": 18752
+      }
+    },
+    {
+      "sample": 7,
+      "task": "comparison",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:32.592Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 69693,
+      "status": "completed-with-errors"
+    },
+    {
+      "sample": 8,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:33:36.657Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4017.2950999999885,
+      "queueMs": 0.008999999961815774,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 53,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 8,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:33:36.807Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 143.67249999998603,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "OpenAI Codex CLI resume session fork documentation"
+      }
+    },
+    {
+      "sample": 8,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:33:36.871Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 58.32920000003651,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "Claude Code resume session fork documentation"
+      }
+    },
+    {
+      "sample": 8,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:33:40.860Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3982.5208000000566,
+      "queueMs": 0.00890000001527369,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 73,
+        "output_tokens": 19,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 8,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:33:40.952Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 83.62840000004508,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI codex resume session docs"
+      }
+    },
+    {
+      "sample": 8,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:33:46.086Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5126.074600000051,
+      "queueMs": 0.006799999973736703,
+      "firstTextAt": 1790537624762,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 53,
+        "output_tokens": 89,
+        "cache_read_input_tokens": 18048
+      }
+    },
+    {
+      "sample": 8,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:33:46.096Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 13465,
+      "status": "completed"
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:51.203Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5059.805300000007,
+      "queueMs": 0.01839999994263053,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 19,
+        "output_tokens": 120,
+        "cache_read_input_tokens": 16896
+      }
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:51.212Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "fork_task",
+      "durationMs": 0.06209999998100102,
+      "error": null,
+      "session": "session-1",
+      "input": {}
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:51.220Z",
+      "type": "session.fork",
+      "request": "primary",
+      "durationMs": 2.6769000000786036,
+      "child": "session-2",
+      "through": 23,
+      "parent": "session-1"
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:52.735Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1508.9029000001028,
+      "queueMs": 0.006599999964237213,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 279,
+        "output_tokens": 51,
+        "cache_read_input_tokens": 17216
+      }
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:52.901Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 157.27450000005774,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "openai codex CLI resume session fork documentation",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:52.998Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 87.49160000006668,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "codex CLI resume session fork",
+        "domain": "developers.openai.com"
+      }
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:56.808Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3802.3779999999097,
+      "queueMs": 0.006600000080652535,
+      "firstTextAt": null,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 122,
+        "output_tokens": 19,
+        "cache_read_input_tokens": 17472
+      }
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:33:56.882Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 67.6078999999445,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-2",
+      "input": {
+        "query": "Codex CLI resume session fork official docs"
+      }
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:34:01.853Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4963.240699999966,
+      "queueMs": 0.01820000004954636,
+      "firstTextAt": 1790537640765,
+      "child": true,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-2",
+      "usage": {
+        "input_tokens": 102,
+        "output_tokens": 90,
+        "cache_read_input_tokens": 17536
+      }
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:34:04.909Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3039.1138999999966,
+      "queueMs": 0.004900000058114529,
+      "firstTextAt": 1790537644020,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 438,
+        "output_tokens": 100,
+        "cache_read_input_tokens": 18048
+      }
+    },
+    {
+      "sample": 9,
+      "task": "single",
+      "arm": "fork",
+      "at": "2026-09-27T19:34:04.920Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 18785,
+      "status": "completed"
+    },
+    {
+      "sample": 10,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:09.472Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4506.8417999999365,
+      "queueMs": 0.009399999980814755,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 44,
+        "output_tokens": 27,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 10,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:10.028Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 546.2075999999652,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "OpenAI Codex CLI resume session fork documentation",
+        "domain": "github.com"
+      }
+    },
+    {
+      "sample": 10,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:11.325Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1287.5964000000386,
+      "queueMs": 0.009599999990314245,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 96,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 10,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:11.410Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 74.32740000006743,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "OpenAI Codex CLI codex resume fork session docs"
+      }
+    },
+    {
+      "sample": 10,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:13.708Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 2289.3780999999726,
+      "queueMs": 0.011400000075809658,
+      "firstTextAt": 1790537652827,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 79,
+        "output_tokens": 69,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 10,
+      "task": "single",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:13.719Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 8761,
+      "status": "completed"
+    },
+    {
+      "sample": 11,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:17.805Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4040.004399999976,
+      "queueMs": 0.00910000002477318,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 53,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 11,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:17.992Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 175.90230000007432,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "Codex CLI resume session fork official docs"
+      }
+    },
+    {
+      "sample": 11,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:18.109Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 107.86270000005607,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "Claude Code resume session fork official docs"
+      }
+    },
+    {
+      "sample": 11,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:22.103Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3985.0923000000184,
+      "queueMs": 0.00849999999627471,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 137,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 11,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:22.169Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "web_search",
+      "durationMs": 61.30490000010468,
+      "error": "SEARCH_PROVIDER_ERROR",
+      "session": "session-1",
+      "input": {
+        "query": "Claude Code claude --resume --fork-session documentation"
+      }
+    },
+    {
+      "sample": 11,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:27.354Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5175.323399999994,
+      "queueMs": 0.007199999992735684,
+      "firstTextAt": 1790537666052,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 56,
+        "output_tokens": 90,
+        "cache_read_input_tokens": 18048
+      }
+    },
+    {
+      "sample": 11,
+      "task": "comparison",
+      "arm": "direct",
+      "at": "2026-09-27T19:34:27.360Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 13601,
+      "status": "completed"
+    }
+  ]
+}

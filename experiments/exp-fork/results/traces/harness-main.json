@@ -1,0 +1,2268 @@
+{
+  "schemaVersion": 1,
+  "name": "harness-main",
+  "events": [
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:00.796Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1678.5728000000001,
+      "queueMs": 0.04899999999997817,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 66,
+        "output_tokens": 38,
+        "cache_read_input_tokens": 17856
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:00.803Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 1.4447999999999865,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/src"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:00.899Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 91.47490000000016,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:02.295Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1391.9494,
+      "queueMs": 0.010700000000269938,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 2257,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:02.306Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 1.337800000000243,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:02.310Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 0.8134000000000015,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src/memories"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:06.328Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4014.3097000000002,
+      "queueMs": 0.010099999999965803,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 117,
+        "output_tokens": 38,
+        "cache_read_input_tokens": 20160
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:06.339Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 1.1242999999994936,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/read/src"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:06.343Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 0.9363000000003012,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src"
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:11.124Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4776.5463,
+      "queueMs": 0.024400000000241562,
+      "firstTextAt": 1790538127511,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 516,
+        "output_tokens": 409,
+        "cache_read_input_tokens": 20224
+      }
+    },
+    {
+      "sample": 1,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:42:11.135Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 12025,
+      "status": "completed"
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:15.961Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4782.8103999999985,
+      "queueMs": 0.006000000001222361,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 18002,
+        "output_tokens": 38,
+        "cache_read_input_tokens": 0
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:16.073Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 102.68210000000181,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:16.080Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 3.3201000000008207,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/src"
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:20.185Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4100.366099999999,
+      "queueMs": 0.008500000003550667,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 2373,
+        "output_tokens": 48,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:20.191Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 1.2725000000027649,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/read",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:20.195Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 1.2656999999999243,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:29.626Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 9426.966400000001,
+      "queueMs": 0.011999999998806743,
+      "firstTextAt": 1790538145001,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 722,
+        "output_tokens": 659,
+        "cache_read_input_tokens": 20352
+      }
+    },
+    {
+      "sample": 2,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:29.636Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 18464,
+      "status": "completed"
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:42:38.835Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 8860.461700000003,
+      "queueMs": 0.007499999999708962,
+      "firstTextAt": 1790538154382,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 7993,
+        "output_tokens": 550,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 3,
+      "task": "files",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:42:38.840Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 9166,
+      "status": "completed"
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:42.801Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3913.765800000001,
+      "queueMs": 0.00819999999657739,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 46,
+        "output_tokens": 44,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:42.908Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 96.2525999999998,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/thread-store/src/local/paginated_fork.rs"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:43.007Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 95.46190000000206,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:46.814Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3802.6561,
+      "queueMs": 0.017099999997299165,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 4683,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:46.826Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 2.6701000000030035,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src/memories"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:51.292Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4460.411599999999,
+      "queueMs": 0.00960000000486616,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 338,
+        "output_tokens": 55,
+        "cache_read_input_tokens": 22656
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:52.016Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 719.8175000000047,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs",
+        "query": "stage_one_input.md"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:42:52.824Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 802.1016999999993,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src",
+        "query": "should_persist_response_item_for_memories"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:01.855Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 9024.472199999997,
+      "queueMs": 0.011800000000221189,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 2615,
+        "output_tokens": 61,
+        "cache_read_input_tokens": 22976
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:01.958Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 94.04269999999815,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/rollout_input.rs",
+        "start": 240,
+        "limit": 80
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:02.067Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 105.92710000000079,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src",
+        "query": "phase 1 memory"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:06.411Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4338.6644000000015,
+      "queueMs": 0.00969999999506399,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1137,
+        "output_tokens": 46,
+        "cache_read_input_tokens": 25536
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:06.525Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 104.35510000000068,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src",
+        "query": "stage_one"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:06.627Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 98.24620000000868,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/state/src",
+        "query": "stage_one"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:10.499Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3867.5244999999995,
+      "queueMs": 0.00840000000607688,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 171,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 26624
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:11.055Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 546.5326000000059,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs",
+        "query": "raw_memory"
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:12.368Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1309.4274000000005,
+      "queueMs": 0.008399999991524965,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 3478,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 26752
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:12.469Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 95.66680000000633,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 1,
+        "limit": 130
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:16.388Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3914.4479000000138,
+      "queueMs": 0.013699999995878898,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1549,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 30208
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:16.482Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 87.72890000000189,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 180,
+        "limit": 120
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:20.405Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3919,
+      "queueMs": 0.008900000000721775,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1431,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 31744
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:20.499Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 88.00430000000051,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 300,
+        "limit": 110
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:36.712Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 16207.116399999999,
+      "queueMs": 0.013500000000931323,
+      "firstTextAt": 1790538204206,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1340,
+        "output_tokens": 1453,
+        "cache_read_input_tokens": 33152
+      }
+    },
+    {
+      "sample": 4,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:43:36.719Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 57840,
+      "status": "completed"
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:43.618Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5946.974999999991,
+      "queueMs": 0.0087000000057742,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 8508,
+        "output_tokens": 79,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:43.719Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 95.37239999999292,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:43.817Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 93.98589999999967,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/rollout/src/model_context.rs"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:48.553Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4730.278000000006,
+      "queueMs": 0.007499999992433004,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 3144,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 26432
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:48.667Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 109.56939999999304,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src",
+        "query": "phase_1"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:53.125Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4453.479699999996,
+      "queueMs": 0.007500000006984919,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 72,
+        "output_tokens": 32,
+        "cache_read_input_tokens": 29568
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:53.441Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 310.90780000000086,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "query": "rollout_summary stage_one"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:53.533Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 88.85579999999027,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:57.474Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3936.3487000000023,
+      "queueMs": 0.006599999993341044,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1297,
+        "output_tokens": 48,
+        "cache_read_input_tokens": 29632
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:57.869Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 382.6837000000087,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write",
+        "query": "raw_memory"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:43:58.273Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 399.8222999999998,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src",
+        "query": "memories"
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:44:10.470Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 12191.284599999999,
+      "queueMs": 0.009500000000116415,
+      "firstTextAt": 1790538242132,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 7234,
+        "output_tokens": 894,
+        "cache_read_input_tokens": 30912
+      }
+    },
+    {
+      "sample": 5,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:44:10.480Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 33723,
+      "status": "completed"
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:15.640Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5114.314799999993,
+      "queueMs": 0.007200000021839514,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 94,
+        "output_tokens": 65,
+        "cache_read_input_tokens": 17856
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:15.740Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 93.57319999998435,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/thread-store/src/local/paginated_fork.rs"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:16.356Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 612.9574000000139,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:20.662Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4301.185100000002,
+      "queueMs": 0.005600000004051253,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 4275,
+        "output_tokens": 62,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:20.673Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 0.9716000000189524,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src/memories",
+        "query": "should_persist_response_item_for_memories"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:20.777Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 100.96489999999176,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/thread-store/src/local",
+        "query": "forked_from_ordinal_exclusive"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:22.266Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1484.2538000000059,
+      "queueMs": 0.005600000004051253,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 323,
+        "output_tokens": 50,
+        "cache_read_input_tokens": 22144
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:22.387Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 115.66410000002361,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core",
+        "query": "for_memories"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:22.490Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 100.65039999998407,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/thread-store/src/local/create_thread.rs",
+        "limit": 70
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:26.373Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3877.864499999996,
+      "queueMs": 0.006099999998696148,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 901,
+        "output_tokens": 28,
+        "cache_read_input_tokens": 22464
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:26.669Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 286.4741999999969,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs",
+        "query": "should_persist_response_item_for_memories"
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:31.195Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4520.6883999999845,
+      "queueMs": 0.006599999993341044,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 175,
+        "output_tokens": 37,
+        "cache_read_input_tokens": 23360
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:31.298Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 94.374599999981,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/rollout_input.rs",
+        "start": 200,
+        "limit": 120
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:44.721Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 13418.386700000003,
+      "queueMs": 0.006800000002840534,
+      "firstTextAt": 1790538275390,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1465,
+        "output_tokens": 977,
+        "cache_read_input_tokens": 23488
+      }
+    },
+    {
+      "sample": 6,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:44:44.728Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 34209,
+      "status": "completed"
+    },
+    {
+      "sample": 7,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:44:48.739Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3966.4392000000225,
+      "queueMs": 0.0046999999904073775,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 18,
+        "output_tokens": 43,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 7,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:44:48.854Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 106.49809999999707,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 7,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:44:48.954Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 96.10349999999744,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md"
+      }
+    },
+    {
+      "sample": 7,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:44:57.961Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 9003.147800000006,
+      "queueMs": 0.005199999985052273,
+      "firstTextAt": 1790538293510,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 4150,
+        "output_tokens": 508,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 7,
+      "task": "files",
+      "variant": "evidence",
+      "at": "2026-09-27T19:44:57.970Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 13203,
+      "status": "completed"
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:02.679Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4656.545800000022,
+      "queueMs": 0.005499999999301508,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 49,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:02.686Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 1.0534000000043306,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/src"
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:02.784Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 94.601399999985,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md",
+        "limit": 60
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:04.171Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1381.2991000000038,
+      "queueMs": 0.006099999998696148,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 860,
+        "output_tokens": 42,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:04.176Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 1.0848999999871012,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:04.180Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 0.8883999999961816,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src/memories"
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:05.438Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1254.0125000000116,
+      "queueMs": 0.004799999995157123,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 753,
+        "output_tokens": 24,
+        "cache_read_input_tokens": 18752
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:05.556Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 112.11879999999655,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src",
+        "query": "mod memories"
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:09.457Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3896.378700000001,
+      "queueMs": 0.004999999975552782,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 86,
+        "output_tokens": 24,
+        "cache_read_input_tokens": 19456
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:10.051Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 584.6909999999916,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/core/src",
+        "query": "memories"
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:20.668Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 10613.016800000012,
+      "queueMs": 0.0064999999885912985,
+      "firstTextAt": 1790538313841,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1732,
+        "output_tokens": 909,
+        "cache_read_input_tokens": 19520
+      }
+    },
+    {
+      "sample": 8,
+      "task": "files",
+      "variant": "baseline",
+      "at": "2026-09-27T19:45:20.678Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 22664,
+      "status": "completed"
+    },
+    {
+      "sample": 9,
+      "task": "files",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:25.599Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4578.649999999994,
+      "queueMs": 0.006400000012945384,
+      "firstTextAt": 1790538322289,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 57,
+        "output_tokens": 357,
+        "cache_read_input_tokens": 25920
+      }
+    },
+    {
+      "sample": 9,
+      "task": "files",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:25.609Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 4890,
+      "status": "completed"
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:30.125Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4094.7484000000113,
+      "queueMs": 0.006399999983841553,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 60,
+        "output_tokens": 55,
+        "cache_read_input_tokens": 26432
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:30.234Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 96.80629999999655,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/rollout/src/rollout_reference_index.rs",
+        "limit": 120
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:31.087Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 849.9331999999995,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories",
+        "query": "Phase 1"
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:35.184Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4091.2639999999956,
+      "queueMs": 0.005400000023655593,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 4190,
+        "output_tokens": 67,
+        "cache_read_input_tokens": 26496
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:35.289Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 96.31470000001718,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md",
+        "start": 53,
+        "limit": 80
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:35.389Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 96.42089999999735,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 150,
+        "limit": 140
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:39.352Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3959.1059999999998,
+      "queueMs": 0.007000000012340024,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 2849,
+        "output_tokens": 37,
+        "cache_read_input_tokens": 30656
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:39.457Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 94.42850000000908,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 289,
+        "limit": 60
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:43.392Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 3930.3998999999894,
+      "queueMs": 0.00770000001648441,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 864,
+        "output_tokens": 37,
+        "cache_read_input_tokens": 33472
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:43.493Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 94.40340000001015,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 364,
+        "limit": 70
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:55.578Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 12080.068700000003,
+      "queueMs": 0.005899999989196658,
+      "firstTextAt": 1790538345207,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 970,
+        "output_tokens": 1107,
+        "cache_read_input_tokens": 34304
+      }
+    },
+    {
+      "sample": 10,
+      "task": "parallel",
+      "variant": "prefetch",
+      "at": "2026-09-27T19:45:55.587Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 29940,
+      "status": "completed"
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:01.346Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5708.462999999989,
+      "queueMs": 0.005300000018905848,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 46,
+        "output_tokens": 108,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:01.540Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 187.8793000000005,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/thread-store/src/local/paginated_fork.rs",
+        "query": "history_base"
+      }
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:01.933Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 388.9655999999959,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories",
+        "query": "rollout"
+      }
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:06.880Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4941.428800000023,
+      "queueMs": 0.007499999977881089,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 5235,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 17984
+      }
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:06.982Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 94.21169999998529,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 40,
+        "limit": 100
+      }
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:11.119Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4132.991099999985,
+      "queueMs": 0.006000000023050234,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1229,
+        "output_tokens": 36,
+        "cache_read_input_tokens": 23168
+      }
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:11.221Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 93.13829999999143,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 180,
+        "limit": 100
+      }
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:20.948Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 9722.258600000001,
+      "queueMs": 0.0058000000135507435,
+      "firstTextAt": 1790538374942,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1197,
+        "output_tokens": 729,
+        "cache_read_input_tokens": 24384
+      }
+    },
+    {
+      "sample": 11,
+      "task": "parallel",
+      "variant": "evidence",
+      "at": "2026-09-27T19:46:20.958Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 25329,
+      "status": "completed"
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:22.469Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1462.7859000000171,
+      "queueMs": 0.005400000023655593,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 30,
+        "output_tokens": 48,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:23.065Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 591.0655999999726,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/thread-store/src/local/paginated_fork.rs",
+        "limit": 120
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:23.070Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 0.7802999999839813,
+      "error": "NOT_FOUND",
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/src"
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:24.470Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1395.3841000000248,
+      "queueMs": 0.006400000012945384,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1561,
+        "output_tokens": 18,
+        "cache_read_input_tokens": 17920
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:24.475Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 0.9639999999781139,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories"
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:28.527Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4047.401499999978,
+      "queueMs": 0.006300000008195639,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 90,
+        "output_tokens": 44,
+        "cache_read_input_tokens": 19456
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:28.625Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 94.23790000000736,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/README.md"
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:28.630Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "list_files",
+      "durationMs": 1.3445000000065193,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write",
+        "recursive": true
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:33.030Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 4395.891599999974,
+      "queueMs": 0.005899999989196658,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 2818,
+        "output_tokens": 57,
+        "cache_read_input_tokens": 19520
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:33.140Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 100.81280000001425,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/rollout_input.rs",
+        "limit": 100
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:33.253Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 109.0052999999607,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/storage.rs",
+        "limit": 120
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:38.946Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 5684.0092000000295,
+      "queueMs": 0.00929999997606501,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 2845,
+        "output_tokens": 65,
+        "cache_read_input_tokens": 22336
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:39.058Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 102.56589999998687,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "query": "upsert"
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:39.157Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 96.04639999999199,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/memories/write/src/phase1.rs",
+        "start": 1,
+        "limit": 80
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:40.859Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1696.560300000012,
+      "queueMs": 0.007099999987985939,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1053,
+        "output_tokens": 24,
+        "cache_read_input_tokens": 25152
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:40.960Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "search_code",
+      "durationMs": 95.14410000003409,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/state/src",
+        "query": "stage1"
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:42.233Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 1268.953600000008,
+      "queueMs": 0.006500000017695129,
+      "firstTextAt": null,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 461,
+        "output_tokens": 34,
+        "cache_read_input_tokens": 26176
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:42.337Z",
+      "type": "tool.call",
+      "request": "primary",
+      "name": "read_file",
+      "durationMs": 98.38229999999749,
+      "error": null,
+      "session": "session-1",
+      "input": {
+        "path": "codex-rs/state/src/runtime/memories.rs",
+        "start": 100,
+        "limit": 120
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:51.839Z",
+      "type": "model.call",
+      "request": "primary",
+      "durationMs": 9497.231899999955,
+      "queueMs": 0.007200000050943345,
+      "firstTextAt": 1790538403478,
+      "child": false,
+      "model": "glm-5.3",
+      "error": null,
+      "session": "session-1",
+      "usage": {
+        "input_tokens": 1390,
+        "output_tokens": 876,
+        "cache_read_input_tokens": 26624
+      }
+    },
+    {
+      "sample": 12,
+      "task": "parallel",
+      "variant": "baseline",
+      "at": "2026-09-27T19:46:51.846Z",
+      "type": "answer.ready",
+      "request": "primary",
+      "elapsedMs": 30847,
+      "status": "completed"
+    }
+  ]
+}

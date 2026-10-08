@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "name": "query-comparison",
+  "originalStudy": "comparisons/1790443904569",
+  "exportPolicy": "Whitelisted numeric metrics, statuses, public task labels and measurement metadata. No answers, user history, provider credentials, source packets or filesystem paths.",
+  "prefixMessages": 20,
+  "prefixHash": "497bc037af43e63ffeb39ecb6373515db5ec98e5ac928cd605ced1b87e639986",
+  "order": [
+    "adaptive",
+    "direct",
+    "direct",
+    "adaptive"
+  ],
+  "runs": [
+    {
+      "sample": 1,
+      "task": "memory-query",
+      "run": 1,
+      "arm": "adaptive",
+      "status": "completed",
+      "readyMs": 31338,
+      "firstModelTextMs": 25756,
+      "modelCalls": 6,
+      "toolCalls": 10,
+      "children": []
+    },
+    {
+      "sample": 2,
+      "task": "memory-query",
+      "run": 2,
+      "arm": "direct",
+      "status": "completed",
+      "readyMs": 36309,
+      "firstModelTextMs": 32149,
+      "modelCalls": 7,
+      "toolCalls": 10,
+      "children": []
+    },
+    {
+      "sample": 3,
+      "task": "memory-query",
+      "run": 3,
+      "arm": "direct",
+      "status": "completed",
+      "readyMs": 22303,
+      "firstModelTextMs": 16401,
+      "modelCalls": 4,
+      "toolCalls": 5,
+      "children": []
+    },
+    {
+      "sample": 4,
+      "task": "memory-query",
+      "run": 4,
+      "arm": "adaptive",
+      "status": "completed",
+      "readyMs": 38617,
+      "firstModelTextMs": 32467,
+      "modelCalls": 8,
+      "toolCalls": 11,
+      "children": []
+    }
+  ]
+}

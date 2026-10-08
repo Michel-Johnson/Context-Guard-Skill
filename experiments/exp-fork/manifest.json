@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "historicalProductCommit": "48ed4a8a251f1c27b54db6ce3735277e89d55725",
+  "pinnedCodexCommit": "e72da2b53805894878023d01949a25a082e0a5cb",
+  "transformations": "Only historical seed trial/request identifiers replaced by public seed/memory-query identifiers. Runtime behavior otherwise preserved. Original private data excluded.",
+  "files": [
+    {
+      "path": "source/engine.mjs",
+      "originalSha256": "c23459e8c19e042260d5a501462851fa43f75fcb38c4ab4edd6dda347b225cbb",
+      "archiveSha256": "c23459e8c19e042260d5a501462851fa43f75fcb38c4ab4edd6dda347b225cbb",
+      "transformed": false
+    },
+    {
+      "path": "source/history.mjs",
+      "originalSha256": "1cc65be01daa6b992f0e33d3bd51805aafc7c07e475306fad94b9fdca751a337",
+      "archiveSha256": "1cc65be01daa6b992f0e33d3bd51805aafc7c07e475306fad94b9fdca751a337",
+      "transformed": false
+    },
+    {
+      "path": "source/source.mjs",
+      "originalSha256": "66a9a683badfbcb3af7a777856e7993d645fb75606052436eb30357c61668f20",
+      "archiveSha256": "66a9a683badfbcb3af7a777856e7993d645fb75606052436eb30357c61668f20",
+      "transformed": false
+    },
+    {
+      "path": "source/map.mjs",
+      "originalSha256": "eaeebda4acfa73b278e80a99a34fc85196694f97eaef57e8492b643d80fbff40",
+      "archiveSha256": "eaeebda4acfa73b278e80a99a34fc85196694f97eaef57e8492b643d80fbff40",
+      "transformed": false
+    },
+    {
+      "path": "source/map-tools.mjs",
+      "originalSha256": "1048f231290249a50fea8418bc847fccf1347ee54e2fd9ecd7abd68e89615cc5",
+      "archiveSha256": "1048f231290249a50fea8418bc847fccf1347ee54e2fd9ecd7abd68e89615cc5",
+      "transformed": false
+    },
+    {
+      "path": "source/web-search.mjs",
+      "originalSha256": "315e3dcd546757f8652e7aab258f81a8b146d6b400b8e4268051383453d47167",
+      "archiveSha256": "315e3dcd546757f8652e7aab258f81a8b146d6b400b8e4268051383453d47167",
+      "transformed": false
+    },
+    {
+      "path": "source/server.mjs",
+      "originalSha256": "aad242b2b5a322306a46ca95f1193290f4ee3d4d1bcfcd4fd1e75f19508a25b0",
+      "archiveSha256": "aad242b2b5a322306a46ca95f1193290f4ee3d4d1bcfcd4fd1e75f19508a25b0",
+      "transformed": false
+    },
+    {
+      "path": "source/ui.js",
+      "originalSha256": "334ad0846c3925883b640b41d302fb522b749f0470bda4356a3ee219ca9ca6f4",
+      "archiveSha256": "334ad0846c3925883b640b41d302fb522b749f0470bda4356a3ee219ca9ca6f4",
+      "transformed": false
+    },
+    {
+      "path": "source/ui.css",
+      "originalSha256": "d74337015dbdad6d6011361ab71e4c7695140a72dcc5aca690bc74509b359ab3",
+      "archiveSha256": "d74337015dbdad6d6011361ab71e4c7695140a72dcc5aca690bc74509b359ab3",
+      "transformed": false
+    },
+    {
+      "path": "source/start.ps1",
+      "originalSha256": "184f2ef758392c96ef661b9a95e326e46301cd949665d5c59ed4aacd060d7bd7",
+      "archiveSha256": "184f2ef758392c96ef661b9a95e326e46301cd949665d5c59ed4aacd060d7bd7",
+      "transformed": false
+    },
+    {
+      "path": "source/pin.json",
+      "originalSha256": "544f74b4b530a749253691b880fe95166c81ed476235152ba39bd79458daabce",
+      "archiveSha256": "544f74b4b530a749253691b880fe95166c81ed476235152ba39bd79458daabce",
+      "transformed": false
+    },
+    {
+      "path": "source/calibrate.mjs",
+      "originalSha256": "6ff609de0e7d3dac55a9dc38db62ee64a695bb6d8cf3e16ad0d75c3b9814ef80",
+      "archiveSha256": "6ff609de0e7d3dac55a9dc38db62ee64a695bb6d8cf3e16ad0d75c3b9814ef80",
+      "transformed": false
+    },
+    {
+      "path": "source/report.mjs",
+      "originalSha256": "86fe1b48ee8604b8c3d27a46c8928137f35aa14d317387dd348ee2398e5565f4",
+      "archiveSha256": "86fe1b48ee8604b8c3d27a46c8928137f35aa14d317387dd348ee2398e5565f4",
+      "transformed": false
+    },
+    {
+      "path": "source/compare-memory-query.mjs",
+      "originalSha256": "7b748b260ad8a39c00c03bcd42281c576a8a44c4bf9a69b2bd6b62aa583352f5",
+      "archiveSha256": "42835dfeaf114010a93b5e76a0f152db576d0e0ff3e52a985df871daabcf2461",
+      "transformed": true
+    },
+    {
+      "path": "source/probe-fork-policy.mjs",
+      "originalSha256": "1f2bb2241a1c8e4652012af7a717e8a1a9aca663a2da6c4e3ec46cd9d6c88e0a",
+      "archiveSha256": "1f2bb2241a1c8e4652012af7a717e8a1a9aca663a2da6c4e3ec46cd9d6c88e0a",
+      "transformed": false
+    },
+    {
+      "path": "source/latency-study.mjs",
+      "originalSha256": "10f9c542f056005cd399bbea67d1d27efa9a7e185561876b675aa9f39e97737d",
+      "archiveSha256": "82db5370dc36a9171c087aeddbd6159913d48a14ed532923a66a0691b4042dd0",
+      "transformed": true
+    },
+    {
+      "path": "source/audit-latency-study.mjs",
+      "originalSha256": "a12119736884a14db563373021c97825923b5412fd66bf9826ebe02d1c1e25f5",
+      "archiveSha256": "a12119736884a14db563373021c97825923b5412fd66bf9826ebe02d1c1e25f5",
+      "transformed": false
+    },
+    {
+      "path": "source/strategy-evaluation.mjs",
+      "originalSha256": "2e2a70acfe77b913571c46ce06df22f14b9554b60d6ff39b65978e5ba14acf81",
+      "archiveSha256": "b65cb9fcd14b49cb2b343805876b554d5ce0ac3c1616983d02da23a187fba23d",
+      "transformed": true
+    },
+    {
+      "path": "source/analyze-strategy-evaluation.mjs",
+      "originalSha256": "11d3346d8f4c813709087df7614d0660740923bdc207b4c7e6621405cba67d80",
+      "archiveSha256": "11d3346d8f4c813709087df7614d0660740923bdc207b4c7e6621405cba67d80",
+      "transformed": false
+    },
+    {
+      "path": "source/web-strategy-evaluation.mjs",
+      "originalSha256": "08235889c987049505dc242b29532609a0babcfe5b1e6a33daeb08fa4282d01b",
+      "archiveSha256": "abb8a01603d8be51fd7f1eba22389fe34d4206bfc56a0e2682267423ba68369e",
+      "transformed": true
+    },
+    {
+      "path": "source/analyze-web-strategy.mjs",
+      "originalSha256": "84b55cb83a19a848f49a504a8e72ce41c76f6d3d70b3f67fd869cd8d13378cf7",
+      "archiveSha256": "84b55cb83a19a848f49a504a8e72ce41c76f6d3d70b3f67fd869cd8d13378cf7",
+      "transformed": false
+    },
+    {
+      "path": "source/harness-optimization.mjs",
+      "originalSha256": "44fde2c10e50b46b28dc91a068c94f4d7be0c3d812ca1d34b8b3789f08c02232",
+      "archiveSha256": "44fde2c10e50b46b28dc91a068c94f4d7be0c3d812ca1d34b8b3789f08c02232",
+      "transformed": false
+    },
+    {
+      "path": "source/optimization-evaluation.mjs",
+      "originalSha256": "1ed3815ca427c9f9781b4418be608130419172e40cae860ec0506bfecf3a9037",
+      "archiveSha256": "d74b03457812569e156104b9958ec1430eccac1b5657ab84732ff0b7be975693",
+      "transformed": true
+    },
+    {
+      "path": "source/optimization-replay.mjs",
+      "originalSha256": "e0d3ee008dcd15271eee6857b2fc1678727419e0a436ab0a78bbb0a4ec3374aa",
+      "archiveSha256": "e0d3ee008dcd15271eee6857b2fc1678727419e0a436ab0a78bbb0a4ec3374aa",
+      "transformed": false
+    },
+    {
+      "path": "source/analyze-optimization.mjs",
+      "originalSha256": "fb31d2c4c0f81867407fc00eb81562dcdd375781d5f1464a8bc5eff8ea162ae4",
+      "archiveSha256": "fb31d2c4c0f81867407fc00eb81562dcdd375781d5f1464a8bc5eff8ea162ae4",
+      "transformed": false
+    },
+    {
+      "path": "source/lab.test.mjs",
+      "originalSha256": "3fce586d75561804f5496a4403b5ed0d398ae8947b47683549e8c925c0c0b310",
+      "archiveSha256": "3fce586d75561804f5496a4403b5ed0d398ae8947b47683549e8c925c0c0b310",
+      "transformed": false
+    },
+    {
+      "path": "source/map-controls.test.mjs",
+      "originalSha256": "5b7b32363dec87cfb8d4ae18ce0e161b6a65b23af7c215560dd0aaa6680cf6d3",
+      "archiveSha256": "5b7b32363dec87cfb8d4ae18ce0e161b6a65b23af7c215560dd0aaa6680cf6d3",
+      "transformed": false
+    },
+    {
+      "path": "source/web-search.test.mjs",
+      "originalSha256": "04f74541bb5dbc5fecdf464746b64071e070745744a63177809247841ce4f32c",
+      "archiveSha256": "04f74541bb5dbc5fecdf464746b64071e070745744a63177809247841ce4f32c",
+      "transformed": false
+    },
+    {
+      "path": "source/verify-http.mjs",
+      "originalSha256": "cf6e1ebf37e337737db03f7a298739ff7a870c863a8f92030cc8284aa902b48e",
+      "archiveSha256": "cf6e1ebf37e337737db03f7a298739ff7a870c863a8f92030cc8284aa902b48e",
+      "transformed": false
+    },
+    {
+      "path": "source/verify-map-ui.mjs",
+      "originalSha256": "657b635df1d75aaf1783ead55be1c973228eeed8b694b7ab013b90c090dcd1c7",
+      "archiveSha256": "657b635df1d75aaf1783ead55be1c973228eeed8b694b7ab013b90c090dcd1c7",
+      "transformed": false
+    },
+    {
+      "path": "source/verify-web-search.mjs",
+      "originalSha256": "a148d3e80447b6209da4d6ca2f524f372634386c92b1357685caebc32ea2e096",
+      "archiveSha256": "a148d3e80447b6209da4d6ca2f524f372634386c92b1357685caebc32ea2e096",
+      "transformed": false
+    }
+  ]
+}
