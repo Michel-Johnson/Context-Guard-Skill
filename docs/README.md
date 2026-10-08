@@ -20,11 +20,10 @@
 | Session 同步、连接与旧数据升级 | [Cloud Sync](../references/design/design-cloud-sync-v1.0.1.md)，由 Skill 维护 |
 | 协议消息、字段和示例 | 共享 [接口设计](../references/design/design-interface-v1.2.1.md)、[机器契约](interface-contract-v2.json) |
 | Cloud 和 Slack 部署 | Cloud 的 [部署手册](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/cloud-deployment.md)、[Slack 接入](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/design/design-slack-integration-v1.0.0.md) |
-| 当前记忆存储与文件格式 | [当前记忆规范](../references/design/design-memory-current-v1.0.1.md) |
-| Map / CLI / 计划与归档 | [工作台接口](../references/design/design-workbench-interface-v1.0.1.md) |
-| 私有 Main / Session 与发布 | [服务器记忆](../references/design/design-memory-server-v1.0.1.md) |
-| 节点及事项文件格式 | [Memory Filesystem v2.1](../references/design/design-memory-filesystem-v1.0.1.md) |
-| 记忆定义与维护职责 | [记忆规范](../references/design/design-memory-definition-v0.2.0.md) |
+| Map / CLI / 计划与归档 | [工作台接口](../references/design/design-workbench-interface-v1.1.0.md) |
+| 私有 Main / Session 与发布 | [服务器记忆](../references/design/design-memory-server-v1.1.0.md) |
+| 底层目录、索引、事项文件与生成规则 | [文件结构规范](../references/design/design-memory-filesystem-v1.0.1.md) |
+| 项目与节点记忆的内容、格式和维护 | [记忆撰写规范](../references/design/design-memory-definition-v0.2.0.md) |
 
 定位共享源码读取 Skill main；判断实际客户端能力须核对安装版本，Cloud 能力须核对其固定包与运行版本。文档或源码存在，不等于已部署或已验收。
 

@@ -244,8 +244,21 @@ def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
             scope = hashlib.sha256((current_session_id + "\0" + bound.get("worktreeId", "")).encode()).hexdigest()
             map_file = shared / "session-memory" / scope / "map.json"
             access_file = shared / "workbench-access.json"
-    document = read_json(map_file, {})
-    nodes = list(map_entries(document.get("root"))) if isinstance(document, dict) else []
+    reader = read_json(ctx / "private" / "context-readers" / (hashlib.sha256(current_session_id.encode()).hexdigest() + ".json"), {})
+    context_cache = {}
+    if role == "executor" and reader.get("sessionId") == current_session_id and reader.get("worktreeRoot") == str(ctx.parent.parent.resolve()):
+        expected = map_file.parent / "context-cache.json" if probe.returncode == 0 else ctx / "private" / "project-workbench" / "session-memory" / hashlib.sha256((current_session_id + "\0worktree-" + hashlib.sha256(str(ctx.parent.parent.resolve()).encode()).hexdigest()[:20]).encode()).hexdigest() / "context-cache.json"
+        if reader.get("file") == str(expected):
+            context_cache = read_json(expected, {})
+    document = read_json(map_file, {}) if not context_cache else {}
+    if context_cache:
+        cached_nodes = context_cache.get("index", {}).get("nodes", {})
+        nodes = [{"id": key, "title": value.get("name"), "purpose": value.get("purpose"), "owns": value.get("owns") or [],
+                  "access": [{"agentId": current_session_id, "allow": "write" if value.get("writable") else "read"}],
+                  **{field: (context_cache.get("fragments", {}).get(key, {}).get("node", {}).get(field) or []) for field in ("bugs", "todos")}}
+                 for key, value in cached_nodes.items()]
+    else:
+        nodes = list(map_entries(document.get("root"))) if isinstance(document, dict) else []
     access = read_json(access_file, {})
     sessions = access.get("sessions") if isinstance(access, dict) and isinstance(access.get("sessions"), dict) else {}
     grant_record = sessions.get(current_session_id) if isinstance(sessions, dict) else {}
@@ -275,8 +288,8 @@ def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
             owners = bug.get("sessions") if isinstance(bug, dict) else []
             if isinstance(bug, dict) and current_session_id in (owners or []):
                 assigned_bugs.append({"id": str(bug.get("id") or ""), "title": str(bug.get("title") or ""), "status": str(bug.get("status") or "open"), "node": node_id, "node_title": node_title})
-    raw = map_file.read_bytes() if map_file.is_file() else b""
-    local_version = hashlib.sha256(raw).hexdigest() if raw else "missing"
+    raw = map_file.read_bytes() if not context_cache and map_file.is_file() else b""
+    local_version = context_cache.get("index", {}).get("version") if context_cache else hashlib.sha256(raw).hexdigest() if raw else "missing"
     return {
         "role": role,
         "version": local_version,
@@ -286,6 +299,7 @@ def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
         "todos": assigned_todos[:20],
         "bugs": assigned_bugs[:20],
         "nodes": nodes,
+        "context_cache": bool(context_cache),
     }
 
 
@@ -365,6 +379,8 @@ def coordinator_static_context(root: Path, ctx: Path, current_session_id: str, s
 
 def map_context(root: Path, ctx: Path, current_session_id: str) -> tuple[str, dict[str, object]]:
     snapshot = map_snapshot(ctx, current_session_id)
+    if snapshot.get("context_cache"):
+        return "使用本任务已读上下文；需要新内容时调用 map read --context，交付前调用 map context-check。开发过程只记入当前 Session，不写 Map 流水账。", snapshot
     inbox = map_inbox(root, ctx, current_session_id)
     grants = snapshot["grant_nodes"]
     todos = snapshot["todos"]
@@ -736,6 +752,8 @@ def sync_command(root: Path, action: str, current_session_id: str = "", paths: l
 
 def session_memory_sync(root: Path, current_session_id: str, event: str, payload: object) -> dict[str, object]:
     """Persist this Session checkpoint directly; a later hook retries preserved local data."""
+    if event != "session-end" and map_snapshot(context_folder(root), current_session_id).get("context_cache"):
+        return {"deferred": True, "reason": "开发记录保留在本地 Session，归档时同步"}
     event_id, _, _ = event_identity(payload, event, current_session_id)
     try:
         return run_node_workbench([
@@ -1552,13 +1570,16 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
             if head.returncode or head.stdout.strip() != approved.get("sourceSha"):
                 raise ValueError("Worktree HEAD differs from the approved Plan base SHA")
         # Fresh API read checks page drafts and actual session authorization.
-        state = run_node_workbench(["map", "status", "--root", str(root), "--session", session])
+        context_mode = map_snapshot(ctx, session).get("context_cache") is True
+        state = run_node_workbench(["map", "status", "--root", str(root), "--session", session] + (["--context"] if context_mode else []))
         missing = set(nodes) - set(state.get("grants") or [])
         if missing:
             raise ValueError("Map authorization required: " + ", ".join(sorted(missing)))
         for node in nodes:
-            run_node_workbench(["map", "read", "--root", str(root), "--session", session, "--node", node])
-        inbox = run_node_workbench(["map", "inbox", "--root", str(root), "--session", session, "--start"])
+            run_node_workbench(["map", "read", "--root", str(root), "--session", session, "--node", node] + (["--context", "--mount", node] if context_mode else []))
+        if context_mode:
+            run_node_workbench(["map", "context-check", "--root", str(root), "--session", session, "--require-clear"])
+        inbox = {"pending": False} if context_mode else run_node_workbench(["map", "inbox", "--root", str(root), "--session", session, "--start"])
         if inbox.get("pending"):
             raise ValueError("Read/process and acknowledge Map inbox before starting the plan")
         if plan:
@@ -1578,7 +1599,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
                     plan["baseline"].setdefault(file, digest)
             plan["paths"] = sorted(set(old_paths + paths))
             plan["node_ids"] = sorted(set(plan["node_ids"] + nodes))
-            if sync_configured(root, session):
+            if not context_mode and sync_configured(root, session):
                 checked_sync(root, session, "checkpoint")
             plan.setdefault("amendments", []).append({"at": utc_now(), "summary": data["summary"], "paths": paths, "node_ids": nodes})
             plan["revision"] += 1
@@ -1587,7 +1608,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
             append_session_event(root, "plan-extend", "cli", session, {"plan_id": plan["id"], "occurred_at": utc_now()})
             return plan
         baseline = scope_snapshot(root, paths)
-        sync = prepare_plan_sync(root, session, paths) if sync_configured(root, session) else {}
+        sync = prepare_plan_sync(root, session, paths) if not context_mode and sync_configured(root, session) else {}
         plan = {"id": "plan-" + hashlib.sha256(f"{session}:{utc_now()}".encode()).hexdigest()[:20],
                 "summary": data["summary"], "status": "working", "started_at": utc_now(),
                 "node_ids": sorted(set(nodes)), "paths": paths, "actual_paths": [],
@@ -1603,6 +1624,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
         if not isinstance(receipt, dict) or receipt.get("revision") != plan.get("revision"):
             raise ValueError("Archive this plan with verification and node assessment before plan-finish")
         require_human_work_review(root, session, plan)
+        run_node_workbench(["map", "context-check", "--root", str(root), "--session", session, "--if-started", "--require-clear"])
         if scope_snapshot(root, plan["paths"]) != receipt.get("snapshot"):
             raise ValueError("Files changed after archive; verify and archive again")
         inbox = run_node_workbench(["map", "inbox", "--root", str(root), "--session", session])
@@ -1616,6 +1638,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
             finished = checked_sync(root, session, "finish")
             if finished.get("confirmed") is not True:
                 raise ValueError("Cloud did not confirm completion")
+        run_node_workbench(["map", "context-check", "--root", str(root), "--session", session, "--if-started", "--require-clear"])
         plan["status"] = "completed"
         plan["delivery"] = {"source": "verified", "memory": "confirmed"}
         plan["completed_at"] = utc_now()
@@ -1758,8 +1781,11 @@ def main() -> int:
                     "Source inspection and recovery commands may continue; do not create a second workbench or ask the user to bind again.",
                 )
         try:
-            memory = run_node_workbench(["memory", "prepare", "--root", str(root), "--session", current_session_id])
-            if memory.get("current"):
+            context_mode = binding.get("session", {}).get("role") != "coordinator" and sync_configured(root, current_session_id)
+            memory = run_node_workbench((["map", "read", "--context"] if context_mode else ["memory", "prepare"]) + ["--root", str(root), "--session", current_session_id])
+            if context_mode:
+                memory_notice = "已获取轻量导航与项目说明；节点正文按需读取，交付前检查 Cloud 变化。"
+            elif memory.get("current"):
                 hook_log(f"[context-guard] server memory confirmed: {memory.get('sessionVersion')}; cache: {memory.get('cache')}")
                 memory_notice = f"Server memory confirmed; cache: {memory.get('cache')}."
             else:
@@ -1800,7 +1826,7 @@ def main() -> int:
                     return hook_response(platform, event, f"Context Guard could not start or verify the bound project workbench. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}; no replacement service was started and the binding was preserved.")
             if sync_configured(root, current_session_id):
                 sync_command(root, "ensure", current_session_id)
-        synchronized_memory = session_memory_sync(root, current_session_id, event, payload)
+        synchronized_memory = {} if map_snapshot(ctx, current_session_id).get("context_cache") else session_memory_sync(root, current_session_id, event, payload)
         if isinstance(synchronized_memory.get("error"), dict):
             memory_notice = "Cloud Session registration pending; local records preserved."
         context_text, snapshot = map_context(root, ctx, current_session_id)

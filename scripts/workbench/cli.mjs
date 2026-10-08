@@ -22,6 +22,7 @@ import { RouteStore } from './portless-routes.mjs';
 import { DeviceConnection } from './protocol-device.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
 import { browserLogin } from './browser-login.mjs';
+import { executorContext, contextFailure, hasExecutorContext } from './context.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function documentHasBug(doc, bugId) {
   const pending = doc?.root ? [doc.root] : [];
@@ -136,7 +137,8 @@ Actions:
   main read           Read the authoritative Main Map without binding a Session
   main apply          Disabled leftover: only Coordinator writes Main structure
   status              Print map version and recovery state
-  read                Read the map or one --node
+  read                Read the map or one --node; --context uses on-demand cache
+  context-check       List changed node names and types; no IDs or bodies
   changes             Read changes after --cursor
   inbox               Read the Session inbox (--start for the first page)
   ack                 Acknowledge --receipt
@@ -155,7 +157,14 @@ Actions:
 Options:
   --root <dir>        Project root (default: current directory)
   --session <id>      Real lifecycle Session ID (or CODEX_THREAD_ID)
-  --node <id>         Node id for map read
+  --node <id|name>    Node id; context reads also accept name or full module path
+  --context           Lightweight navigation / cached context slice
+  --mount <name>      Watch this module subtree during context checks
+  --refresh           Explicitly refresh a cached context slice
+  --diff              With --node, compare previously read body with latest
+  --accept-changes    After review, accept the last checked version (rechecks it)
+  --offset <n>        Context result offset; default 0
+  --limit <n>         Context page size; check default 20, navigation default 100
   --cursor <token>    Change cursor
   --input <file|->    JSON request file or stdin
   --id <operation>    Operation id
@@ -808,6 +817,18 @@ async function main(args) {
     return { saved: true, ...(await bindingStatus(project, String(opt.session || ''))) };
   }
   const project = await ensureProjectBinding(await resolveProject(root));
+  const contextAction = command === 'map' && (opt._[0] === 'context-check' || ['read', 'status'].includes(opt._[0]) && opt.context);
+  if (contextAction && opt['if-started'] && !await hasExecutorContext(project, String(opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || ''))) return { clear: true, active: false };
+  if (contextAction && await readJSON(memoryConfigPath(project), null)) {
+    const { inspectRetiredSync } = await import('./sync.mjs');
+    await inspectRetiredSync(project);
+    const session = String(opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '');
+    if (!(await bindingStatus(project, session)).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', '请先绑定当前 Session', 409);
+    return executorContext(project, session, opt._[0] === 'context-check' ? 'check' : opt._[0], {
+      node: opt.node, mount: opt.mount, refresh: !!opt.refresh, diff: !!opt.diff, restart: !!opt.restart,
+      offset: opt.offset, limit: opt.limit, acceptChanges: !!opt['accept-changes'], requireClear: !!opt['require-clear'], ifStarted: !!opt['if-started'],
+    });
+  }
   if (command === 'workbench' && opt.session && project.bindingRequired) {
     throw new MapError('BINDING_REQUIRED', 'Choose the project main branch before binding this Session', 409, { projectId: project.projectId });
   }
@@ -854,7 +875,12 @@ async function main(args) {
   }
   const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root, allowRebind: false } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
+  const contextOptions = { node: opt.node, mount: opt.mount, refresh: !!opt.refresh, diff: !!opt.diff, restart: !!opt.restart,
+    offset: opt.offset, limit: opt.limit, acceptChanges: !!opt['accept-changes'], requireClear: !!opt['require-clear'], ifStarted: !!opt['if-started'] };
+  const contextCall = (action, opts = contextOptions) => executorContext(project, sessionId, action, opts,
+    { localRead: (node, version) => call(`/api/context?${new URLSearchParams({ ...(node ? { node } : {}), ...(version ? { version } : {}) })}`) });
   const action = command === 'map' ? opt._[0] || 'status' : command;
+  if (contextAction) return contextCall(action === 'context-check' ? 'check' : action);
   if (action === 'coordinator') return call('/api/v2/coordinator-tools', { method: 'POST', body: await inputJSON(opt.input) });
   if (action === 'execution') return call('/api/v2/execution');
   if (action === 'ci') {
@@ -893,6 +919,7 @@ async function main(args) {
         return { taskId, planRef: plan.ref, planVersion: plan.version, sourceSha, state: 'awaiting-plan-review' };
       }
       if (!execution.active.approval) throw new MapError('FORBIDDEN', 'The Coordinator must approve the Plan before handoff');
+      await contextCall('check', { ifStarted: true, requireClear: true });
       if (git('status', '--porcelain')) throw new MapError('UNCOMMITTED_HANDOFF', 'Commit the delivered work; CI must test the exact clean SHA');
       if (!Array.isArray(input.ciTodo?.items) || !input.ciTodo.items.length || !Array.isArray(input.unitTests) || !input.unitTests.length || !Array.isArray(input.experiences)) throw new MapError('INVALID_ARGUMENT', 'Handoff requires CI TODO items, unit-test evidence and an experiences array');
       const ciTodo = await put('ciTodo', input.ciTodo, 'todo'), unitTestRefs = [], experienceRefs = [];
@@ -903,6 +930,7 @@ async function main(args) {
     }
     const stage = { start: 'started', finish: 'finished' }[opt._[1]];
     if (!stage || !opt._[2]) throw new MapError('INVALID_ARGUMENT', 'Use map task start|finish <delivery-id>; finish requires --summary');
+    if (stage === 'finished') await contextCall('check', { ifStarted: true, requireClear: true });
     return call('/api/v2/task-report', { method: 'POST', body: { deliveryId: opt._[2], stage,
       ...(stage === 'finished' ? { outcome: opt.outcome || 'success', summary: opt.summary } : {}) } });
   }
@@ -924,7 +952,7 @@ async function main(args) {
   if (action === 'apply') return call('/api/commit', { method: 'POST', body: await inputJSON(opt.input) });
   if (action === 'reconcile') {
     const input = await inputJSON(opt.input), snapshot = await call('/api/state');
-    const reconciliation = buildArchiveReconciliation(snapshot.doc, sessionId, input);
+    const reconciliation = buildArchiveReconciliation(snapshot.doc, sessionId, { ...input, ...(await hasExecutorContext(project, sessionId) ? { recordOnly: true } : {}) });
     if (!reconciliation.operations.length) return { committed: true, duplicate: !!reconciliation.key, version: snapshot.version, reconciliation };
     const result = await call('/api/commit', { method: 'POST', body: { operationId: reconciliation.operationId, baseVersion: snapshot.version, operations: reconciliation.operations } });
     return { ...result, reconciliation: { ...reconciliation, operations: reconciliation.operations.map(operation => operation.type) } };
@@ -976,5 +1004,10 @@ async function main(args) {
 const entryPath = value => process.platform === 'win32' ? value.toLowerCase() : value;
 if (process.argv[1] && entryPath(await fs.realpath(process.argv[1]).catch(() => '')) === entryPath(await fs.realpath(ownFile))) {
   try { const result = await main(process.argv.slice(2)); if (result !== undefined) console.log(JSON.stringify(result)); }
-  catch (e) { console.log(JSON.stringify({ error: { code: e.code || 'ERROR', message: e.message, ...e.details } })); process.exitCode = 1; }
+  catch (e) {
+    const checking = process.argv.includes('context-check');
+    console.log(JSON.stringify(checking && !process.argv.includes('--require-clear') ? contextFailure(e)
+      : { error: { code: e.code || 'ERROR', message: checking ? contextFailure(e) : e.message, ...(!checking ? e.details : {}) } }));
+    process.exitCode = 1;
+  }
 }

@@ -3,7 +3,7 @@ import { entries } from '../shared/map-model.mjs';
 
 const PROPOSAL_BASES = new Set(['new-module', 'new-interface', 'new-component', 'new-responsibility']);
 const PROPOSAL_FIELDS = new Set(['parentId', 'title', 'purpose', 'reason', 'basis', 'files', 'kind']);
-const INPUT_FIELDS = new Set(['summary', 'decisions', 'next', 'files', 'assignments', 'proposal', 'nodeIds', 'planId', 'verification', 'assessment']);
+const INPUT_FIELDS = new Set(['summary', 'decisions', 'next', 'files', 'assignments', 'proposal', 'nodeIds', 'planId', 'verification', 'assessment', 'recordOnly']);
 
 function normalizeRepoPath(value) {
   let file = String(value || '').trim().replaceAll('\\', '/');
@@ -151,6 +151,7 @@ export function buildArchiveReconciliation(doc, sessionId, input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Archive input must be an object');
   const unknown = Object.keys(input).filter(key => !INPUT_FIELDS.has(key));
   if (unknown.length) throw new Error(`Archive input has unsupported fields: ${unknown.join(', ')}`);
+  if (input.recordOnly !== undefined && typeof input.recordOnly !== 'boolean') throw new Error('recordOnly 必须是布尔值');
   const files = [...new Set((Array.isArray(input.files) ? input.files : []).map(normalizeRepoPath))].sort();
   if (!files.length && !(input.nodeIds || []).length) {
     if (input.proposal || (input.assignments || []).length) throw new Error('Archive governance input needs changed files');
@@ -178,6 +179,7 @@ export function buildArchiveReconciliation(doc, sessionId, input = {}) {
   const key = archiveKey(sessionId, files, input, governance), operations = [];
 
   for (const [id, ownedFiles] of mapped) {
+    if (input.recordOnly) continue;
     const node = index.get(id).node;
     if ((node.memories || []).some(memory => memory?.archiveKey === key)) continue;
     const assignmentEvidence = assignments.normalized.filter(item => item.nodeId === id);

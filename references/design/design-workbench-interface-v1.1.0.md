@@ -1,16 +1,20 @@
 # 工作台与 Agent 接口（本机 Node 协议 2）
 
-文档版本：v1.0.1。
+文档版本：v1.1.0。
 
-读者：产品角色 Agent（本机工作台 / Session 协议）。仓库开发 Agent 改实现时也读本文。当前记忆文件格式是 [`fs-v2.1`](design-memory-current-v1.0.1.md)，不是本文的文档版本或工作台协议版本。
+读者：产品角色 Agent（本机工作台 / Session 协议）。仓库开发 Agent 改实现时也读本文。底层文件格式是 [`fs-v2.1`](design-memory-filesystem-v1.0.1.md)，不是本文的文档版本或工作台协议版本。
 
-本文说明本机工作台和隔离的 Git Session 缓存。私有记忆服务、发布和迁移边界由 `references/design/design-memory-server-v1.0.1.md` 规定。客户端已实现不代表已部署；该项目认证读取成功前，不得宣称记忆已获服务器确认。
+本文说明本机工作台和隔离的 Git Session 缓存。私有记忆服务、发布和迁移边界由 `references/design/design-memory-server-v1.1.0.md` 规定。客户端已实现不代表已部署；该项目认证读取成功前，不得宣称记忆已获服务器确认。
 
 关联 worktree 使用 Git 公共目录共享绑定和一个服务。Map 与日志按 Session / worktree 身份隔离；旧本地 Map 仅作明确绑定的本机 Session 初始数据。所有会话视图读取私有服务器已发布 main 基线，断连保留最后有效版本；不读 Git 跟踪的记忆，也不导入未合并功能地图。
 
 非 Git 本地文件夹保留单文档流程。浏览器只存恢复草稿和界面偏好，不是第二份权威 Map。初始化、生命周期 Hook、Bug Markdown 仍需 Python；服务器、提交、实时通知使用 Node 18+，不新增运行依赖。
 
 ## 启动与读取
+
+Executor 默认使用 [按需上下文流程](design-context-v1.0.0.md)：开工 `map read --context` 取导航与项目说明，开发时按需读节点、复用片段缓存，收工 `map context-check` 检查最新 Cloud 变化。旧 `map read` 及写入接口保持兼容，不把旧的全量同步当作新读取入口。
+
+检查默认只返回“节点名称 — 变化类型”，同名补路径，无变化返回“无变化”；失败返回明确原因并以非零退出。`--diff` 显式读取差异，`--accept-changes` 只接受刚检查且未再次变化的版本；交接、归档、Plan 收尾仍执行原门禁并重查上下文。
 
 工作台默认使用项目命名的 `.localhost` HTTP 入口。显式关联 worktree 绑定、打开去重、私有代理状态和直连 URL 兼容见 [本机工作台设计](design-workbench-v1.0.1.md)。Map CLI 仍走直接认证后端通道。
 

@@ -10,7 +10,7 @@
 
 ## 开始工作
 
-先阅读相关节点的职责、记忆和代码，确认现有实现与需求之间的差距。缺少信息或需要扩大范围时，向 Coordinator 说明并等待处理，不直接向用户重复索取开工确认。
+先用 `map read --context` 获取轻量导航和项目说明，不复制完整 Map。再按需读取挂载节点的职责、记忆和实际代码；读取节点时用 `--mount` 记录本任务的挂载子树。缺少信息或需要扩大范围时交 Coordinator 处理。
 
 已确认的需求作为方案和验收的共同依据。执行中的记录留在自己的 Session，不直接改写 Main。
 
@@ -24,15 +24,21 @@
 
 在授权范围内完成开发，并补齐本模块需要的测试。根据执行结果回报进展和阻塞；发生影响原方案的变化时，交 Coordinator 重新审核后继续。
 
+已读内容使用本地缓存；需要新模块时再读，明确需要最新内容时加 `--refresh`。执行过程记在自己的 Session，不把 Map 当开发记事本。
+
 ### 3. 交付测试
 
 提交待验证的代码，通过任务交接入口回报准确提交、实现结果、测试证据和 `CI_todo` 引用，由 Coordinator 交给 Tester。
+
+交付前调用 `map context-check`，只看“节点名称 — 变化类型”。有变化时用 `map read --context --node <名称或完整路径> --diff` 查看相关差异；处理影响后再次检查，再用 `--accept-changes` 确认已处理的版本。确认期间 Cloud 又变化会被拒绝；hash 变化本身不等于冲突。
 
 交接发生在独立测试和人工验收之前。此时保持 Plan 进行中，等待测试结果与验收反馈。
 
 ### 4. 返工与收尾
 
 测试失败或人类验收拒绝时，在原任务、原执行环境中处理反馈，重新提交结果供验证。
+
+返工后、归档前和结束 Plan 前再次检查上下文。Cloud 不可用时报告“无法检查”，不能声称无变化；原有审核、版本校验和人工验收门禁仍有效。
 
 人类验收通过后，按 Coordinator 的指示及任务完成策略归档、结束 Plan，并完成要求的源码交付。Session 关闭以协议回执为准，不手动改为空闲或将交接成功当作任务关闭。
 
@@ -48,6 +54,6 @@
 | 接收任务、处理信号、交接、返工和收尾 | [agent-handoff.md](references/agent-handoff.md) |
 | 准备或修订 Plan | [plan-review.md](references/plan-review.md) |
 | 提交节点提案或记录事项 | [map-mount.md](references/map-mount.md) |
-| 执行计划、版本化写入和归档命令 | [工作台接口](references/design/design-workbench-interface-v1.0.1.md) |
+| 执行计划、版本化写入和归档命令 | [工作台接口](references/design/design-workbench-interface-v1.1.0.md) |
 
-记忆存储与文件格式以 [当前记忆规范](references/design/design-memory-current-v1.0.1.md) 为准。
+记忆正文与事项记录不同：前者见 [撰写规范](references/design/design-memory-definition-v0.2.0.md)，后者见 [文件结构规范](references/design/design-memory-filesystem-v1.0.1.md)。

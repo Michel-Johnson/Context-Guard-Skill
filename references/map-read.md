@@ -2,13 +2,19 @@
 
 第一次使用时通读本文，学会怎么调用。以后直接读已发布 Main。需要或忘记时再打开本文。
 
-Map 是整个项目的记忆。命令细节以 [工作台接口](design/design-workbench-interface-v1.0.1.md) 为准。
+Map 用于定位模块及相关资料，不是开发过程记事本。项目知识写在记忆正文，执行过程留在 Session。命令细节以 [工作台接口](design/design-workbench-interface-v1.1.0.md) 为准。
+
+## Executor 的三步读法
+
+开工用 `map read --context` 取导航和项目说明；用 `--node` 按需读正文、`--mount` 记录挂载子树。开发时重复读取走本地缓存；新模块或明确 `--refresh` 时查询 Cloud。收工用 `map context-check` 看变化，有变化再读相关 `--diff`，处理后重新检查。完整约定见 [上下文读取设计](design/design-context-v1.0.0.md)。
+
+下面的 Coordinator 路由及旧读取接口仍按原约定运行；不能把它们的每轮目录规则套用到 Executor 缓存流程。
 
 ## 读哪一张图
 
 Ask user 与路由只读**已发布 Main**。Session 草稿不是项目事实，不得用来判断意图或挂载节点。
 
-没有已发布 Main 时如实说明，不得用未发布图顶替。项目选用服务器记忆时，权威来源见 [服务器记忆设计](design/design-memory-server-v1.0.1.md)。
+没有已发布 Main 时如实说明，不得用未发布图顶替。项目选用服务器记忆时，权威来源见 [服务器记忆设计](design/design-memory-server-v1.1.0.md)。
 
 ## 怎么读
 
@@ -31,7 +37,7 @@ context-guard map read --root "<project>" --session "<session-id>" --node <id>
 context-guard map changes --root "<project>" --session "<session-id>" --cursor "<last-cursor>"
 ```
 
-`map read` 返回该时刻的权威内容与 `version`。缺少 cursor 表示读取当前状态，不是「没有变化」。错误码与页面草稿门禁见 [工作台接口](design/design-workbench-interface-v1.0.1.md)。
+`map read` 返回该时刻的权威内容与 `version`。缺少 cursor 表示读取当前状态，不是「没有变化」。错误码与页面草稿门禁见 [工作台接口](design/design-workbench-interface-v1.1.0.md)。
 
 Cloud 读取已发布 Main 使用 `workbench.read`，`scope=main`。省略 version 时取当前已发布版本，随后分页与路由必须固定该版本。见 [接口契约](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/references/design/design-interface-v1.2.1.md)。
 

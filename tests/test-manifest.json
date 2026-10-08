@@ -52,6 +52,7 @@
   ],
   "separatePackages": [],
   "productFiles": [
+    "tests/executor-context.test.mjs",
     "tests/browser-login.test.mjs",
     "tests/build-runtime.test.mjs",
     "tests/claude-runtime.test.mjs",

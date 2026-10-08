@@ -64,7 +64,7 @@ FIND_MD = """# Four stores — jump small, then open one file
 4. Map — `context-guard map read/apply` uses the authoritative map and a page synchronization checkpoint. `archive-session --files ...` records completed work on owning nodes. Unowned files stay unclassified unless `--input` explicitly assigns them or supplies an evidence-backed node proposal.
 
 Do not paste `map.json` or `jump-index.json`. Do not Grep this whole folder. Do not read or update a legacy `roadmap.md`.
-Before using cards/indexes, verify projection-status.json matches the current map version. Generate with `python3 scripts/map_owns.py cards --root <project>`, or read the current node through the Node CLI. See the installed skill references/design/design-workbench-interface-v1.0.1.md.
+Before using cards/indexes, verify projection-status.json matches the current map version. Generate with `python3 scripts/map_owns.py cards --root <project>`, or read the current node through the Node CLI. See the installed skill references/design/design-workbench-interface-v1.1.0.md.
 """
 
 ARCHITECTURE_MD = """# Architecture Map
@@ -693,6 +693,7 @@ def archive_session(
     runtime = read_hook_runtime(root, session_id)
     plan = runtime.get("active_plan")
     require_human_work_review(root, session_id, plan if isinstance(plan, dict) else None)
+    run_node_workbench(["map", "context-check", "--root", str(root), "--session", session_id, "--if-started", "--require-clear"])
     closure: dict[str, object] = {}
     if input_path:
         raw_governance = read_input_json(input_path)

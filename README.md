@@ -10,7 +10,7 @@
 
 Context Guard 把 **项目** 当成工作场所：
 
-1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。现行存储法是 [`fs-v2`](references/design/design-memory-current-v1.0.1.md)。
+1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。底层文件格式为 [`fs-v2.1`](references/design/design-memory-filesystem-v1.0.1.md)。
 2. **隔离的 Session** — 每次执行写自己的 Session。对话不是 Main。用户把 Coordinator 挂到节点上时，挂载不写入 Main。执行 Session 要等该事项的 brief 获批后才创建。
 3. **人只跟 Coordinator 说话** — Cloud Coordinator、本地工作台 Coordinator，或 Codex Session 当 Coordinator。确认和「去做」发生在那里。干活的 Session 不对人说。灰卡切片是以后的事，不是当前默认。
 4. **发布进 Main** — 人审核过的工作才进已提交的 main 基线。Session 草稿仍是草稿，直到过门禁。人可以直接改 Main 上的 TODO。
@@ -158,7 +158,7 @@ Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在推理�
 | --- | --- |
 | Skill（一页，给 Agent） | [SKILL.md](SKILL.md) |
 | 文档索引 | [docs/README.md](docs/README.md) |
-| 工作台 / Map CLI | [工作台接口](references/design/design-workbench-interface-v1.0.1.md) |
+| 工作台 / Map CLI | [工作台接口](references/design/design-workbench-interface-v1.1.0.md) |
 | 角色（Coordinator / Executor / Tester） | [roles.md](roles.md) |
 | npm 发布 | [发布手册](docs/npm-release-runbook.md) |
 
