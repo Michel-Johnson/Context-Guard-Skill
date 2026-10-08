@@ -24,7 +24,7 @@ context-guard workbench bind --root /path/to/second-worktree --project-root /pat
 
 第二 worktree 已有 Map 时，除非明确给出 `--keep-local`，否则绑定失败。该参数只原样保留文件，不合并或删除数据，也不授权 Session 绑定。
 
-目标只决定服务；Python 生命周期记录留在源 worktree，服务按 Session / worktree 身份隔离 Map，旧记录不迁移到目标。首次使用或歧义 Hook 询问确认，不猜服务或开浏览器；唯一已有绑定自动复用。所有会话视图仍是只读已发布 main 基线，不是目标 worktree 未合并 Map。私有记忆部署及发布边界见 `design-memory-server-v1.0.1.md`。
+目标只决定服务；Python 生命周期记录留在源 worktree，服务按 Session / worktree 身份隔离 Map，旧记录不迁移到目标。首次使用或歧义 Hook 询问确认，不猜服务或开浏览器；唯一已有绑定自动复用。所有会话视图仍是只读已发布 main 基线，不是目标 worktree 未合并 Map。私有记忆部署及发布边界见 `design-memory-server-v1.1.0.md`。
 
 命名入口和项目身份保存在 Git 公共目录。用户私有全局注册表 `~/.context-guard/named-workbench/projects.json` 记录已有本地项目、已知 worktree 根目录及规范 URL；位于可替换 Skill 目录之外，重装或升级不清除绑定或新增工作台。从另一关联 worktree 重启后端仍保留项目 URL。
 

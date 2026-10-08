@@ -8,7 +8,7 @@
 
 整个 `.codex/`、输出、缓存、真实环境文件、私钥和凭据文件不得进入源码提交或 npm 包。只保留公开模板与空 `.env.example`，示例仍扫密钥。不得将私有记忆复制到其他跟踪目录或作为 PR / CI 附件公开；必要产品文档和验证摘要允许保留。
 
-开发记忆遵守 [服务器记忆](../references/design/design-memory-server-v1.0.1.md)：私有服务器为准，本地只缓存或待同步草稿。不因此允许上传凭据或机器运行状态。服务器读写都须授权，公开只读不算私有；连接信息不放公开源码。
+开发记忆遵守 [服务器记忆](../references/design/design-memory-server-v1.1.0.md)：私有服务器为准，本地只缓存或待同步草稿。不因此允许上传凭据或机器运行状态。服务器读写都须授权，公开只读不算私有；连接信息不放公开源码。
 
 私有记忆后端 / 客户端已有自动验收及一次生产部署 / 迁移验证，证据和限制见契约与 `CI_todo.md`；进一步迁移单独批准。原生 Hook 信任、真实宿主投递分别验收，仅同步 Map 不是私有记忆存储。
 
@@ -175,7 +175,7 @@ npm run test:clients -- --client codex --tools output/client-tools/codex --evide
 | P07 CI | `.github/workflows/ci.yml` 的 Required | 不允许按 R0–R3 跳过现有 needs；核对准确提交的远端结果 |
 | P08 npm | `.github/workflows/npm-publish.yml`、[发布手册](npm-release-runbook.md) | 不是合并 Main 就发布；本次不执行 npm 发布 |
 | P08 运行恢复 | 专项安装/部署手册、人工运行验收 | 未实现统一灰度/指标自动回滚；不声称已经无人值守 |
-| P09 关闭与记忆 | [服务器契约](../references/design/design-memory-server-v1.0.1.md) 和现有任务协议 | 真实部署与各宿主覆盖查 CI_todo；新流程不会绕过协议 |
+| P09 关闭与记忆 | [服务器契约](../references/design/design-memory-server-v1.1.0.md) 和现有任务协议 | 真实部署与各宿主覆盖查 CI_todo；新流程不会绕过协议 |
 | P10 改进 | 复盘/CI_todo/PR | 尚无自动汇总项目质量指标的产品功能 |
 
 ### 明确待实现

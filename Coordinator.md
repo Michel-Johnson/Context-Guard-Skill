@@ -69,7 +69,7 @@ Cloud 用 `read_reference` 读取表中的资料标识，本地打开对应链�
 | 核对并解释测试结果 | [test-check.md](references/test-check.md) |
 | 创建、修改、合并或清理项目与节点记忆 | [memory-definition.md](references/design/design-memory-definition-v0.2.0.md) |
 
-记忆存储与文件格式以 [当前记忆规范](references/design/design-memory-current-v1.0.1.md) 为准；使用现有工具与宿主能力，不新增 Hook。
+记忆正文遵循 [撰写规范](references/design/design-memory-definition-v0.2.0.md)，索引与事项文件遵循 [文件结构规范](references/design/design-memory-filesystem-v1.0.1.md)；使用现有工具与宿主能力，不新增 Hook。
 
 ## 人工对话模式
 

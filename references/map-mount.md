@@ -2,7 +2,7 @@
 
 读者：产品角色 Agent。意图清楚后打开本文，学会怎么调用。第一次挂载或忘记时通读。用户说挂错了时再打开。
 
-Executor 写入自己的 Session Map，不是 Main。非人写 Main 结构只有 Coordinator：通过 `edit_map` / `mapWrite` 创建、改名、更新、移动或删除节点，也可删除指定节点上的 TODO/Bug，并以 `coordinator` 身份审计；可以先草稿，进 Main 再过门禁。版本校验、幂等回执和根节点保护由服务端强制执行，不能借此修改权限或记忆。不要把白名单 developer 客户端当成现行例外。命令细节以 [工作台接口](design/design-workbench-interface-v1.0.1.md) 为准。
+Executor 写入自己的 Session Map，不是 Main。非人写 Main 结构只有 Coordinator：通过 `edit_map` / `mapWrite` 创建、改名、更新、移动或删除节点，也可删除指定节点上的 TODO/Bug，并以 `coordinator` 身份审计；可以先草稿，进 Main 再过门禁。版本校验、幂等回执和根节点保护由服务端强制执行，不能借此修改权限或记忆。不要把白名单 developer 客户端当成现行例外。命令细节以 [工作台接口](design/design-workbench-interface-v1.1.0.md) 为准。
 
 ## 挂到哪
 

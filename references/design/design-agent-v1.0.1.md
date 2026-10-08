@@ -25,6 +25,6 @@
 
 Coordinator 先通过项目记忆了解全貌，用 Main 导航定位节点，再按需读取节点记忆和事项记录。Main 是已发布基线；进行中的实现、attempt 和验证证据从对应任务与 Session 读取，不能把旧对话摘要当作当前状态。
 
-执行模式下，Executor 提交 Plan 和实现证据，Tester 独立验证同一提交，用户决定最终业务验收。人工执行模式不自动派发或恢复执行 Session。具体调用和授权见 [接口设计](design-interface-v1.2.1.md)、[工作台接口](design-workbench-interface-v1.0.1.md) 和各角色运行提示。
+执行模式下，Executor 提交 Plan 和实现证据，Tester 独立验证同一提交，用户决定最终业务验收。人工执行模式不自动派发或恢复执行 Session。具体调用和授权见 [接口设计](design-interface-v1.2.1.md)、[工作台接口](design-workbench-interface-v1.1.0.md) 和各角色运行提示。
 
-记忆内容与维护职责见 [记忆定义](design-memory-definition-v0.2.0.md)，文件结构见 [记忆文件系统](design-memory-filesystem-v1.0.1.md)。这些设计不替代读取当前版本、处理冲突或取得人工确认。
+项目与节点 `memory.md` 的内容和维护见 [记忆撰写规范](design-memory-definition-v0.2.0.md)；索引和事项记录属于底层文件，见 [文件结构规范](design-memory-filesystem-v1.0.1.md)。这些设计不替代版本检查、冲突处理或人工确认。

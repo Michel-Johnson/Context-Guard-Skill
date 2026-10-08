@@ -30,6 +30,7 @@ import { lookupRepository } from './protocol-repository.mjs';
 import { messageHandler, sendMessage } from './protocol-client.mjs';
 import { fail as protocolFail, validateMessage } from '../shared/protocol.mjs';
 import { MapError, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../shared/map-model.mjs';
+import { buildContextTree, contextDocument, contextSlice, publicContextTree } from '../shared/context-tree.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const statePath = root => path.join(root, '.codex/context/private/workbench.json');
 export const projectStatePath = project => project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : statePath(project.worktreeRoot);
@@ -623,7 +624,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
       }
     }
-    const lazyCloudMap = connection && await connection.supports('private-map-heads');
+    const lazyCloudMap = connection && await connection.supports('private-map-heads') ||
+      prepared.binding.role !== 'coordinator' && !!await readJSON(memoryConfigPath(prepared.sessionProject), null);
     const sessionFiles = project.kind === 'git' && !lazyCloudMap && !stores.has(`session:${prepared.sessionId}`) ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
     const actor = await access.register(prepared.sessionId, prepared.binding);
     if (sessionFiles) {
@@ -995,6 +997,19 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const viewId = viewFor(actor, url);
           if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus(viewId)); }
           const activeStore = await storeFor(viewId);
+          if (route === '/api/context' && req.method === 'GET') {
+            if (actor.kind !== 'agent') throw new MapError('SESSION_REQUIRED', '请通过已绑定的 Agent 读取上下文', 403);
+            await fence(viewId);
+            await activeStore.serial(() => activeStore.refresh());
+            if (activeStore.error || activeStore.blocked) throw new MapError('RECOVERY_REQUIRED', '请先处理工作台待恢复状态', 503);
+            const version = url.searchParams.get('version');
+            if (version && version !== activeStore.version) throw new MapError('VERSION_CONFLICT', '上下文版本已变化', 409);
+            const snapshot = contextDocument({ version: activeStore.version, memory: { map: activeStore.doc, records: {} } },
+              { sessionId: actor.sessionId, grants: access.grants(actor.sessionId, activeStore.doc, 'read') });
+            const node = url.searchParams.get('node');
+            return send(res, 200, { sessionId: actor.sessionId, ...(node ? { version: snapshot.version, content: contextSlice(snapshot, node) }
+              : { tree: publicContextTree(buildContextTree(snapshot)) }) });
+          }
           if (route === '/api/events' && req.method === 'GET') {
             isHuman(actor); const id = url.searchParams.get('clientId');
             if (!id || id.length > 100) throw new MapError('INVALID_CLIENT', 'Invalid clientId');
