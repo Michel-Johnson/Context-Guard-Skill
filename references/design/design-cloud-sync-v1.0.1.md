@@ -15,6 +15,8 @@
 
 本地编辑进入持久化发件队列；Cloud 变更通过事件读取，并由心跳恢复。回执、队列与游标按 Session 隔离：
 
+这里同步的是结构化 Map，不是开发笔记。会话 Markdown 和 Hook 事件只保存在本地，格式见 [会话记录模板](design-session-record-v1.0.0.md)。含记录的旧上传队列暂停重放并保留原件，不清空已有服务器历史。
+
 ```text
 <project-shared-dir>/session-memory/<session-hash>/remote-sync/
   state.json
@@ -35,7 +37,7 @@ context-guard sync checkpoint --root <project> --session <actual-session-id>
 context-guard sync finish --root <project> --session <actual-session-id>
 ```
 
-`status` 读取已保存的 Session 同步状态，不打印凭据，也不是新的服务器回执。`ensure` 复用工作台。`prepare`、`pull`、`checkpoint` 使用当前记忆读取与协调通道。`finish` 通过持久化记忆通道上传 Session，只有取得服务器快照版本才返回 `confirmed: true`。这些命令都不发布 Main，也不记录人工验收；生命周期 `plan-finish` 仍执行归档与审核门禁。
+`status` 读取已保存的 Map 同步状态，不打印凭据，也不是新的服务器回执。`ensure` 复用工作台。`prepare`、`pull`、`checkpoint` 使用当前 Map 读取与协调通道。`finish` 只同步结构化 Map，不收集本地笔记；服务器确认版本后才返回 `confirmed: true`。这些命令不发布 Main，也不记录人工验收；`plan-finish` 仍执行归档与审核门禁。
 
 已淘汰的项目级开发窗口不再支持。Plan 范围保留在生命周期计划中；`sync track`、`sync connect`、`sync serve` 不得启动旧传输。鉴权使用 `workbench connect`。
 

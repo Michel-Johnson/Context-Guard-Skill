@@ -790,29 +790,8 @@ def archive_session(
         ])
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines).rstrip() + "\n")
-    memory = run_node_workbench(["memory", "status", "--root", str(root), "--session", session_id])
-    memory_version = None
-    if memory.get("current"):
-        for attempt in range(3):
-            try:
-                receipt = run_node_workbench(["memory", "sync", "--root", str(root), "--session", session_id])
-                break
-            except RuntimeError as exc:
-                try:
-                    code = json.loads(str(exc)).get("error", {}).get("code")
-                except ValueError:
-                    code = None
-                if code != "VERSION_CONFLICT" or attempt == 2:
-                    raise
-        snapshot = receipt.get("snapshot") or {}
-        memory_version = snapshot.get("version")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True,
-                              timeout=5, check=False, creationflags=WINDOWS_NO_WINDOW)
-        if head.returncode or snapshot.get("sourceCommit") != head.stdout.strip():
-            raise ValueError("Server Session memory does not match the current Git commit")
-        print(f"[context-guard] server archive acknowledged: {receipt.get('snapshot', {}).get('version')}")
-    else:
-        print("[context-guard] server memory not configured; local archive remains unsynced")
+    # 归档只保存本地会话文件；Cloud Map 检查和结构提案仍使用上面的独立入口。
+    print("[context-guard] 会话记录已保存在本地，不向 Cloud 上传")
     if isinstance(plan, dict):
         latest = read_hook_runtime(root, session_id)
         active = latest.get("active_plan") or {}
@@ -820,7 +799,7 @@ def archive_session(
             raise ValueError("plan changed during archive; Map write succeeded but completion receipt needs revalidation")
         plan["archive"] = {"at": utc_now(), "revision": plan.get("revision"), "snapshot": current_snapshot,
                            "map_version": map_result.get("version"), "node_ids": node_ids,
-                           **({"server_memory_version": memory_version} if memory_version else {}), **closure}
+                           **closure}
         latest["active_plan"] = plan
         write_hook_runtime(root, session_id, latest)
     print(f"[context-guard] archived session: {session_id} ({path})")

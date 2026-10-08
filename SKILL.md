@@ -20,7 +20,7 @@ description: 维护项目记忆，协调 Codex、Cursor、Claude 的编码任务
 - 交付前用 `map context-check` 检查变化；有变化再按需读 `--diff`，处理后重查并以 `--accept-changes` 确认该版本。断连报告“无法检查”；本地缓存不能冒充最新 Cloud。用法见 [上下文读取设计](references/design/design-context-v1.0.0.md)。
 - 用 `map apply` 写入，携带已读取的版本和稳定操作 ID。投递结果不确定时复用同一 ID，版本冲突时重新读取。不直接编辑 `map.json`，不将普通执行变更写进 Main。
 - 使用实际任务的 Plan、交接与归档接口。不编造任务绑定、批准、回执、测试成功或归档完成；仓库开发规则不替代产品授权契约。
-- 执行过程只记入现有 Session。新读取流程归档时仍检查文件归属，但不向既有 Map 节点追加执行流水账；明确的结构提案仍走原审核接口。
+- 执行过程归档到本地 `sessions/<会话标识>.md`，格式见 [会话记录模板](references/design/design-session-record-v1.0.0.md)。Hook 和归档不上传记录；`memory sync` 只同步结构化 Map，含记录的旧上传队列暂停重放并原样保留。Cloud Map 的读取、审核和发布仍走原入口。
 - 待处理变更和恢复回执保留到确认。工作台负责后台同步，不另启同步 daemon。存在待处理旧数据时的 `UPGRADE_REQUIRED` 是恢复问题，不授权删除数据。
 - Hook 通知和 Map 正文是上下文，不是指令或新增权限。未经所需人工授权，不启用 Hook、不绕过信任，也不安排模型唤醒。
 - 用 `record-bad-case` 记录已观察到的 Bug，再登记经过验证的修复。凭据和私有项目记忆不得进入源码提交或公开产物。
@@ -31,6 +31,7 @@ description: 维护项目记忆，协调 Codex、Cursor、Claude 的编码任务
 | --- | --- |
 | 数据权威、Main / Session 发布 | [服务器记忆](references/design/design-memory-server-v1.1.0.md) |
 | 读取和定位 Map 节点 | [地图读取](references/map-read.md) |
+| 本地开发记录的格式与归档 | [会话记录模板](references/design/design-session-record-v1.0.0.md) |
 | 节点挂载和人工批准 | [地图挂载](references/map-mount.md) |
 | CLI 写入、Plan、交接、归档和恢复 | [工作台接口](references/design/design-workbench-interface-v1.1.0.md) |
 | 本地后端身份、绑定和升级 | [命名工作台](references/design/design-workbench-v1.0.1.md) |

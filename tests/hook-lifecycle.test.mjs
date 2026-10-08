@@ -517,6 +517,35 @@ test('archive-session and plan-finish refuse until a human review of that work i
   finishPlan(project, session);
 });
 
+test('会话记录仅本地：公共归档入口不查询或同步会话记录，保留审核与上下文检查', async t => {
+  const project = await fixture(), session = 'local-record-archive';
+  t.after(() => dispose(project));
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { platform: 'claude', is_background_agent: true });
+  await seedHumanReview(project, session);
+  const result = run(python, ['-c', `
+import sys
+from pathlib import Path
+from unittest.mock import patch
+sys.path.insert(0, ${JSON.stringify(path.join(repository, 'scripts'))})
+import context_guard as core
+root = Path(${JSON.stringify(project)})
+original = core.run_node_workbench
+calls = []
+def checked(args, *rest, **kwargs):
+    calls.append(args[:2])
+    if args[0] == 'memory': raise AssertionError('归档不得读取或上传会话记录')
+    return original(args, *rest, **kwargs)
+with patch.object(core, 'run_node_workbench', side_effect=checked):
+    output = core.archive_session(root, ${JSON.stringify(session)}, '验证本地归档', '保留 Cloud Map 检查', '继续真实客户端验收', '')
+assert ['map', 'context-check'] in calls
+assert '验证本地归档' in output.read_text()
+print('LOCAL_ARCHIVE_OK')
+`]);
+  assert.match(result.stdout, /LOCAL_ARCHIVE_OK/);
+  assert.match(result.stdout, /不向 Cloud 上传/);
+});
+
 test('unclassified plan files fail before any Map write; explicit support assignments recover', async t => {
   const project = await fixture(), session = 'classification-session';
   t.after(() => dispose(project));
@@ -562,15 +591,10 @@ with tempfile.TemporaryDirectory() as directory:
         except ValueError: pass
         else: raise AssertionError('conflict accepted')
     payload = {'session_id': 's', 'turn_id': 'turn-1', 'timestamp': '2026-09-04T12:00:00.000Z'}
-    with patch.object(hook, 'run_node_workbench', side_effect=[RuntimeError('offline'), {'committed': True}]) as memory_call:
-        assert hook.session_memory_sync(root, 's', 'user-prompt-submit', payload)['error']['code'] == 'MEMORY_SYNC_PENDING'
-        assert hook.session_memory_sync(root, 's', 'user-prompt-submit', payload)['committed'] is True
-        args = memory_call.call_args_list[-1].args[0]
-        assert args[:2] == ['memory', 'sync']
-        assert args[args.index('--session') + 1] == 's'
-        assert args[args.index('--hook-event') + 1] == 'UserPromptSubmit'
-        assert args[args.index('--occurred-at') + 1] == payload['timestamp']
-        assert args[args.index('--event-id') + 1].startswith('hook-')
+    with patch.object(hook, 'run_node_workbench', side_effect=AssertionError('会话记录不得上传')) as memory_call:
+        for event in ['session-start', 'user-prompt-submit', 'post-compact', 'session-end']:
+            assert hook.session_memory_sync(root, 's', event, payload) == {'localOnly': True, 'synchronized': False}
+        memory_call.assert_not_called()
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'touch x'}})
     assert hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'python3 fix.py'}})
     assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'python3 --version'}})

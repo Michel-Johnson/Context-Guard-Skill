@@ -63,6 +63,8 @@ Main 与各 Session 同构、彼此隔离。上图是服务器逻辑目录，不
 
 项目启用此结构后，通过按版本读取接口或 `context-guard memory file` 读取获授权的文件，不直接访问服务器磁盘。未启用的项目仍走旧兼容传输，不能使用此入口。
 
+默认先用 `map read --context` 定位节点并按需读取；需要本规范的事项文件时再沿 `index.md` 链接展开。旧 FIND / snapshot 仅用于明确的迁移或恢复。开发笔记另存本地 [会话记录](design-session-record-v1.0.0.md)，不属于本目录，也不向 Cloud 同步。
+
 `legacy-records/` 和 `runtime-state.json` 仅用于迁移、事务兼容与回滚，不是日常阅读入口；核对迁移须说明目的。
 
 旧 `memories[]` 只读预览保留原文、附件和提案依据。人可整理后明确保存；预览不自动归类、追加、删除历史或生成记忆。保存校验版本，冲突时保留草稿。
@@ -73,5 +75,4 @@ Main 与各 Session 同构、彼此隔离。上图是服务器逻辑目录，不
 
 ## 待确认
 
-- Agent 打开模块时优先读旧 FIND.md / snapshot，还是本规范的 Markdown 投影。
 - 安装包里的仓库 `docs/` 链接不可访问时，如何提供文档。

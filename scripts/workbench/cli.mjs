@@ -180,6 +180,8 @@ ${HELP_EXIT_NOTE}`;
   if (command === 'memory') {
     return `Usage: context-guard memory [status|sync|prepare|rebase|configure|complete|publish|history|restore|file] [options]
 
+会话记录仅本地保存；sync 只同步结构化 Map。含记录的旧队列保留并返回 RECORD_SYNC_DISABLED。
+
 Options:
   --root <dir>        Project root (default: current directory)
   --session <id>      Session ID
