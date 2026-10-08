@@ -61,10 +61,15 @@ export function buildContextTree(snapshot, previous) {
     for (const id of references) if (related.has(id)) { related.get(node.id).add(id); related.get(id).add(node.id); }
   }
   const nodes = {}, sources = {}, stats = { ownHashes: 0, branchHashes: 0 };
-  const visit = (node, parent = null, parentPath = []) => {
-    const parts = [...parentPath, node.title || '未命名节点'];
+  const visit = (node, parent = null, parentPath = [], label = node.title || '未命名节点') => {
+    const parts = [...parentPath, label];
     const children = [...(node.children || []), ...(node._inbox || [])];
-    for (const child of children) visit(child, node.id, parts);
+    const totals = new Map(), positions = new Map();
+    for (const child of children) totals.set(child.title, (totals.get(child.title) || 0) + 1);
+    for (const child of children) {
+      const position = (positions.get(child.title) || 0) + 1; positions.set(child.title, position);
+      visit(child, node.id, parts, totals.get(child.title) > 1 ? `${child.title}（第 ${position} 项）` : child.title || '未命名节点');
+    }
     const global = node === document.root ? Object.fromEntries(Object.entries(document).filter(([key]) => !['root', 'unassigned_bugs'].includes(key))) : undefined;
     const source = canonical({ node: ownNode(node), records: nodeRecords(snapshot, node), related: [...related.get(node.id)].sort(), global });
     const structure = canonical([parent, node.title, node.kind, children.map(child => child.id), [...related.get(node.id)].sort()]);
@@ -107,6 +112,11 @@ export function contextChanges(before, after, { mounted = [], read = [] } = {}) 
   // 已声明关系可有循环；只扩展直接关联，避免沿整个项目关系网无限扩张。
   for (const key of [...watched]) for (const tree of [before, after]) for (const id of tree.nodes[key]?.related || []) watched.add(id);
   const changes = [];
+  const names = new Map();
+  for (const tree of [before, after]) for (const node of Object.values(tree.nodes)) {
+    if (!names.has(node.name)) names.set(node.name, new Set());
+    names.get(node.name).add(node.key);
+  }
   const changed = new Set();
   const visitChanges = key => {
     if (changed.has(key) || before.nodes[key]?.treeHash === after.nodes[key]?.treeHash) return;
@@ -124,7 +134,7 @@ export function contextChanges(before, after, { mounted = [], read = [] } = {}) 
     else if (a.writable !== b.writable) type = '权限变化';
     else if (a.structureHash !== b.structureHash) type = '结构变化';
     else if (watched.has(key) && a.hash !== b.hash) type = '修改';
-    if (type) changes.push({ key, name: (b || a).name, path: (b || a).path, type });
+    if (type) changes.push({ key, name: (b || a).name, path: (b || a).path, type, ambiguous: names.get((b || a).name).size > 1 });
   }
   return changes;
 }
@@ -132,7 +142,7 @@ export function contextChangeLines(changes, { offset = 0, limit = 20 } = {}) {
   if (!changes.length) return ['无变化'];
   const names = new Map();
   for (const item of changes) names.set(item.name, (names.get(item.name) || 0) + 1);
-  const lines = changes.slice(offset, offset + limit).map(item => `${names.get(item.name) > 1 ? item.path : item.name} — ${item.type}`);
+  const lines = changes.slice(offset, offset + limit).map(item => `${item.ambiguous || names.get(item.name) > 1 ? item.path : item.name} — ${item.type}`);
   if (offset + limit < changes.length) lines.push(`还有 ${changes.length - offset - limit} 项；使用 --offset ${offset + limit} 继续查看`);
   return lines;
 }

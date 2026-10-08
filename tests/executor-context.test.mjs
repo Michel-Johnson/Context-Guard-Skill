@@ -95,6 +95,14 @@ test('工具输出只有名称与类型，重名补路径，分页有剩余数�
   assert.equal(resolveContextNode(index, '主页'), 'A');
   assert.equal(resolveContextNode(index, '项目 / 主页 / 列表'), 'A1');
   assert.throws(() => resolveContextNode(index, '不存在'), { code: 'NOT_FOUND' });
+  const duplicate = fixture();
+  duplicate.memory.map.root.children.push(node('D', '支付'));
+  const duplicateTree = tree(duplicate);
+  assert.throws(() => resolveContextNode(duplicateTree, '支付'), { code: 'AMBIGUOUS_NODE' });
+  assert.equal(resolveContextNode(duplicateTree, '项目 / 支付（第 2 项）'), 'D');
+  const changed = structuredClone(duplicate);
+  changed.memory.map.root.children[2].purpose = '第一个支付模块更新';
+  assert.deepEqual(contextChangeLines(contextChanges(duplicateTree, tree(changed), { read: ['C'] })), ['项目 / 支付（第 1 项） — 修改']);
 });
 
 async function clientFixture(t) {
