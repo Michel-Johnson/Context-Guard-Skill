@@ -5,11 +5,9 @@ import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.
 import { bindingStatus, resolveProject } from './project.mjs';
 import { MapError } from '../shared/map-model.mjs';
 import { validateMemory } from '../shared/memory-schema.mjs';
-import { Access } from './access.mjs';
 import { mergeSessionDocuments } from './memory-merge.mjs';
 export const sessionMemoryDir = (project, sessionId) => path.join(project.sharedDir, 'session-memory', hash(`${sessionId}\0${project.worktreeId}`));
 export const memoryConfigPath = project => path.join(project.sharedDir, 'memory-client.json');
-const sessionRecordName = sessionId => String(sessionId || '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 120) || 'session';
 export const definitiveMemoryRejection = error => Number.isInteger(error?.status) && error.status >= 400 && error.status < 500;
 export async function memoryRequest(project, scope, input, configuration) {
   const config = configuration || await readJSON(memoryConfigPath(project), null);
@@ -100,6 +98,7 @@ export async function rebaseMemory(project, sessionId, { adoptMain = false } = {
   if (!main) return { rebased: false, reason: 'no-published-main' };
   return withFileLock(path.join(dir, 'pending-upload.json.lock'), async () => {
     if (await readJSON(path.join(dir, 'pending-upload.json'), null)) throw new MapError('UPLOAD_PENDING', 'Replay the pending upload before rebasing', 409);
+    if (await readJSON(path.join(dir, 'pending-map-upload.json'), null)) throw new MapError('UPLOAD_PENDING', 'Confirm the pending Map checkpoint before rebasing', 409);
     const remoteSync = path.join(dir, 'remote-sync');
     if (await readJSON(path.join(remoteSync, 'outbox.json'), null)) throw new MapError('UPLOAD_PENDING', 'Replay the workbench upload before rebasing', 409);
     if (await readJSON(path.join(remoteSync, 'conflict.json'), null)) throw new MapError('MEMORY_CONFLICT', 'Review the preserved workbench conflict before rebasing', 409);
@@ -143,23 +142,29 @@ export async function rebaseMemory(project, sessionId, { adoptMain = false } = {
 export async function synchronizeMemory(root, sessionId, client = {}) {
   const project = await resolveProject(root);
   if (!(await bindingStatus(project, sessionId)).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind the actual Session before synchronization', 409);
-  const dir = sessionMemoryDir(project, sessionId), queue = path.join(dir, 'pending-upload.json');
+  const dir = sessionMemoryDir(project, sessionId), queue = path.join(dir, 'pending-map-upload.json');
   return withFileLock(queue + '.lock', async () => {
     const scope = `sessions/${encodeURIComponent(sessionId)}`;
     const receiptFile = path.join(dir, 'server-receipt.json');
     const conflictFile = path.join(dir, 'remote-sync/conflict.json');
     if (await readJSON(conflictFile, null)) throw new MapError('MEMORY_CONFLICT', 'Resolve the preserved Cloud/Session conflict before uploading again', 409);
-    // Retry an uncertain operation byte-for-byte before constructing a newer upload.
-    const pending = await readJSON(queue, null);
-    if (pending) {
+    const legacyQueue = path.join(dir, 'pending-upload.json');
+    const legacy = await readJSON(legacyQueue, null);
+    if (legacy && Object.keys(legacy.memory?.records || {}).length) {
+      throw new MapError('RECORD_SYNC_DISABLED', '旧上传队列含会话记录，已停止重放并保留原件；需另行审核恢复。', 409);
+    }
+    // 新 Map 队列与暂停的旧记录队列隔离；每个不确定操作仍原样重放。
+    for (const pendingFile of [legacyQueue, queue]) {
+      const pending = await readJSON(pendingFile, null);
+      if (!pending) continue;
       let replayed;
       try { replayed = await memoryRequest(project, scope, pending); }
       catch (error) {
-        if (definitiveMemoryRejection(error)) await fs.unlink(queue).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError; });
+        if (definitiveMemoryRejection(error)) await fs.unlink(pendingFile).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError; });
         throw error;
       }
       await atomicWrite(receiptFile, encode(replayed));
-      await fs.unlink(queue);
+      await fs.unlink(pendingFile);
     }
     const current = await memoryStatus(project, sessionId);
     if (!current.current) throw new MapError('MEMORY_NOT_CONFIGURED', 'Configure private memory before syncing', 503);
@@ -205,33 +210,11 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
       throw error;
     }
     if (encode(map) !== encode(await readJSON(mapFile))) await atomicWrite(mapFile, encode(map));
-    const ctx = path.join(root, '.codex/context'), records = {};
-    for (const folder of ['', 'sessions', 'bugs', 'fixes', 'tasks', 'cards']) {
-      for (const entry of await fs.readdir(path.join(ctx, folder), { withFileTypes: true }).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
-        if (!entry.isFile()) continue;
-        const file = folder ? `${folder}/${entry.name}` : entry.name;
-        if (folder === 'sessions' && entry.name !== `${sessionRecordName(sessionId)}.md`) continue;
-        if (!folder && entry.name === 'user-messages.md') continue;
-        try { validateMemory({ map, records: { [file]: '' } }); } catch { continue; }
-        let content = await fs.readFile(path.join(ctx, file), 'utf8');
-        if (file === 'sessions.jsonl') content = content.split('\n').filter(line => { try { return JSON.parse(line).session_id === sessionId; } catch { return false; } }).join('\n');
-        records[file] = content;
-      }
-    }
-    const access = await new Access(root, project.kind === 'git' ? {
-      file: path.join(project.sharedDir, 'workbench-access.json'),
-      bindingsFile: path.join(project.sharedDir, 'workbench-bindings.json'),
-    } : {}).init();
-    const identity = (await access.sessionRegistry()).find(item => item.id === sessionId);
-    const display = identity?.name ? { name: identity.name.slice(0, 200), platform: String(identity.platform || 'unknown').slice(0, 30) } : current.session?.memory?.display;
-    const syncContext = {
-      sessionId,
-      hookEvent: String(client.hookEvent || '').slice(0, 80),
-      eventId: String(client.eventId || '').slice(0, 200),
-      occurredAt: String(client.occurredAt || new Date().toISOString()),
-      cursor: Number.isFinite(Number(client.cursor)) ? Number(client.cursor) : null,
-    };
-    const input = { operationId: randomUUID(), baseVersion: current.session?.version || null, baseMainVersion: baseline.version, sourceCommit: project.head, memory: { map, records, ...(display ? { display } : {}) }, client: syncContext };
+    // 只保存结构化 Map；不读取或上传本地会话 Markdown、事件或其他开发笔记。
+    // 既有服务器记录原样保留，避免停用上传时顺带删除历史数据。
+    const records = current.session?.memory?.records || {};
+    const display = current.session?.memory?.display;
+    const input = { operationId: randomUUID(), baseVersion: current.session?.version || null, baseMainVersion: baseline.version, sourceCommit: project.head, memory: { map, records, ...(display ? { display } : {}) } };
     validateMemory(input.memory);
     const unchanged = current.session
       && current.session.sourceCommit === input.sourceCommit

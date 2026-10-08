@@ -10,20 +10,24 @@
 
 - 项目文档统一中文；命令、路径、代码和协议标识不翻译。第三方许可证与版权声明保留原文，并补中文说明。同一规范只留一份，各 Agent 的职责写在其中，不复制英文版或角色版。
 - 禁止将整个 `.codex/` 目录及其中内容放入任何 GitHub 分支、PR 附件、CI 产物或 npm/Skill 分发包。不得通过改名或复制到其他目录绕过此限制。公开 PR 只写必要的变更和验证摘要，不粘贴私有记忆。
-- 本仓库的开发记忆以私有服务器为准；记忆正文见 [撰写规范](references/design/design-memory-definition-v0.2.0.md)，底层目录和事项文件见 [文件结构规范](references/design/design-memory-filesystem-v1.0.1.md)。
-- 本地上下文是本次任务的已读资料，不保证一直最新。开发记录写入自己的 Session；上传 Session 不等于更新 Main。
+- 使用 Cloud 的项目以 Cloud Map 为准；未使用 Cloud 的项目以本地 Map 为准。本仓库选用私有 Cloud。记忆正文见 [撰写规范](references/design/design-memory-definition-v0.2.0.md)，底层目录和事项文件见 [文件结构规范](references/design/design-memory-filesystem-v1.0.1.md)。
+- 无论项目是否使用 Cloud，Agent 都按需读取上下文。
+- 开发记录由归档工具写入本地 `sessions/<会话标识>.md`，以工具返回路径为准。记录摘要、决策、改动、验证和后续事项，见 [会话记录模板](references/design/design-session-record-v1.0.0.md)；不写入 Map 节点记忆。
+- 无论项目是否使用 Cloud，会话记录都只保存在本地，本阶段不向 Cloud 同步。已配置 Cloud 的项目仍从 Cloud 读取上下文并进行收工检查；更新 Main（项目共享 Map）仍须经过审核与发布流程。
 - 产品中，Coordinator 是唯一可修改 Main 结构的非人角色；白名单 developer 客户端没有这项例外权限。本仓库开发 Agent 只能写自己的 Session。
 - 服务器连接信息只放在未被 Git 跟踪的本地配置中。本仓库通过 `.codex/context/private/memory-server.md` 交接这些信息。`.env`、密钥和真实数据转储（dump）不得进入 Git，也不得绕过密钥扫描。
-- 用户确认规范，不代表功能已经实现。未实现的功能必须记入 `CI_todo.md`；未部署前，不得宣称已经从服务器读取数据。
+- 用户确认规范，不代表功能已经实现；未部署前，不得宣称已经从服务器读取数据。
 
 ## 2. 任务准备
 
-- Executor 开工只取 Cloud 的轻量导航与必要全局说明，不复制完整 Map；相关节点正文按需读取。
+- **有 Cloud**：开工从 Cloud 读取轻量导航和必要全局说明，不复制完整 Map。
+- **无 Cloud**：开工从本地 Map 读取导航和必要全局说明。
+- 默认使用 `map read --context`；用 `--node` 按需读取，收工用 `map context-check`。旧 FIND / snapshot 只用于明确的迁移或恢复，不作为第二套默认入口。
 
 - 开发先确认源码归属：[两仓库边界](references/design/design-repository-v1.0.0.md)。共享核心和 UI 改 Skill；云端托管与集成改 Cloud，不能在消费方修改生成物。
 
 - 修改设计先确认范围和方案；未批准草案标明“未生效”，不能作为实现依据。
-- 开始任务先读 [当前开发方向](docs/current-focus.md)。现阶段只开发 Map/fs-v2.1、本机对话型 Coordinator、跨客户端 Skill + hooks。Cloud 自动派发等事项已暂缓，不能因为历史待办仍在就继续开发；安全、分支和交付要求仍须遵守。
+- 开始任务先读 [当前开发方向](docs/current-focus.md)。现阶段只开发 Map/fs-v2.1、本机对话型 Coordinator、Claude Code CLI 与 Cursor 接入。Codex Hook 和 Cloud 自动派发暂缓；不因历史待办恢复开发，既有安全门禁和必要回归保留。
 - 按 [开发流程规范](docs/engineering/README.md) 完成需求、设计、编码、测试、Review、交付和复盘，并保留各阶段要求的证据。专项契约仍由对应文档维护，不在本文重复定义。风险等级不能作为降低安全、测试或合并要求的理由。
 - 当前底层文件格式版本是 **`fs-v2.1`**。
 - 用户明确要求“开发、修复、执行或合并”，就已授权本次仓库实现及正常交付步骤。记录计划、归档、合并 PR 后更新本机 Skill 和测试，不得重复要求确认。只有任务范围仍不明确、需要破坏性操作或需要新增外部权限时，才向用户询问。
@@ -32,7 +36,8 @@
 
 ## 3. 实现
 
-- 已读资料用本地缓存，新模块按需查询 Cloud；明确刷新时才重读。执行过程留在 Session，不追加 Map 流水账。
+- 已读资料用本地缓存；需要新模块时，有 Cloud 就查询 Cloud，无 Cloud 就读取本地 Map。明确刷新时重读对应来源。
+- 未完成的功能、需求和开发阻塞汇报给 Coordinator，由 Coordinator 跟踪后续工作。
 
 - 设计放在 `references/design/`，从 [设计目录](references/design/README.md) 查找；命名为 `design-主题-vX.Y.Z.md`，主题用小写英文和连字符，正文版本与文件名一致。导航 README、运行提示、操作及部署指南保留原入口。main 每个主题只留当前版，旧版查 Git，不另建版本指引文档。
 - 版本号 `X.Y.Z`：X 是主版本，表示不兼容的重大变更；Y 是次版本，表示兼容的功能新增；Z 是修订号，表示兼容的问题修复。
@@ -42,10 +47,11 @@
 
 ## 4. 验证
 
-- Executor 交付前运行 `map context-check`。有变化再读相关差异，处理后重查；需求或设计冲突交 Coordinator。断连不能视为无变化，hash 检查不替代测试、审核与发布校验。
+- Executor 交付前运行 `map context-check`：有 Cloud 就对比最新 Cloud Map，无 Cloud 就对比最新本地 Map。有变化再读差异，处理后重查；需求或设计冲突交 Coordinator。
+- 已配置 Cloud 但断连，不算无 Cloud 模式：可用已读缓存继续开发，但收工必须报告“无法检查”，不能用本地结果代替 Cloud 检查。hash 检查不替代测试、审核与发布校验。
 
 - 明确注明哪些接口尚未编写测试。
-- 将所有已开发完成但未测试的模块记入仓库根目录的 `CI_todo.md`；文件不存在时先创建。
+- `CI_todo.md` 只记录已实现模块的测试缺口，不记录未完成的功能或需求；文件不存在时先创建。
 - `temp/` 中的草稿不能作为“已测试”的依据。补上正式测试后，才能划掉 `CI_todo.md` 中对应的未测试条目。
 
 ## 5. 提交与合并
@@ -72,8 +78,9 @@
 4. 汇报 main 合并提交、安装来源、版本一致性结果和真实功能输出；允许免除的项目标明 N/A 及依据。
 5. 完成适用的合并后验收后，才能归档并执行 `plan-finish`。此前，Context Guard 计划必须保持进行中。任一必需项失败，都不得宣称交付完成。
 
-Codex 原生 Hook 要求重新信任时，必须如实报告。禁止使用危险的 trust bypass 绕过信任检查。
+本阶段的客户端验收只覆盖 Claude Code CLI 与 Cursor；Codex Hook 留待后续，不作为当前交付门禁。不得绕过任何客户端的 Hook 信任检查。
 
 - PR 合并后，自动删除远程分支。
+- 本项目服务器只保留最近 5 份完整、可恢复的备份；核验保留的备份后，立即删除更早的备份。
 - 每次合并成功后，检查本任务产生的临时资源。只删除已确认由本任务创建、无需保留且获准删除的精确目标；不确定时保留，并说明原因。
 - 不得递归删除共享 `temp/`、其他 worktree、未完成实验或失败证据。清理 `temp/` 中允许删除的内容后，项目必须仍能正常运行。

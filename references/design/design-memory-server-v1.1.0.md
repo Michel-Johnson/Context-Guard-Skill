@@ -8,12 +8,12 @@
 
 底层文件格式为 [`fs-v2.1`](design-memory-filesystem-v1.0.1.md)；发布须满足下文的完成证明与 Git 合并条件。
 
-**状态：私有记忆服务与客户端实现、自动化验收，以及生产环境的文件系统 v2 迁移已经验证。** 节点、模块和工作项的文件结构见 [文件结构规范](design-memory-filesystem-v1.0.1.md)。运行兼容层仍保留旧记录；默认从 API 和上下文中排除这些记录，仍是 `CI_todo.md` 中明确列出的验收项，不能仅凭文档就认为已实现。Agent 首先打开哪套目录（FIND.md / snapshot，还是 v2 Markdown）**尚未决定**。后续安装和迁移仍需明确批准。配置 `CONTEXT_GUARD_MEMORY_CONFIG` 后，常规 Cloud 进程会在同一个 HTTPS 来源下提供这组 API；没有这项显式配置，就不会启用私有记忆路由。运行时接入和迁移事项仍记录在 `CI_todo.md` 中。
+**范围：Cloud 中的结构化 Map、权限和发布，不包括本地会话笔记。** 文件结构见 [文件结构规范](design-memory-filesystem-v1.0.1.md)，本地笔记见 [会话记录模板](design-session-record-v1.0.0.md)。默认用 `map read --context` 定位，再按需读取；旧 FIND / snapshot 仅用于迁移或恢复。配置 `CONTEXT_GUARD_MEMORY_CONFIG` 后，Cloud 在同一 HTTPS 来源提供这些 API；上线与验收仍以实际证据为准。
 
 ## 文件系统 v2 的读取边界
 
-Cloud Main 和每个 Session 各自拥有独立的文件系统 v2 投影。已启用 fs-v2 的服务器提供明确、带版本的单文档读取路由：`GET /v1/projects/<id>/filesystem/main/<path>` 或 `GET /v1/projects/<id>/filesystem/sessions/<session-id>/<path>`，可附加 `?version=<observed-version>`。对应 CLI 用法为 `context-guard memory file
---scope main|session --path <relative-path> [--version <revision>]`；读取 Session 范围时，还须使用实际的 `--session`。指定版本已经过期时，请求应失败，而不是混合不同版本的文档。这个路由不会启用或迁移旧项目。接口可用后，Agent 沿相关节点或模块的 `index.md` 链接读取 Bug、Todo、测试或 Session 文档，不扫描整棵目录树。普通 Agent 的读取结果不包含 Idea 条目，并拒绝读取 Idea 文档；Coordinator 的可信服务器端通道仍可访问 Idea。默认先打开哪套目录仍未决定。原始快照 API 仅用于兼容同步，不是 Agent 阅读文档的入口。Coordinator 的完整节点索引包含 Related、Sub、Bug、Todo 和 Idea；面向 Agent 的索引切片省略 Idea。当前没有 JSON 工作项索引。
+Cloud Main 和每个 Session Map 各自拥有独立的文件系统 v2 投影；它们不是本地会话 Markdown。已启用 fs-v2 的服务器提供明确、带版本的单文档读取路由：`GET /v1/projects/<id>/filesystem/main/<path>` 或 `GET /v1/projects/<id>/filesystem/sessions/<session-id>/<path>`，可附加 `?version=<observed-version>`。对应 CLI 用法为 `context-guard memory file
+--scope main|session --path <relative-path> [--version <revision>]`；读取 Session 范围时，还须使用实际的 `--session`。指定版本已过期时失败，不混合版本，也不启用或迁移旧项目。默认用 `map read --context` 定位，展开事项时沿 `index.md` 链接读取，不扫描整树。普通 Agent 不读取 Idea；Coordinator 的可信通道仍可访问。原始快照 API 仅用于兼容传输，不是默认阅读入口。索引字段与 fs-v2.1 文件格式不变。
 
 `runtime-state.json` 是事务兼容状态文件。`legacy-records/` 用于迁移与回滚。二者都不是 Agent 的常规读取入口；`bugs-index.json`、`tasks-index.json`、`jump-index.json` 和 `owns-index.json` 等文件，不得用于新的接口分析。在 `CI_todo.md` 中的运行时排除项完成之前，调用方必须显式遵守这一边界，不能假定 API 响应已经不含旧记录。
 
@@ -48,7 +48,9 @@ Cloud 依据已验证的 GitHub 仓库确定项目，返回项目 ID 和 `device
 每次已确认的写入都会追加一条带服务器时间戳的历史记录。Session 历史保留完整快照；Main 历史只保留最近五个版本的完整快照，并去除更早版本的快照内容，包括重试回执中的副本。较早的 Main 条目仍保留版本、时间和操作者供审计，其操作 ID 仍用于防止重复写入。`memory history --scope main` 或 `--scope session:<id>` 用于读取可用历史。`memory restore --input
 <private-request>` 根据 `targetVersion` 创建新版本，绝不倒退版本计数。请求必须包含 `operationId`、`scope`、`baseVersion` 和 `targetVersion`。`baseVersion` 过期时应失败，而不是覆盖人或 Agent 的较新编辑。恢复 Main 或偏好设置需要管理员凭据。
 
-`memory prepare` 读取带版本的 Main/Session 记录，并保留冲突的本地编辑。`memory sync` 只上传到当前绑定的 Session；投递结果不确定时，先重放持久化队列中的操作，再生成新操作。`memory rebase` 合并互不重叠的 Main 变更，备份旧 Map；遇到重叠变更则拒绝，等待明确协调。旧 Session 没有记录 Main 祖先版本时，不得猜测：先审核保留的草稿，再显式运行 `memory rebase --adopt-main`，完成备份并用已发布的 Main Map 初始化 Session。同一项带版本检查的操作会在保留记录的同时替换服务器 Session 快照，然后对齐工作台 Coordinator 基线，避免较旧的远端快照立即覆盖刚采用的 Map。一旦已有正常祖先版本，命令就拒绝执行这种破坏性策略。归档时，若已配置同步，则调用同步；失败时保留本地草稿并报告，不能当作成功。
+`memory prepare` 读取带版本的 Main/Session Map，并保留冲突的本地编辑。会话笔记不上传：Hook 和归档只保存本地文件；`memory sync` 只同步结构化 Map，不收集本地笔记。含记录的旧上传队列返回 `RECORD_SYNC_DISABLED`，不重放、不删除；既有服务器历史记录原样保留。Map 的工作台读写、审核和发布不因此停用。
+
+`memory rebase` 合并互不重叠的 Main 变更，备份旧 Map；重叠则拒绝并交协调。没有 Main 祖先版本的旧 Session，先审核草稿，再显式使用 `--adopt-main`；已有祖先版本时不得借此覆盖草稿。这个 Map 恢复入口不能用于同步本地会话笔记。
 
 Main 在审核完成后自动发布。可信的人或明确的可信审核路径须确认精确的 `{sessionId, generation, sessionVersion, sourceCommit}`。普通上传、心跳或初始 HEAD 已在 Main 上都不能生成完成证明；之后的快照、Map 编辑或恢复会使证明失效。缺少证明的既有 Session 继续等待，迁移不能伪造审核。
 
@@ -64,7 +66,7 @@ Cloud 服务定期刷新配置的权威 Git 引用，只有已完成 Session 这
 ## 数据权威来源与存储
 
 - GitHub 是源码、产品文档和正式测试的权威来源。继续遵守现有分支、PR、测试和密钥检查规则。项目的整个 `.codex/` 不进入源码提交、公开附件或发布制品。
-- 私有服务器是全部开发记忆的权威来源，包括 Main 基线、Session、用户消息、任务、Bug 与修复记录、Map、索引和记录偏好设置。保留这些记录，不按长期或临时价值裁剪。这不意味着私钥、Token、原始数据转储或机器运行状态也属于记忆；不得盲目复制 `.codex/context/private/`。
+- 使用 Cloud 的项目，服务器是结构化 Map、节点记忆和事项的权威来源。本地会话笔记与事件不上传；服务器已有的历史记录保留，不因本次停用同步而删除。凭据、原始数据转储和机器状态不是项目记忆。
 - 本地 `.codex/context/` 文件仅作为带版本的缓存、工作副本和待提交写入。按需获取服务器上的相关索引和记录，不在每次回复时读取全部历史。不得根据本地文件最新修改时间判断其是否为权威数据。
 - 连接信息保存在不纳入版本控制的本地配置中，不放在公开文档或分发的 Skill 默认配置里。SSH 主机是部署信息，不是 API URL、项目绑定，也不能证明记忆服务已初始化。
 
@@ -78,8 +80,8 @@ All Sessions（全部会话）视图只读取服务器已发布的 Main 基线�
 
 1. 每次收到人的提示先核对真实 Session、项目与工作树绑定。绑定缺失或不明确时，需要用户选择，不能通过发现历史 Session 来猜测。
 2. Executor 开工取轻量导航、项目说明和版本，开发时复用已读缓存、新节点按需查询，收工再检查最新 Cloud。缓存只代表该次读取，不保证一直最新；源码始终读取实际工作树。完整流程见 [上下文读取设计](design-context-v1.0.0.md)。其他角色的权威读取与发布规则不变。
-3. 使用版本检查和可安全重试的操作标识，将新记忆归档到服务器上的 Session 作用域。在服务器回执确认已持久化之前，保留待提交的本地数据；不得通过未经检查的目录复制覆盖并发记录。同步失败不能报告为成功。
-4. 未配置、断连或能力不受支持时，说明缺失能力，并将本地草稿标为未同步。不得创建空项目作为替代、静默相信陈旧历史，或把记录上传到 GitHub 作为后备。仅依赖当前用户输入和已检查源码的任务可以继续；依赖记忆的决定须等待确认的数据来源或明确指示。
+3. 会话笔记归档到本地 Markdown。需要更新结构化 Map 时，使用现有工作台入口、版本检查和稳定操作标识；服务器回执确认前保留待提交变更，不用目录复制覆盖并发写入。
+4. Cloud 断连时可用已读缓存继续开发，但交付须报告“无法检查”。不得创建空项目顶替、把旧缓存当最新事实，或上传私有记录到 GitHub。会话笔记的本地保存不是同步失败。
 
 ## 隐私与迁移
 
