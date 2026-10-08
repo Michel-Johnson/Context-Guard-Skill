@@ -766,6 +766,15 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     return { sessionId, sessionProject, previous, sameWorktree, binding: await sessionBinding(sessionProject, sessionId, { workbenchUrl, role }) };
   }
   const isHuman = actor => { if (actor.kind !== 'human') throw new MapError('FORBIDDEN', 'Requires the workbench capability', 403); };
+  async function directCursorPrompt(sessionId, binding, id, text) {
+    // Local CLI administration does not authorize replacing an assigned task.
+    // Both entrances use one guard and durable identity before waking Cursor.
+    const protocolBinding = await protocolStore.registeredBinding(backendPrincipal, sessionId);
+    if (!protocolBinding) protocolFail('SESSION_BINDING_REQUIRED', 'Bind a real Cursor Session first');
+    const human = { ...backendPrincipal, role: 'human', agentId: 'local-human' };
+    await protocolStore.handle(human, { v: 2, id, type: 'native.prompt', session: { id: sessionId, generation: protocolBinding.generation }, payload: { text } });
+    return taskDelivery.deliver({ id: `local-native:${id}`, platform: 'cursor', sessionId, root: binding.worktreeRoot, message: text });
+  }
   try {
     const previousSource = await readJSON(sourceFile, null);
     const baselineSha = previousSource?.baselineSha || previousSource?.sha || project.mainSha || '';
@@ -814,7 +823,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (input.action === 'status') return send(res, 200, await cursorRuntime.status(input.sessionId));
           if (input.action === 'message') {
             if (!input.message || Object.keys(input.message).some(key => !['id', 'message'].includes(key))) throw new MapError('INVALID_ARGUMENT', 'Use a delivery ID and message');
-            return send(res, 200, await taskDelivery.deliver({ ...input.message, platform: 'cursor', sessionId: input.sessionId, root: binding.worktreeRoot }));
+            return send(res, 200, await directCursorPrompt(input.sessionId, binding, input.message.id, input.message.message));
           }
           if (input.action !== 'configure') throw new MapError('INVALID_ARGUMENT', 'Use configure, status or message');
           if (await fs.realpath(input.config?.root || '') !== binding.worktreeRoot) throw new MapError('WORKTREE_MISMATCH', 'Configure only the bound Cursor worktree', 409);
@@ -1086,10 +1095,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             if (!binding || identity?.platform !== 'cursor') protocolFail('FORBIDDEN', 'Select a bound Cursor Session');
             if (req.method === 'GET') return send(res, 200, await cursorRuntime.conversation(sessionId));
             if (req.method !== 'POST' || !input || Object.keys(input).some(key => !['sessionId', 'id', 'text'].includes(key))) protocolFail('INVALID_ARGUMENT', 'Use a Session, message ID and text');
-            const protocolBinding = await protocolStore.registeredBinding(backendPrincipal, sessionId);
-            const human = { ...backendPrincipal, role: 'human', agentId: 'local-human' };
-            await protocolStore.handle(human, { v: 2, id: input.id, type: 'native.prompt', session: { id: sessionId, generation: protocolBinding.generation }, payload: { text: input.text } });
-            return send(res, 200, await taskDelivery.deliver({ id: `local-native:${input.id}`, platform: 'cursor', sessionId, root: binding.worktreeRoot, message: input.text }));
+            return send(res, 200, await directCursorPrompt(sessionId, binding, input.id, input.text));
           }
           if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus(viewId)); }
           if (viewId === 'main' && mainDeferred) {

@@ -14,6 +14,8 @@ import { definitiveMemoryRejection } from '../scripts/workbench/memory.mjs';
 import { canRetryWorkbenchListen, prepareSessionCommit, startServer, receiverExecutionHeartbeat } from '../scripts/workbench/server.mjs';
 import { canRetryWorkbenchListen as sharedListenGuard } from '../scripts/workbench/listen.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/shared/io.mjs';
@@ -1434,6 +1436,24 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
     assert.equal((await chat('/api/cursor-chat?session=' + otherSessionId, running.humanToken)).status, 403);
     const module = await fetch(base + '/prototype/cursor-chat.mjs');
     assert.equal(module.status, 200); assert.match(module.headers.get('content-type'), /javascript/);
+    // Both public direct-chat entrances must obey the existing workflow gate,
+    // even while the actual native receiver is idle. Only synthetic state is used.
+    const protocol = new ProtocolStore(path.join(f.ctx, 'private/project-workbench/interface-v2'));
+    const principal = { repositoryId: running.state.projectId, deviceId: running.state.projectId, agentId: sessionId, role: 'device' };
+    const protocolSession = registered.protocolBinding.session;
+    const taskKey = scopedObjectKey(principal, protocolSession, 'task:assigned');
+    for (const stage of ['awaiting-plan-review', 'executing']) {
+      await protocol.transaction(state => { state.tasks[taskKey] = { id: 'assigned', repositoryId: principal.repositoryId, session: protocolSession, stage }; });
+      const blocked = await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'blocked-' + stage, message: 'Unrelated task' } });
+      assert.equal(blocked.status, 409); assert.equal(blocked.data.error.code, 'CONFLICT');
+      assert.equal((await chat('/api/cursor-chat', running.humanToken, { id: 'ui-blocked-' + stage, sessionId, text: 'Unrelated task' })).status, 409);
+      assert.deepEqual((await chat('/api/cursor-chat?session=' + sessionId, running.humanToken)).data.messages, [], 'rejected messages must not start native work');
+    }
+    await protocol.transaction(state => { state.tasks[taskKey].stage = 'closed'; });
+    await protocol.receiveNotification(principal, { v: 2, id: 'paired-assigned', type: 'task.assign', session: protocolSession, payload: { taskId: 'paired-task', briefRef: 'brief', briefVersion: 'version', sessionId, nodeIds: ['N1'], mainVersion: 'main', mode: 'reviewed' } });
+    assert.equal((await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'paired-blocked', message: 'Unrelated task' } })).status, 409);
+    assert.deepEqual((await chat('/api/cursor-chat?session=' + sessionId, running.humanToken)).data.messages, []);
+    await protocol.receiveNotification(principal, { v: 2, id: 'paired-finished', type: 'task.report', session: protocolSession, payload: { taskId: 'paired-task', stage: 'finished', data: { deliveryId: 'paired-assigned', outcome: 'success', summary: 'Fixture result' } } });
     const sent = await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Synthetic boundary task' });
     assert.equal(sent.status, 200); assert.equal(sent.data.state, 'received');
     // Node is intentionally not a Cursor executable. A provider failure must
@@ -1451,6 +1471,8 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
     const duplicate = await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Synthetic boundary task' });
     assert.deepEqual(duplicate, sent);
     assert.equal((await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Changed task' })).data.error.code, 'ID_REUSED');
+    const cliDuplicate = await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'fixture-turn', message: 'Synthetic boundary task' } });
+    assert.deepEqual(cliDuplicate, sent, 'CLI and UI share one durable prompt identity and guard');
   } finally { await running.close(); }
 });
 

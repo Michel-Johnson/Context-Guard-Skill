@@ -19,14 +19,14 @@ export function installCursorChat(sync, { button = document.getElementById('btn-
   const english = language === 'en';
   const labels = english ? {
     title: 'Cursor conversation', close: 'Close Cursor conversation', session: 'Cursor Session', input: 'Task or follow-up', send: 'Send',
-    refresh: 'Refresh', pause: 'Pause updates', resume: 'Resume updates', create: 'Run in Cursor Cloud',
+    refresh: 'Refresh', pause: 'Pause updates', resume: 'Resume updates', create: 'Run in Cursor Cloud', retry: 'Retry original message', retryCreate: 'Retry original Cloud task',
     empty: 'No Cursor Session yet. Create one with the local CLI, or run a task in Cursor Cloud.',
     waiting: 'Waiting for Cursor…', active: 'Cursor is replying…', stopped: 'Turn ended', unknown: 'Checking native execution…',
     failed: 'Turn did not complete. Check the connection and native Session.', error: 'Unable to confirm. Refresh before resending.',
     required: 'Enter a task or follow-up.', ready: 'Connected. You can send a task or follow-up.',
   } : {
     title: 'Cursor 对话', close: '关闭 Cursor 对话', session: 'Cursor 会话', input: '任务或追问', send: '发送',
-    refresh: '刷新', pause: '暂停更新', resume: '继续更新', create: '在 Cursor Cloud 执行',
+    refresh: '刷新', pause: '暂停更新', resume: '继续更新', create: '在 Cursor Cloud 执行', retry: '重试原消息', retryCreate: '重试原 Cloud 任务',
     empty: '尚无 Cursor 会话。先用本机 CLI 创建，或在 Cursor Cloud 执行任务。',
     waiting: '等待 Cursor 回复…', active: 'Cursor 正在回复…', stopped: '本轮输出结束', unknown: '正在核对原生执行状态…',
     failed: '本轮未完成，请检查连接和原生会话。', error: '尚未确认结果。先刷新核对，再决定是否重发。',
@@ -49,10 +49,30 @@ export function installCursorChat(sync, { button = document.getElementById('btn-
   const pause = document.createElement('button'); pause.type = 'button'; pause.textContent = labels.pause;
   const actions = document.createElement('div'); actions.className = 'cursor-chat-actions'; actions.append(send, create, refreshButton, pause);
   form.append(inputLabel, actions); dialog.append(header, selectLabel, messages, status, form); document.body.append(dialog);
-  let timer, disposed = false, paused = false, loadingEpoch = null, sending = false, pendingRequest = null, currentKey = '', epoch = 0, busy = true;
+  const pendingRequests = new Map(), drafts = new Map();
+  const requestKey = cloud => cloud ? 'create' : 'session:' + select.value;
+  let timer, disposed = false, paused = false, loadingEpoch = null, sending = false, draftSession = '', currentKey = '', epoch = 0, busy = true;
   const stop = () => { clearTimeout(timer); timer = null; };
-  const controls = () => { send.disabled = sending || busy || !select.value; create.disabled = sending; select.disabled = sending; input.readOnly = sending; };
+  const controls = () => {
+    const pending = pendingRequests.has(requestKey(false));
+    send.textContent = pending ? labels.retry : labels.send;
+    create.textContent = pendingRequests.has('create') ? labels.retryCreate : labels.create;
+    send.disabled = sending || busy || !select.value; create.disabled = sending; select.disabled = sending; input.readOnly = sending || pending;
+  };
+  const switchDraft = () => {
+    if (draftSession === select.value) return;
+    if (draftSession) drafts.set(draftSession, input.value);
+    draftSession = select.value;
+    input.value = pendingRequests.get(requestKey(false))?.text || drafts.get(draftSession) || '';
+  };
   const render = state => {
+    const keyForRequest = requestKey(false), pending = pendingRequests.get(keyForRequest);
+    // Only a matching server message confirms an uncertain POST. Idle state
+    // alone is insufficient; preserve its ID and payload for explicit retry.
+    if (pending && (state.messages || []).some(message => message.role === 'user' && [pending.id + ':user', 'local-native:' + pending.id + ':user'].includes(message.id) && message.text === pending.text)) {
+      pendingRequests.delete(keyForRequest);
+      if (input.value === pending.text) input.value = '';
+    }
     const key = JSON.stringify(state.messages || []);
     if (key !== currentKey) {
       currentKey = key; messages.replaceChildren();
@@ -93,6 +113,7 @@ export function installCursorChat(sync, { button = document.getElementById('btn-
       const option = document.createElement('option'); option.value = session.id; option.textContent = session.name || session.id; select.append(option);
     }
     if (selected && [...select.options].some(option => option.value === selected)) select.value = selected;
+    switchDraft();
     create.hidden = data.canCreateCloud !== true;
     status.textContent = select.value ? labels.ready : labels.empty;
     busy = true; controls();
@@ -105,24 +126,26 @@ export function installCursorChat(sync, { button = document.getElementById('btn-
   };
   close.onclick = () => dialog.close();
   dialog.addEventListener('close', () => { epoch++; stop(); button.setAttribute('aria-expanded', 'false'); button.focus(); });
-  select.onchange = () => { epoch++; stop(); busy = true; controls(); currentKey = ''; messages.replaceChildren(); void refresh(); };
+  select.onchange = () => { epoch++; stop(); switchDraft(); busy = true; controls(); currentKey = ''; messages.replaceChildren(); void refresh(); };
   refreshButton.onclick = async () => { stop(); try { await sessions(); await refresh(); } catch { status.textContent = labels.error; } };
   pause.onclick = () => { paused = !paused; pause.textContent = paused ? labels.resume : labels.pause; stop(); if (!paused) void refresh(); };
   const submit = async cloud => {
     if (sending || !cloud && busy) return;
-    if (!input.value.trim()) { input.setAttribute('aria-invalid', 'true'); status.textContent = labels.required; input.focus(); return; }
+    const key = requestKey(cloud), previous = pendingRequests.get(key), text = previous?.text || input.value;
+    if (!text.trim()) { input.setAttribute('aria-invalid', 'true'); status.textContent = labels.required; input.focus(); return; }
     input.removeAttribute('aria-invalid');
     if (!cloud && !select.value) { status.textContent = labels.empty; return; }
-    if (pendingRequest && (pendingRequest.text !== input.value || pendingRequest.sessionId !== select.value || pendingRequest.cloud !== cloud)) { status.textContent = labels.error; return; }
-    pendingRequest ||= { id: crypto.randomUUID(), text: input.value, sessionId: select.value, cloud };
+    const pendingRequest = previous || { id: crypto.randomUUID(), text, sessionId: select.value, cloud };
+    pendingRequests.set(key, pendingRequest);
     sending = true; controls(); status.textContent = labels.waiting;
     try {
       const result = await sync.call('/api/cursor-chat', cloud ? { action: 'create', id: pendingRequest.id, text: pendingRequest.text }
         : { id: pendingRequest.id, sessionId: pendingRequest.sessionId, text: pendingRequest.text });
-      input.value = ''; pendingRequest = null;
+      if (input.value === pendingRequest.text) input.value = '';
+      pendingRequests.delete(key);
       if (cloud) await sessions(result.sessionId);
       epoch++; stop(); await refresh();
-    } catch (cause) { if (cause.serverResponse && cause.code !== 'UNAVAILABLE') pendingRequest = null; status.textContent = labels.error; }
+    } catch (cause) { if (cause.serverResponse && cause.code !== 'UNAVAILABLE') pendingRequests.delete(key); status.textContent = labels.error; }
     finally { sending = false; controls(); }
   };
   form.onsubmit = event => { event.preventDefault(); void submit(false); };

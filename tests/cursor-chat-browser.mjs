@@ -12,7 +12,7 @@ import { pause } from '../scripts/shared/io.mjs';
 const workspace = fileURLToPath(new URL('../', import.meta.url));
 const evidence = await fs.mkdtemp(path.join(workspace, 'temp/cursor-chat-browser-'));
 const checks = [], errors = [], posts = [], held = [];
-let holdFirst = false, browser, page;
+let holdFirst = false, losePost = false, acceptLostPost = true, browser, page;
 const views = {
   one: { status: 'stopped', messages: [{ role: 'assistant', text: '汉'.repeat(125) + '<script>window.injected=true</script>' }] },
   two: { status: 'stopped', messages: [{ role: 'assistant', text: 'Second Session only' }] },
@@ -34,7 +34,10 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST') {
         const chunks = []; for await (const chunk of req) chunks.push(chunk);
         const input = JSON.parse(Buffer.concat(chunks)); posts.push(input);
-        views[input.sessionId] = { status: 'stopped', messages: [{ id: input.id + ':user', role: 'user', text: input.text }, { id: input.id + ':assistant', role: 'assistant', text: 'Native fixture follow-up' }] };
+        if (!losePost || acceptLostPost) views[input.sessionId] = { status: 'stopped', messages: [{ id: input.id + ':user', role: 'user', text: input.text }, { id: input.id + ':assistant', role: 'assistant', text: 'Native fixture follow-up' }] };
+        // An incomplete JSON body deterministically loses the receipt. Merely
+        // closing a reused socket can make Chromium transparently repeat POST.
+        if (losePost) { losePost = false; res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{'); return; }
         respond(res, { state: 'received' }); return;
       }
       const session = url.searchParams.get('session');
@@ -89,6 +92,41 @@ try {
   assert.equal(await input.inputValue(), ''); assert.equal(posts.length, 1); assert.equal(posts[0].sessionId, 'two');
   assert.equal(await page.getByRole('button', { name: '继续更新' }).isVisible(), true);
   record('keyboard submission works with updates paused and restores send availability');
+
+  // Actual incomplete HTTP receipt after acceptance. A refresh must reconcile the
+  // original request, not leave all future follow-ups silently locked out.
+  losePost = true;
+  await input.fill('Accepted but response lost'); await send.click();
+  await page.getByText('尚未确认结果。先刷新核对，再决定是否重发。', { exact: true }).waitFor();
+  const acceptedId = posts.at(-1).id;
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await page.getByText('本轮输出结束', { exact: true }).waitFor();
+  await input.fill('Follow up after confirmed acceptance'); await send.click();
+  await until(() => posts.at(-1).text === 'Follow up after confirmed acceptance');
+  assert.notEqual(posts.at(-1).id, acceptedId);
+  await page.waitForFunction(() => !document.querySelector('button[type=submit]').disabled);
+  record('refresh reconciles a lost accepted response and allows a distinct follow-up');
+
+  // Unknown delivery is not automatically retried. Other Sessions remain
+  // usable, and a deliberate retry reuses both original payload and ID.
+  losePost = true; acceptLostPost = false;
+  await input.fill('Unknown delivery'); await send.click();
+  await page.getByText('尚未确认结果。先刷新核对，再决定是否重发。', { exact: true }).waitFor();
+  const uncertain = posts.at(-1), beforeSwitch = posts.length;
+  await page.getByRole('combobox', { name: 'Cursor 会话' }).selectOption('one');
+  await page.getByText('本轮输出结束', { exact: true }).waitFor();
+  await input.fill('Independent Session task'); await send.click();
+  await until(() => posts.length === beforeSwitch + 1);
+  assert.equal(posts.at(-1).sessionId, 'one'); assert.notEqual(posts.at(-1).id, uncertain.id);
+  await page.waitForFunction(() => !document.querySelector('button[type=submit]').disabled);
+  await page.getByRole('combobox', { name: 'Cursor 会话' }).selectOption('two');
+  await page.getByText('本轮输出结束', { exact: true }).waitFor();
+  assert.equal(await input.inputValue(), uncertain.text);
+  await page.getByRole('button', { name: '重试原消息', exact: true }).click();
+  await until(() => posts.length === beforeSwitch + 2);
+  assert.deepEqual(posts.at(-1), uncertain);
+  await page.waitForFunction(() => !document.querySelector('button[type=submit]').disabled);
+  record('unknown requests are isolated per Session and only explicitly retried with the original ID');
 
   await page.setViewportSize({ width: 320, height: 640 });
   assert.equal(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
