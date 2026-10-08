@@ -2,7 +2,7 @@
 
 ## CURSOR-WORKBENCH-01 · 分阶段接入（进行中）
 
-- [x] PR #464 准确 `44a86ab` Required 与跨平台检查通过，正常合入 main `2ccae20`；该 main 完整 CI `37828684419` 全部通过。从最新 main 官方安装器更新三平台，逐字节核对各 100 文件，core2.2.0/UI1.2.0；旧安装完整副本保留，客户端 Hook/config 哈希未变，未删除本地目录。共享包精确 43/14 文件安全扫描通过；尚不表示 Cloud 真实任务、安装入口或项目上下文已验收。
+- [x] PR #464 准确 `44a86ab` Required 与跨平台检查通过，正常合入 main `2ccae20`；该 main 完整 CI `37828684419` 全部通过。从最新 main 官方安装器更新三平台，逐字节核对各 100 文件，core2.2.0/UI1.2.0；旧安装完整副本保留，客户端 Hook/config 哈希未变，未清理用户项目或其他 worktree。共享包精确 43/14 文件安全扫描通过；尚不表示 Cloud 真实任务、安装入口或项目上下文已验收。
 - [x] 合并后 installed Cursor/Claude doctor 实际抛 TypeError：诊断返回项目绑定错误时没有 runtime 字段。新增两项正式安装入口回归先失败，最小字段保护后实际 2/2、exit0；保持 unknown、原有 required 规则和 not-ready 结果，不修复/替换失效绑定。Skill 候选补丁0.8.1，core/UI与依赖不变；此修订的全量、独立Review、Required、main安装待完成。
 
 - [x] 最新 Skill main `1fa3859` 创建独立 `codex/cursor-workbench` 分支；旧目录、个人修改、第三方 Hook 和 PATH 的 Grok `agent` 均未替换。官方 Cursor CLI 2026.10.01-e373342 解压到本任务新建 temp，未执行会删除既有软链接的官方安装器。
