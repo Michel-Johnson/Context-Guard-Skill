@@ -125,6 +125,8 @@ const testJob = workflowJob(ci, "test", "package");
 requireMatch(testJob, /if:\s*needs\.impact\.outputs\.test == 'true'/, "Functional tests must follow the impact plan.");
 requireMatch(testJob, /run:\s*npm test/, "Selected functional CI must retain the complete repository test entry.");
 const packageJob = workflowJob(ci, "package", "install");
+requireMatch(packageJob, /path:\s*\|\s*\n\s*\$\{\{ env\.PACKAGE_TARBALL \}\}\s*\n\s*dist\/package\.sha256/, "Install/client artifact must contain only the exact Skill tarball and its digest.");
+forbidMatch(packageJob, /dist\/\*\.tgz/, "Shared packages must not be mixed into the Skill install artifact.");
 requireMatch(packageJob, /needs\.impact\.outputs\.package == 'true'/, "Packaging must follow the impact plan.");
 forbidMatch(packageJob, /run:\s*npm test/, "The package job must not duplicate selected functional tests.");
 requireMatch(ci, /^  minimum-runtime:\s*$/m, "CI must test the documented minimum runtimes.");

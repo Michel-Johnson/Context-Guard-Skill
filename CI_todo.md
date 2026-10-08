@@ -1394,5 +1394,8 @@ pending independent gates.
 ## CORE-OWNER-01：核心与 UI 归属 Skill
 
 - 用户批准两仓库依赖反转；源码迁移及独立打包进行中。
+- [x] 本地 `npm test`：467 个测试，465 通过、2 个既有跳过；39 项安全与 30 项安装边界通过。正式本地浏览器 55 checks、errors 为空，Journal recovery 通过。核心与 UI 的 24 个运行文件逐字节等于迁移前 Cloud main，未改业务实现。
+- [x] 候选 core 2.0.2（40 文件）与 workbench 1.1.6（13 文件）精确清单、安全扫描通过。首次本地执行缺少扫描器及 README 缺少 Cloud 链接均保留；完成配置、补回链接后才重跑成功。企业全局 hooksPath 保留，未覆盖；暂存与待推送历史扫描单独执行通过。
+- 首轮 PR CI `37752467517`：功能、最低运行时、浏览器、包检查通过；安装与客户端制品检查失败，上传目录混入 core/UI 两个包导致“Expected exactly one ... found 3”。已改为精确 Skill 包路径并加工作流断言，保留唯一包门禁，不放宽检查；最终 Required 待验证。
 - 待验证：共享包白名单与安全扫描、Skill 独立安装/本地工作台、Cloud 固定包消费、双方 Required、安装后 doctor。
 - 不迁移用户数据，不部署生产；原生 Hook 信任与实际触发仍须分别验收。

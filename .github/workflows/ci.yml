@@ -173,7 +173,7 @@ jobs:
         with:
           name: context-guard-ci-package
           path: |
-            dist/*.tgz
+            ${{ env.PACKAGE_TARBALL }}
             dist/package.sha256
           if-no-files-found: error
           retention-days: 3
