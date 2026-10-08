@@ -644,6 +644,33 @@ try {
   assert.notEqual((await read()).root.children[0].title, '断线期间的草稿');
   await page.unroute('**/api/commit*'); await page.reload(); await page.waitForSelector('#cg-sync[data-status="synced"]', { state: 'attached' });
   assert.equal((await read()).root.children[0].title, '断线期间的草稿'); recordCheck('network-retry');
+  // Only the busy response is simulated. Recovery must use the real page,
+  // heartbeat, commit endpoint and disk, without a click/reload or approval replay.
+  stage = 'temporary-busy-automatic-recovery';
+  await page.locator('.node[data-id="N1"]').click();
+  const busyWrites = [];
+  const busyRoute = async route => {
+    busyWrites.push(route.request().postData());
+    if (busyWrites.length <= 3) return route.fulfill({ status: 503, json: { error: {
+      code: 'STATE_BUSY', message: 'Shared state is busy; preserve lock and retry' } } });
+    return route.continue();
+  };
+  await page.route('**/api/commit*', busyRoute);
+  await title.fill('状态忙后自动保存'); await title.press('Tab');
+  await page.waitForSelector('#cg-sync[data-status="busy"]', { state: 'attached' });
+  assert.equal(busyWrites.length, 3);
+  assert.notEqual((await read()).root.children[0].title, '状态忙后自动保存');
+  const originalBusyRequest = busyWrites[0];
+  assert.ok(JSON.parse(originalBusyRequest).operationId);
+  assert.deepEqual(JSON.parse(originalBusyRequest).operations.map(operation => operation.id), ['N1']);
+  assert.ok(busyWrites.every(value => value === originalBusyRequest));
+  await page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced', null, { timeout: 45000 });
+  assert.equal((await read()).root.children[0].title, '状态忙后自动保存');
+  assert.equal(busyWrites.length, 4); assert.equal(busyWrites[3], originalBusyRequest);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem(`cg-sync-draft:${window.__CG_SERVER.root}:main`) || 'null')), null);
+  await page.screenshot({ path: path.join(output, 'busy-recovered.png'), fullPage: true });
+  await page.unroute('**/api/commit*', busyRoute);
+  recordCheck('temporary-busy-same-operation-automatic-recovery-real-disk');
   // Five simultaneously open frontends share one authoritative map. Only the
   // connected pages with unsaved edits may fence Agent reads; closed tabs must
   // disappear from the live peer set even when their browser draft is dirty.
