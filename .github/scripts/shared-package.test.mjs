@@ -22,3 +22,56 @@ test('共享包只从 Skill 唯一源码导出，核心不依赖具体后端', (
   assert.ok(!sharedPackageFiles('core').some(file => /design-slack|design-cloud-attachments|design-coordinator-compaction/.test(file)));
   assert.throws(() => sharedPackageFiles('unknown'));
 });
+
+function coordinatorProfiles() {
+  const roleMapping = sharedMappings('core').filter(([, target]) => target === 'roles/Coordinator.md');
+  assert.deepEqual(roleMapping, [['Coordinator.md', 'roles/Coordinator.md']]);
+  const source = fs.readFileSync(roleMapping[0][0], 'utf8').replace(/\r\n/g, '\n');
+  const marker = /^## 人工对话模式[ \t]*$/gm;
+  const headings = [...source.matchAll(marker)];
+  assert.equal(headings.length, 1);
+  const heading = headings[0];
+  return {
+    automatic: source.slice(0, heading.index - 1),
+    manual: `# Coordinator\n\n${source.slice(heading.index + heading[0].length).trim()}\n`,
+  };
+}
+
+test('Coordinator 两种独立 profile 保留短概览规则且不增加静态上下文', () => {
+  const profiles = coordinatorProfiles();
+  assert.ok(profiles.manual.length < profiles.automatic.length / 2, 'manual must retain the existing compact profile boundary');
+  // 只校验源分发合同与静态大小；文字匹配不能证明真实模型会遵守。
+  for (const [mode, profile] of Object.entries(profiles)) {
+    assert.match(profile, /50–100 字/);
+    assert.match(profile, /通常不超 150 字/);
+    assert.match(profile, /TODO 概览报总数与可识别短名称/);
+    assert.match(profile, /不逐条重复(?:相同)?状态、不附未问 Bug/);
+    assert.match(profile, /每轮一份最终答复/);
+    assert.match(profile, /结论独立成段.*少量短列表.*段间空行/);
+    assert.ok(profile.length <= (mode === 'automatic' ? 2700 : 1280), `${mode} profile must remain smaller than the previous source`);
+  }
+});
+
+test('Coordinator 短回复不裁掉必要事实详细清单风险或真实技术值', () => {
+  for (const profile of Object.values(coordinatorProfiles())) {
+    assert.match(profile, /保留必要事实和不确定性/);
+    assert.match(profile, /完整清单、详情或必要风险、确认/);
+    assert.match(profile, /完整 brief 和执行提示不裁切/);
+    assert.match(profile, /不附节点、事项、Session、测试 ID 或版本哈希/);
+    assert.match(profile, /明确索要技术编号时再提供/);
+    assert.match(profile, /工具参数、链接\/URL、代码、命令、回执和执行提示保留真实值，不改写内部定位/);
+  }
+});
+
+test('Coordinator 精简只替换回复风格并保留两种模式的审核与结束门禁', () => {
+  const { automatic, manual } = coordinatorProfiles();
+  assert.match(automatic, /等待需求审批回执/);
+  assert.match(automatic, /安排独立 Tester 验证同一提交/);
+  assert.match(automatic, /收到匹配的宿主 `closed` 回报后/);
+  assert.match(automatic, /若项目记忆尚未建立.*不得补造项目目标/);
+  assert.match(manual, /没有待读写或核对时.*replyComplete=true，成功后结束本轮/);
+  assert.match(manual, /进度说明不能设此标记/);
+  assert.match(manual, /等待人对指定版本确认；确认回执后才保存 Main TODO\/Bug/);
+  assert.match(manual, /不创建、派发或恢复执行 Session/);
+  assert.match(manual, /细节、attempt、执行阶段、修改前的状态和版本不足时，读取相关节点或任务/);
+});
