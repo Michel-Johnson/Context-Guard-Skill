@@ -1,0 +1,952 @@
+import { copy, diffTrees, entries, same, validate } from '../scripts/shared/map-model.mjs';
+export const ALL_SESSIONS = '__all__';
+export const workbenchTimeoutMs = method => ['GET', 'HEAD'].includes(String(method).toUpperCase()) ? 30000 : 10000;
+const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', draft: '有未保存草稿', saving: '保存中', busy: '服务暂忙 · 草稿已保留，等待自动重试', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
+function stored(key) { try { const raw = localStorage.getItem(key); if (!raw) return null; try { return JSON.parse(raw); } catch { return { invalidJSON: true, raw }; } } catch { return null; } }
+function diagnostic(error, fallback = '服务暂不可用') {
+  const message = String(error?.message || fallback).replace(/\s+/g, ' ').trim();
+  return error?.code && !message.startsWith(`[${error.code}]`) ? `[${error.code}] ${message}` : message;
+}
+function compact(message, limit = 72) {
+  const text = String(message || '').replace(/\s+/g, ' ').trim();
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+function uniqueId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+const cloneValue = value => value === undefined ? undefined : copy(value);
+function draftSequenceKey(value) {
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return `value:${JSON.stringify(value)}`;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (typeof value.id === 'string' && value.id) return `id:${value.id}`;
+  if (typeof value.archiveKey === 'string' && value.archiveKey) return `archive:${value.archiveKey}`;
+  if (typeof value.operationId === 'string' && value.operationId) return `operation:${value.operationId}`;
+  if (typeof value.from === 'string' && typeof value.to === 'string') return `flow:${value.from}\0${value.to}\0${value.label || ''}`;
+  return null;
+}
+function indexedDraftSequence(values) {
+  const index = new Map();
+  for (const value of values) {
+    const key = draftSequenceKey(value);
+    if (!key || index.has(key)) throw new Error('无法确认列表项的唯一身份');
+    index.set(key, value);
+  }
+  return index;
+}
+function mergeDraftValue(base, local, remote) {
+  if (same(local, remote) || same(base, local)) return cloneValue(remote);
+  if (same(base, remote)) return cloneValue(local);
+  if ((base === undefined || Array.isArray(base)) && Array.isArray(local) && Array.isArray(remote)) {
+    const before = indexedDraftSequence(base || []), left = indexedDraftSequence(local), right = indexedDraftSequence(remote);
+    const shared = [...before.keys()].filter(key => left.has(key) && right.has(key));
+    const sharedSet = new Set(shared);
+    const sharedOrder = index => [...index.keys()].filter(key => sharedSet.has(key));
+    const localOrder = sharedOrder(left), remoteOrder = sharedOrder(right);
+    const localReordered = !same(shared, localOrder), remoteReordered = !same(shared, remoteOrder);
+    if (localReordered && remoteReordered && !same(localOrder, remoteOrder)) throw new Error('草稿和云端分别调整了同一列表顺序');
+    const preferred = localReordered && !remoteReordered ? left : right;
+    const other = preferred === left ? right : left;
+    const order = [...preferred.keys(), ...[...other.keys()].filter(key => !preferred.has(key))];
+    const result = [];
+    for (const key of order) {
+      const prior = before.get(key), mine = left.get(key), theirs = right.get(key);
+      if (mine === undefined && theirs === undefined) continue;
+      if (mine === undefined) {
+        if (prior === undefined) result.push(cloneValue(theirs));
+        else if (!same(prior, theirs)) throw new Error('删除与修改发生重叠');
+      } else if (theirs === undefined) {
+        if (prior === undefined) result.push(cloneValue(mine));
+        else if (!same(prior, mine)) throw new Error('修改与删除发生重叠');
+      } else result.push(mergeDraftValue(prior, mine, theirs));
+    }
+    return result;
+  }
+  const isObject = value => value && typeof value === 'object' && !Array.isArray(value);
+  if ((base === undefined || isObject(base)) && isObject(local) && isObject(remote)) {
+    const before = base || {};
+    return Object.fromEntries([...new Set([...Object.keys(before), ...Object.keys(local), ...Object.keys(remote)])]
+      .map(key => [key, mergeDraftValue(before[key], local[key], remote[key])])
+      .filter(([, value]) => value !== undefined));
+  }
+  throw new Error('草稿和云端修改了同一内容');
+}
+function draftTreeChanges(before, after) {
+  return diffTrees(before, after).length > 0 || !same(before.flows || [], after.flows || []);
+}
+export function reconcileRecoveryDraft(draft, remoteTree, remoteVersion) {
+  if (!draft?.doc?.root?.id || !remoteTree?.id) return { kind: 'conflict' };
+  // A request with an uncertain acknowledgement or an unfinished editor input
+  // must retain its original identity and content for explicit recovery.
+  if (draft.pendingRequest || draft.inputDraft) return { kind: draft.baseVersion === remoteVersion ? 'current' : 'conflict' };
+  try {
+    if (!draftTreeChanges(remoteTree, draft.doc.root)) return { kind: 'stale' };
+    if (!draft.baseTree?.id) return { kind: 'conflict' };
+    if (!draftTreeChanges(draft.baseTree, draft.doc.root)) return { kind: 'stale' };
+    if (draft.baseVersion === remoteVersion) return { kind: 'current' };
+    const root = mergeDraftValue(draft.baseTree, draft.doc.root, remoteTree);
+    validate({ root, flows: root.flows || [] });
+    return draftTreeChanges(remoteTree, root) ? { kind: 'merged', root } : { kind: 'stale' };
+  } catch { return { kind: 'conflict' }; }
+}
+export class WorkbenchSync {
+  constructor(adapter) {
+    this.a = adapter; this.config = window.__CG_SERVER;
+    this.backendInstance = String(this.config?.instance || '');
+    this.id = uniqueId();
+    try { this.id = sessionStorage.getItem('cg-sync-client') || this.id; sessionStorage.setItem('cg-sync-client', this.id); } catch {}
+    this.status = 'loading'; this.ready = false; this.inflight = null; this.pendingRequest = null;
+    this.recoveryBlocked = false;
+    this.startingRecovery = false;
+    this.revision = 0; this.cachedDiff = null;
+    const requestedSession = new URLSearchParams(location.search).get('session') || '';
+    this.composing = false; this.inputDraft = null; this.activeSession = requestedSession || ALL_SESSIONS; this.viewId = requestedSession ? `session:${requestedSession}` : 'main'; this.sessions = []; this.grants = {}; this.captureKey = null;
+    this.manualSession = Boolean(requestedSession);
+    this.pendingSession = requestedSession || '';
+    this.taskStates = new Map();
+    this.projectTaskStates = new Map();
+    this.refreshingAccess = null;
+    this.accessRefreshQueued = false;
+    // Cloud authentication scopes access; a deep link only selects the initial
+    // Session. Local Session-only views keep their existing restriction.
+    this.urlPinned = Boolean(requestedSession) && !this.config?.root?.startsWith('cloud:');
+    this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
+    this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
+    this.cloudBindingNotice = document.createElement('p'); this.cloudBindingNotice.hidden = true;
+    this.cloudBindingNotice.setAttribute('role', 'status'); this.panel.querySelector('#cg-sync-status').after(this.cloudBindingNotice);
+    this.repairButton = document.createElement('button'); this.repairButton.id = 'cg-sync-repair'; this.repairButton.hidden = true;
+    this.panel.querySelector('.sync-actions').append(this.repairButton);
+    if (this.config?.interfaceCapabilities?.deviceLogin && !this.config.root?.startsWith('cloud:')) {
+      const login = document.createElement('button'); login.type = 'button'; login.id = 'cg-cloud-login'; login.textContent = '连接 Cloud';
+      login.onclick = () => this.openCloudLogin(); this.panel.querySelector('.sync-actions').append(login);
+    }
+    this.repairButton.onclick = () => this.repair();
+    if (this.config?.root?.startsWith('cloud:') && this.config.interfaceCapabilities?.sessionCompletion) {
+      this.completeButton = document.createElement('button'); this.completeButton.type = 'button';
+      this.completeButton.id = 'cg-session-complete'; this.completeButton.textContent = '确认当前 Session 完成';
+      this.completeButton.hidden = !this.viewId.startsWith('session:');
+      this.completeButton.onclick = () => this.completeSession();
+      this.panel.querySelector('.sync-actions').append(this.completeButton);
+    }
+    document.getElementById('settings-menu').append(this.panel);
+    this.notice = document.createElement('span'); this.notice.className = 'sync-notice'; this.notice.setAttribute('role', 'status'); this.notice.hidden = true;
+    this.cloudIndicator = document.getElementById('cloud-sync-status');
+    document.getElementById('btn-settings').after(this.notice);
+    this.panel.querySelector('#cg-sync-retry').onclick = () => this.retry();
+    this.panel.querySelector('#cg-sync-initialize').onclick = () => this.initializeCurrent();
+    this.panel.querySelector('#cg-sync-export').onclick = () => this.export();
+    this.panel.querySelector('#cg-sync-import').onclick = () => this.panel.querySelector('#cg-sync-file').click();
+    this.panel.querySelector('#cg-sync-file').onchange = async e => { try { await this.preview(JSON.parse(await e.target.files[0].text())); } catch (err) { this.setStatus(this.status, '导入失败：' + err.message); } e.target.value = ''; };
+    this.panel.querySelector('#cg-sync-reload').onclick = () => this.reload();
+    this.panel.querySelector('#cg-sync-session').onchange = e => { this.selectSession(e.target.value); };
+    window.addEventListener('beforeunload', e => { if (this.dirty()) { this.saveDraft(); e.preventDefault(); e.returnValue = ''; } });
+    window.addEventListener('pagehide', () => {
+      this.disposed = true; clearTimeout(this.heartbeatTimer); clearTimeout(this.reconnectTimer); this.events?.close();
+      if (!this.config || this.dirty()) return;
+      fetch(this.endpoint('/api/presence'), { method: 'POST', headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ clientId: this.id, version: this.version, dirty: false, closing: true }), keepalive: true }).catch(() => {});
+    });
+    window.addEventListener('pageshow', event => { if (event.persisted && this.config) { this.disposed = false; this.scheduleHeartbeat(); this.recoverConnection(); } });
+    this.setStatus(this.config ? 'loading' : 'readonly');
+  }
+  endpoint(route, viewId = this.viewId) {
+    const endpoint = `${this.config?.apiBase || ''}${route}`;
+    if (!route.startsWith('/api/')) return endpoint;
+    return `${endpoint}${endpoint.includes('?') ? '&' : '?'}view=${encodeURIComponent(viewId || 'main')}`;
+  }
+  bootstrapEndpoint() { return this.config?.apiBase ? this.endpoint('/bootstrap') : '/__context_guard/bootstrap'; }
+  async call(route, body, method = body === undefined ? 'GET' : 'POST', viewId = this.viewId) {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetch(this.endpoint(route, viewId), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: payload, cache: 'no-store', signal: AbortSignal.timeout(workbenchTimeoutMs(method)) });
+      if (response.status === 401) throw Object.assign(new Error('登录已失效，请重新登录；草稿已保留'), { code: 'UNAUTHORIZED', serverResponse: true });
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用，未收到有效响应；草稿已保留');
+      let result;
+      try { result = await response.json(); } catch { throw new Error('响应不完整；保留原请求等待重试'); }
+      if (!response.ok) {
+        // The lock rejected this exact commit before applying it. Replaying its
+        // stable operation ID is safe; a dead-owner recovery guard is not.
+        if (route === '/api/commit' && method === 'POST' && body?.operationId && attempt < 2 &&
+          result.error?.code === 'STATE_BUSY' && result.error.message === 'Shared state is busy; preserve lock and retry') {
+          await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+          continue;
+        }
+        const { message: _message, ...details } = result.error || {};
+        const e = new Error(diagnostic(result.error, '请求失败'));
+        Object.assign(e, details, { serverResponse: true, retryableBusyCommit:
+          route === '/api/commit' && method === 'POST' && !!body?.operationId &&
+          result.error?.code === 'STATE_BUSY' && result.error.message === 'Shared state is busy; preserve lock and retry' }); throw e;
+      }
+      return result;
+    }
+  }
+  operations() {
+    if (!this.ready) return [];
+    if (!this.cachedDiff || this.cachedDiff.revision !== this.revision) {
+      const current = this.a.getRoot(), operations = diffTrees(this.baseTree, current);
+      if (!same(this.baseTree.flows || [], current.flows || [])) operations.push({ type: 'document', fields: { flows: copy(current.flows || []) } });
+      this.cachedDiff = { revision: this.revision, operations };
+    }
+    return this.cachedDiff.operations;
+  }
+  dirty() { return !!this.inputDraft || this.composing || !!this.inflight || !!this.pendingRequest || this.operations().length > 0; }
+  async completeSession() {
+    if (!this.completeButton || this.completeButton.disabled) return;
+    this.completeButton.disabled = true;
+    try {
+      if (this.dirty() || !this.ready || !this.viewId.startsWith('session:')) throw new Error('请先同步并审核当前 Session 地图');
+      const viewId = this.viewId;
+      if (this.completionRequest && this.completionRequest.viewId !== viewId) throw new Error('上一 Session 完成请求结果待确认，请先返回该 Session 重试');
+      if (!this.completionRequest) {
+        const publication = await this.call('/api/publication', undefined, 'GET', viewId);
+        if (viewId !== this.viewId || this.dirty() || publication.sessionVersion !== this.version) throw new Error('地图已变化，请重新读取并审核');
+        if (!confirm('已审核当前 Session 地图并确认完成？后续修改将使本次完成证明失效。')) return;
+        this.completionRequest = { viewId, body: { operationId: uniqueId(), sessionId: publication.sessionId,
+          generation: publication.generation, sessionVersion: publication.sessionVersion, sourceCommit: publication.sourceCommit } };
+      }
+      await this.call('/api/session-completion', this.completionRequest.body, 'POST', viewId);
+      this.completionRequest = null;
+      this.setStatus(this.status, '完成已确认；发布仍须通过 Main、CI 和任务门禁');
+      await this.refreshAccess();
+    } catch (error) {
+      if (error.serverResponse) this.completionRequest = null;
+      this.setStatus(this.status, error.message);
+    } finally { this.completeButton.disabled = false; }
+  }
+  legacyDeliveryEntries() {
+    const prefix = `cg-delivery:${this.config?.root}:`;
+    const entries = [];
+    try {
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key?.startsWith(prefix)) entries.push({ key, raw: localStorage.getItem(key) });
+      }
+    } catch { return null; }
+    return entries;
+  }
+  recoveryNotice(fallback) {
+    const issue = this.legacyDeliveryRecovery === null ? '无法检查旧派发记录；请导出浏览器数据后再迁移接口'
+      : this.legacyDeliveryRecovery?.length ? `发现 ${this.legacyDeliveryRecovery.length} 项旧派发记录；请导出核对，系统不会自动重派发` : '';
+    return issue ? [fallback, issue].filter(Boolean).join('；') : fallback;
+  }
+  loadRecovery() {
+    const restored = this.captureKey ? stored(this.captureKey) : null;
+    const legacy = stored('cg-workbench-maps-v16');
+    this.recovery = restored; this.legacy = legacy;
+    this.legacyDeliveryRecovery = this.legacyDeliveryEntries();
+    return !!(restored || legacy || this.legacyDeliveryRecovery?.length || this.legacyDeliveryRecovery === null);
+  }
+  async restoreRecoveryDraft() {
+    const draft = this.recovery;
+    if (!draft || draft.invalidJSON || !draft.doc?.root?.id) return 'none';
+    let candidate = draft;
+    if (draft.pendingRequest && draft.baseVersion !== this.version) {
+      if (!draft.pendingRequest.operationId || !Array.isArray(draft.pendingRequest.operations)) {
+        this.recoveryBlocked = true; return 'conflict';
+      }
+      // A lost response may mean this exact request committed. Replay its
+      // original identity before treating the browser copy as an unsent draft.
+      try {
+        const receipt = await this.call('/api/commit', draft.pendingRequest);
+        if (!receipt.committed) { this.recoveryBlocked = true; return 'conflict'; }
+      } catch (error) {
+        if (error.code !== 'VERSION_CONFLICT') { this.recoveryBlocked = true; return 'conflict'; }
+      }
+      candidate = { ...draft, pendingRequest: null };
+      try {
+        const latest = await this.call('/api/state');
+        if (latest.error || latest.recovery || !latest.doc?.root) { this.recoveryBlocked = true; return 'conflict'; }
+        if (this.dirty()) { this.recoveryBlocked = true; return 'conflict'; }
+        this.doc = latest.doc; this.version = latest.version; this.source = latest.source || null;
+        this.a.apply(this.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.revision++;
+      } catch { this.recoveryBlocked = true; return 'conflict'; }
+    }
+    const reconciliation = reconcileRecoveryDraft(candidate, this.baseTree, this.version);
+    if (reconciliation.kind === 'stale') {
+      try { localStorage.removeItem(this.captureKey); }
+      catch { this.recoveryBlocked = true; return 'conflict'; }
+      this.recovery = null; this.recoveryBlocked = false;
+      return 'stale';
+    }
+    if (reconciliation.kind === 'conflict') { this.recoveryBlocked = true; return 'conflict'; }
+    this.recoveryBlocked = false;
+    const draftTree = reconciliation.kind === 'merged' ? reconciliation.root : copy(candidate.doc.root);
+    const draftFlows = Array.isArray(draftTree.flows) ? draftTree.flows
+      : reconciliation.kind === 'current' && Array.isArray(candidate.doc.flows) ? candidate.doc.flows : this.doc.flows || [];
+    this.doc = { ...this.doc, root: draftTree, flows: copy(draftFlows) };
+    this.a.apply(this.doc); this.watchDocument(this.a.getRoot());
+    this.baseTree = reconciliation.kind === 'merged' ? copy(this.baseTree)
+      : candidate.baseTree?.id ? copy(candidate.baseTree) : copy(this.doc.root);
+    this.pendingRequest = reconciliation.kind === 'merged' ? null : candidate.pendingRequest && Array.isArray(candidate.pendingRequest.operations)
+      ? copy(candidate.pendingRequest) : null;
+    this.inputDraft = candidate.inputDraft || null;
+    this.revision++;
+    this.setStatus('draft', reconciliation.kind === 'merged' ? '正在合并旧草稿与云端更新' : '正在恢复草稿');
+    // Flush directly during startup. Calling retry() here can race the freshly
+    // opened EventSource and re-enter start(); flush has the same idempotent
+    // request semantics without that connection-startup cycle.
+    await this.flush();
+    if (['conflict', 'offline', 'error'].includes(this.status)) this.recoveryBlocked = true;
+    if (this.recoveryBlocked) return this.status === 'conflict' ? 'conflict' : 'failed';
+    if (this.dirty() || this.status !== 'synced') return 'pending';
+    return reconciliation.kind === 'merged' ? 'merged' : 'restored';
+  }
+  setStatus(status, message = '') {
+    if (this.serverRecovery && status === 'synced') { status = 'error'; message = this.serverRecovery.message || '服务只读，需要恢复'; }
+    if (!message && this.journal?.message) message = this.journal.message;
+    this.status = status; this.panel.dataset.status = status;
+    this.panel.querySelector('#cg-sync-status').textContent = labels[status] + (message ? ` · ${message}` : '');
+    this.panel.querySelector('#cg-sync-version').textContent = this.version ? this.version.slice(0, 10) : '';
+    this.panel.querySelector('#cg-sync-version').dataset.version = this.version || '';
+    const attention = { readonly: '只读', conflict: '同步冲突', offline: '连接中断', error: '保存失败' }[status]
+      || (this.legacyDeliveryRecovery?.length || this.legacyDeliveryRecovery === null ? '旧交付待核对' : '');
+    /* 静态 htmlpreview 没有服务端：设置里仍记只读，顶栏不要跳出「只读」条。 */
+    this.notice.hidden = !this.config || !attention;
+    this.notice.textContent = attention ? `${attention}${status === 'error' && message ? ` · ${compact(message)}` : ''}` : '';
+    this.notice.title = attention ? this.panel.querySelector('#cg-sync-status').textContent + '；请打开设置中的同步与恢复' : '';
+  }
+  recoveryState(state) {
+    this.serverRecovery = state.recovery || state.error || null;
+    this.journal = state.journal || null;
+    if (this.repairButton) {
+      this.repairButton.hidden = !this.serverRecovery;
+      this.repairButton.textContent = state.recovery?.source === 'journal' ? '保留当前地图并恢复日志（历史有缺口）' : '重读文件并尝试恢复';
+    }
+  }
+  async repair() {
+    try {
+      if (this.dirty()) { this.saveDraft(); this.export(); }
+      const current = await this.call('/api/state');
+      this.recoveryState(current);
+      const result = await this.call('/api/recover', { baseVersion: current.version, acceptJournalGap: current.recovery?.source === 'journal' });
+      this.recoveryState(result);
+      if (result.recovery || result.error) { this.setStatus('error', this.serverRecovery.message); return; }
+      if (this.dirty()) { this.setStatus('conflict', '服务已恢复；旧草稿已保留，请比较后再提交'); return; }
+      await this.reload();
+    } catch (error) { this.setStatus('error', error.message); }
+  }
+  saveDraft() {
+    if (!this.captureKey) return;
+    try {
+      const draft = { project: this.doc.project, baseVersion: this.version, baseTree: this.baseTree, doc: { ...this.doc, root: copy(this.a.getRoot()) }, inputDraft: this.inputDraft, pendingRequest: this.pendingRequest };
+      localStorage.setItem(this.captureKey, JSON.stringify(draft));
+    } catch { this.setStatus('error', '浏览器无法保存恢复副本，请立即导出'); }
+  }
+  changed() {
+    if (!this.ready || !this.config) return;
+    this.revision++;
+    if (!this.dirty()) return;
+    this.saveDraft(); this.presence();
+    if (['conflict', 'offline', 'error', 'busy'].includes(this.status)) return;
+    this.setStatus(this.inflight ? 'saving' : 'draft');
+    clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 100);
+  }
+  async presence(checkpoint) {
+    if (!this.config || this.sessionUnavailable || this.switchingSession) return;
+    try { return await this.call('/api/presence', { clientId: this.id, dirty: this.dirty(), version: this.version, checkpoint }); } catch { this.setStatus('offline'); }
+  }
+  setInputDraft(input) {
+    const hadDraft = !!this.inputDraft;
+    this.inputDraft = input;
+    if (input) this.saveDraft();
+    // An input event must synchronously invalidate an older "synced" indicator.
+    // Keep it invalidated while the DOM change is being folded into operations,
+    // including the short hand-off where the input draft becomes null.
+    if ((input || hadDraft) && !['conflict', 'offline', 'error', 'busy'].includes(this.status)) this.setStatus('draft');
+    this.presence();
+  }
+  async start() {
+    if (!this.config) return false;
+    try {
+      const state = await this.call('/api/state');
+      this.recoveryState(state);
+      this.doc = state.doc; this.version = state.version; this.source = state.source || null; this.captureKey = `cg-sync-draft:${this.config.root}:${this.viewId}`;
+      if (this.viewId.startsWith('session:')) this.pendingSession = '';
+      if (state.error || state.recovery) {
+        // Recovery blocks Map writes, not Session identity. Keep the bound
+        // Session visible so the page never misrepresents a recovery problem as
+        // an unbound workbench.
+        this.connect();
+        await this.refreshAccess();
+        await this.refreshCloudStatus();
+        throw new Error(state.error?.message || state.recovery?.message || '服务需要恢复');
+      }
+      if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
+        const readOnlyMain = this.viewId === 'main' && state.source?.status !== 'local-folder';
+        this.initializationRequired = true;
+        this.panel.querySelector('#cg-sync-initialize').hidden = readOnlyMain;
+        if (readOnlyMain) this.a.pending?.();
+        this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
+        this.setStatus('error', readOnlyMain ? 'main 基线尚未发布；请切换已绑定 Session' : '尚未创建真实地图；可将当前页面设为真实地图');
+        return readOnlyMain;
+      }
+      if (!state.doc?.root) throw new Error('地图根节点无效');
+      this.initializationRequired = false;
+      this.a.apply(state.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.ready = true;
+      const hasRecovery = this.loadRecovery();
+      this.startingRecovery = true;
+      this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
+      // Task stages/results live in the protocol store rather than the map
+      // version. Read them immediately so a fresh page does not show a stale
+      // receipt until the first heartbeat.
+      await this.refreshTaskStatuses().catch(() => {});
+      const recovery = hasRecovery ? await this.restoreRecoveryDraft().catch(() => 'failed') : 'none';
+      const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
+      this.setStatus(recovery === 'conflict' ? 'conflict' : recovery === 'failed' ? 'error' : recovery === 'pending' ? 'draft' : 'synced',
+        this.recoveryNotice(recovery === 'conflict' ? '发现草稿与服务器版本冲突，请导出或导入比较' : recovery === 'failed' ? '草稿恢复失败，已保留副本' : recovery === 'pending' ? '草稿提交尚待页面核对' : recovery === 'stale' ? '旧草稿无未提交差异，已更新本地缓存' : recovery === 'merged' ? '旧草稿与云端的不同修改已合并' : recovery === 'restored' ? '已恢复并确认草稿' : hasRecovery ? '发现旧缓存，请导出或导入比较' : sourceNotice));
+      this.startingRecovery = false;
+      return true;
+    } catch (e) {
+      this.startingRecovery = false;
+      if (e.code === 'UNKNOWN_VIEW' && this.activeSession !== ALL_SESSIONS) {
+        if (!this.config?.root?.startsWith('cloud:')) {
+          this.activeSession = ALL_SESSIONS;
+          this.pendingSession = '';
+          this.viewId = 'main';
+          this.manualSession = false;
+          this.urlPinned = false;
+          this.captureKey = null;
+          return this.start();
+        }
+        this.pendingSession = this.activeSession;
+        this.viewId = 'main';
+        this.captureKey = null;
+        this.ready = false;
+        this.a.pending?.();
+        this.connect();
+        await this.refreshAccess();
+        await this.refreshCloudStatus();
+        this.setStatus('loading', '当前 Session 正在同步到 Cloud');
+        return false;
+      }
+      this.setStatus('error', e.message); return false;
+    }
+  }
+  connect() {
+    this.disposed = false;
+    this.scheduleHeartbeat();
+    this.events?.close();
+    const query = new URLSearchParams({ clientId: this.id }); if (this.config.token) query.set('token', this.config.token);
+    const endpoint = this.endpoint('/api/events');
+    this.events = new EventSource(`${endpoint}${endpoint.includes('?') ? '&' : '?'}${query}`, { withCredentials: true });
+    this.events.addEventListener('state', e => this.receive(JSON.parse(e.data)).catch(err => this.setStatus('error', err.message)));
+    this.events.addEventListener('access', () => this.refreshAccess().catch(err => this.setStatus('error', err.message)));
+    this.events.addEventListener('cloud-sync', e => this.renderCloudStatus(JSON.parse(e.data)));
+    this.events.addEventListener('checkpoint', async e => {
+      const { checkpoint } = JSON.parse(e.data);
+      if (!this.composing && document.activeElement?.isContentEditable) document.activeElement.blur();
+      if (!['conflict', 'offline', 'error'].includes(this.status)) await this.flush();
+      await this.presence(checkpoint);
+    });
+    this.events.onerror = () => this.recoverConnection();
+    this.events.onopen = async () => { if (this.switchingSession) return; if (this.status === 'offline') await this.retry(); else await this.presence(); };
+  }
+  scheduleHeartbeat() {
+    clearTimeout(this.heartbeatTimer);
+    if (this.disposed || this.heartbeatRunning) return;
+    this.heartbeatTimer = setTimeout(async () => {
+      this.heartbeatRunning = true;
+      const view = this.viewId;
+      try {
+        if (this.switchingSession) return;
+        if (this.sessionUnavailable) { await this.refreshAccess(); return; }
+        const head = await this.call('/api/presence', { clientId: this.id, version: this.version, dirty: this.dirty() });
+        if (view !== this.viewId || this.disposed) return;
+        if (this.pendingSession) await this.refreshAccess();
+        else if (await this.retryBusyCommit()) { /* Exact pending commit takes precedence over a newer head notice. */ }
+        else if (this.pendingRequest && this.status === 'offline') await this.retry();
+        else if (head.version !== this.version) await this.receive(head);
+        else if (this.status === 'offline') await this.retry();
+        await this.refreshTaskStatuses().catch(() => {});
+        void Promise.resolve().then(()=>this.a.refreshDeviceApprovals?.()).catch(()=>{});
+      } catch { if (view === this.viewId && !this.disposed) await this.recoverConnection(); }
+      finally { this.heartbeatRunning = false; this.scheduleHeartbeat(); }
+    }, 10000);
+  }
+  async recoverConnection() {
+    if (this.reconnecting || this.disposed || this.switchingSession || this.sessionUnavailable) return;
+    this.reconnecting = true;
+    const view = this.viewId;
+    try {
+      if (this.dirty()) this.saveDraft();
+      this.setStatus('offline', '正在自动重连');
+      const response = await fetch(this.bootstrapEndpoint(), { cache: 'no-store', credentials: 'same-origin', signal: AbortSignal.timeout(workbenchTimeoutMs('GET')) });
+      if (response.status === 401) throw Object.assign(new Error('登录已失效，请重新登录；草稿已保留'), {code:'UNAUTHORIZED'});
+      if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用');
+      const config = await response.json();
+      if (view !== this.viewId || this.disposed) return;
+      if (config.root !== this.config.root || config.apiBase !== this.config.apiBase || config.protocol !== this.config.protocol) throw new Error('后端身份或协议不匹配，保留原连接配置');
+      this.backendInstance = String(config.instance || '');
+      this.config = config;
+      this.connect();
+      await this.retry();
+    } catch (error) {
+      if (view === this.viewId && !this.disposed) this.setStatus(error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error.message);
+    } finally {
+      this.reconnecting = false;
+      clearTimeout(this.reconnectTimer);
+      if (!this.disposed && this.status === 'offline') this.reconnectTimer = setTimeout(() => this.recoverConnection(), 10000);
+    }
+  }
+  async receive(state) {
+    if (this.switchingSession || this.sessionUnavailable) return;
+    if (this.startingRecovery) return;
+    // While a Cloud deep link waits for its Session snapshot, this connection is
+    // intentionally subscribed to Main only so it can receive project access
+    // events. Main state must not make the pending Session look synchronized.
+    if (this.pendingSession) return;
+    if (state.viewId && state.viewId !== this.viewId) return;
+    this.recoveryState(state);
+    if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
+    if (this.initializationRequired) { await this.reload(); return; }
+    if (state.version === this.version) {
+      // Coordinator/CI transitions do not bump the map version.
+      await this.refreshTaskStatuses().catch(() => {});
+      if (!this.dirty() && !this.recoveryBlocked) this.setStatus('synced', state.projection?.status === 'failed' ? '索引失败；Agent须读当前节点' : state.projection?.status === 'pending' ? '索引更新中' : '');
+      return;
+    }
+    if (this.inflight) { this.deferredState = state; return; }
+    if (this.dirty()) { this.saveDraft(); this.setStatus('conflict'); return; }
+    // Only a new state read supersedes another read. Presence/version notices
+    // must not cancel the human's explicit reload while preserving a draft.
+    const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
+    const current = await this.call('/api/state');
+    if (generation !== this.loadGeneration) return;
+    this.recoveryState(current);
+    if (current.error || current.recovery || !current.doc) { this.setStatus('error', current.error?.message || '服务需要恢复'); return; }
+    if (this.dirty()) { this.setStatus('conflict'); return; }
+    this.doc = current.doc; this.version = current.version; this.source = current.source || null; this.a.apply(this.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.revision++;
+    await this.presence(); this.setStatus('synced');
+  }
+  async flush() {
+    clearTimeout(this.timer);
+    if (!this.ready || this.serverRecovery || this.composing || ['conflict', 'offline', 'error', 'busy'].includes(this.status)) return;
+    if (this.inflight) { await this.inflight; if (!this.inflight && !['conflict', 'offline', 'error'].includes(this.status) && this.operations().length) return this.flush(); return; }
+    const operations = this.operations();
+    // A preserved request is authoritative even when the current tree no
+    // longer differs from baseTree (for example, after a crash between the
+    // server commit and the local acknowledgement). Never drop that request
+    // just because the derived diff is empty.
+    if (!this.pendingRequest && !operations.length) { await this.presence(); return; }
+    const sentTree = copy(this.a.getRoot());
+    this.pendingRequest ||= { baseVersion: this.version, operationId: uniqueId(), operations };
+    const request = this.pendingRequest; this.saveDraft(); this.setStatus('saving');
+    this.inflight = (async () => {
+      try {
+        const result = await this.call('/api/commit', request);
+        if (!result.committed) throw new Error('操作未提交，请保留草稿并读取磁盘');
+        this.version = result.version; this.baseTree = sentTree; this.revision++;
+        this.doc = { ...this.doc, root: copy(sentTree) }; this.pendingRequest = null; this.busyCommit = null;
+        this.setStatus('persisted');
+      } catch (e) {
+        this.saveDraft();
+        if (this.deferBusyCommit(e, request)) return;
+        const uncertain = ['TimeoutError', 'AbortError'].includes(e.name);
+        this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : e.serverResponse ? 'error' : 'offline',
+          uncertain ? '请求结果待确认；草稿与原操作编号已保留，重试会核对同一请求' : e.message);
+      }
+    })();
+    await this.inflight; this.inflight = null;
+    if (['conflict', 'offline', 'error', 'busy'].includes(this.status)) return;
+    if (this.operations().length) { this.saveDraft(); return this.flush(); }
+    if (this.deferredState) { const deferred = this.deferredState; this.deferredState = null; await this.receive(deferred); }
+    const acknowledgement = await this.presence();
+    if (acknowledgement?.error || acknowledgement?.recovery) { this.setStatus('error', acknowledgement.error?.message || '服务需要恢复'); return; }
+    if (!this.dirty() && acknowledgement?.synchronized) { localStorage.removeItem(this.captureKey); this.setStatus('synced'); }
+    else this.setStatus('draft');
+  }
+  async retry() {
+    if (this.switchingSession || this.sessionUnavailable) return;
+    if (this.retrying) return this.retrying;
+    this.retrying = this.retryNow();
+    try { return await this.retrying; } finally { this.retrying = null; }
+  }
+  deferBusyCommit(error, request) {
+    if (!error.retryableBusyCommit || !request || request !== this.pendingRequest) return false;
+    if (this.busyCommit?.request !== request || this.busyCommit?.viewId !== this.viewId)
+      this.busyCommit = { request, viewId: this.viewId, attempts: 0 };
+    this.setStatus(this.busyCommit.attempts < 2 ? 'busy' : 'error', this.busyCommit.attempts < 2
+      ? '草稿已保留，将自动核对原保存请求' : '服务仍忙，草稿已保留；请稍后点击重试');
+    return true;
+  }
+  async retryBusyCommit() {
+    const busy = this.busyCommit;
+    if (this.status !== 'busy' || !busy || busy.request !== this.pendingRequest || busy.viewId !== this.viewId ||
+      busy.attempts >= 2 || this.disposed || this.switchingSession || this.sessionUnavailable || this.serverRecovery || this.composing || this.retrying) return false;
+    busy.attempts++;
+    // Existing heartbeat bounds retries; no separate timer or approval replay.
+    await this.retry();
+    return true;
+  }
+  async retryNow() {
+    if (this.inflight) await this.inflight;
+    if (!this.config) return;
+    if (!this.ready) { await this.start(); return; }
+    try {
+      // Reuse precisely the same payload and operationId after uncertain delivery.
+      if (this.pendingRequest) {
+        const result = await this.call('/api/commit', this.pendingRequest);
+        if (!result.committed) throw new Error('操作未提交；请保留草稿后读取磁盘');
+        const current = await this.call('/api/state');
+        this.recoveryState(current);
+        this.version = result.version;
+        // The request may predate later local typing. Never mark that later draft saved.
+        const { applyOperations } = await import('../scripts/shared/map-model.mjs');
+        this.baseTree = applyOperations({ root: this.baseTree }, this.pendingRequest.operations, { kind: 'human', sessionId: 'workbench' }).doc.root;
+        this.pendingRequest = null; this.busyCommit = null; this.revision++;
+        if (current.version !== result.version) { this.setStatus('conflict'); return; }
+      } else {
+        const current = await this.call('/api/state');
+        this.recoveryState(current);
+        if (current.error || current.recovery) throw new Error(current.error?.message || '服务需要恢复');
+        if (current.version !== this.version && this.dirty()) { this.setStatus('conflict'); return; }
+        if (current.version !== this.version) { await this.receive(current); return; }
+      }
+      this.setStatus('draft'); await this.flush();
+      if (!this.dirty()) {
+        const confirmed = { viewId: this.viewId, captureKey: this.captureKey, version: this.version, revision: this.revision };
+        const acknowledgement = await this.presence();
+        if (this.disposed || confirmed.viewId !== this.viewId || confirmed.captureKey !== this.captureKey ||
+          confirmed.version !== this.version || ['conflict', 'offline', 'error', 'busy'].includes(this.status)) return;
+        if (acknowledgement?.error || acknowledgement?.recovery) { this.setStatus('error', acknowledgement.error?.message || '服务需要恢复'); return; }
+        if (acknowledgement?.synchronized && confirmed.revision === this.revision && !this.dirty()) {
+          localStorage.removeItem(confirmed.captureKey); this.setStatus('synced');
+        } else { this.saveDraft(); this.setStatus('draft'); }
+      }
+    } catch (e) {
+      this.saveDraft();
+      if (this.deferBusyCommit(e, this.pendingRequest)) return;
+      const uncertain = ['TimeoutError', 'AbortError'].includes(e.name);
+      if (uncertain) this.saveDraft();
+      this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : uncertain ? 'offline' : 'error',
+        uncertain ? '请求结果待确认；草稿与原操作编号已保留，重试会核对同一请求' : e.message);
+    }
+  }
+  async initializeCurrent() {
+    if (!this.config || !this.initializationRequired) return;
+    const node = copy(this.a.getRoot());
+    if (!node?.id || !node?.title) { this.setStatus('error', '当前页面没有可初始化的地图'); return; }
+    const flows = copy(node.flows || []); delete node.flows;
+    this.setStatus('saving', '正在建立真实地图');
+    try {
+      const operations = [{ type: 'initialize', project: this.doc?.project || node.title, node }];
+      if (flows.length) operations.push({ type: 'document', fields: { flows } });
+      const result = await this.call('/api/commit', { baseVersion: this.version, operationId: uniqueId(), operations });
+      if (!result.committed) throw new Error('地图初始化未提交');
+      this.initializationRequired = false;
+      this.panel.querySelector('#cg-sync-initialize').hidden = true;
+      await this.reload();
+    } catch (e) { this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : 'error', '初始化失败：' + e.message); }
+  }
+  download(value, name) { const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  export() {
+    this.download({ project: this.doc?.project, current: this.ready ? { ...this.doc, root: copy(this.a.getRoot()) } : null, draft: this.captureKey ? stored(this.captureKey) : null, legacy: stored('cg-workbench-maps-v16'), legacyDeliveries: this.legacyDeliveryEntries(), inputDraft: this.inputDraft }, 'context-guard-recovery.json');
+  }
+  async reload() {
+    if (!this.config) return;
+    if (this.dirty()) { this.saveDraft(); this.export(); }
+    const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
+    const current = await this.call('/api/state');
+    if (generation !== this.loadGeneration) {
+      if (this.switchingSession) throw new Error('地图读取已被更新替代，请重试');
+      return;
+    }
+    this.recoveryState(current);
+    if (current.error || current.recovery || !current.doc?.root) {
+      if (this.switchingSession) throw new Error(current.error?.message || current.recovery?.message || '目标地图尚未就绪');
+      const readOnlyMain = this.viewId === 'main' && current.source?.status !== 'local-folder';
+      this.ready = false; this.initializationRequired = true; this.doc = current.doc; this.version = current.version;
+      this.panel.querySelector('#cg-sync-initialize').hidden = readOnlyMain;
+      if (readOnlyMain) this.a.pending?.();
+      if (!this.events) { this.connect(); await this.refreshAccess(); }
+      this.setStatus('error', current.error?.message || current.recovery?.message || (readOnlyMain ? 'main 基线尚未发布' : '地图根节点尚未初始化')); return;
+    }
+    this.initializationRequired = false;
+    this.panel.querySelector('#cg-sync-initialize').hidden = true;
+    this.pendingRequest = null; this.inputDraft = null; this.doc = current.doc; this.version = current.version; this.source = current.source || null;
+    this.a.apply(current.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.revision++; this.ready = true;
+    this.captureKey ||= `cg-sync-draft:${this.config.root}:${this.viewId}`;
+    if (this.switchingSession) return;
+    if (!this.events) { this.connect(); await this.refreshAccess(); }
+    const hasRecovery = this.loadRecovery();
+    await this.presence(); this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.recoveryNotice(this.source?.needsReconcile ? '基线待更新或服务器不可达，保留上次版本' : hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : ''));
+  }
+  async preview(input) {
+    if (!this.config) throw new Error('请在本地 Node 工作台导入');
+    let doc = input.draft?.doc || input.current || input.doc || input;
+    const legacy = input.legacy || input;
+    if (!doc.root && legacy.repos) { const saved = legacy.repos[this.doc.project]; if (saved?.live) doc = { ...this.doc, root: saved.live, project: this.doc.project }; }
+    const preview = await this.call('/api/migration-preview', { doc });
+    const dialog = document.createElement('dialog'); dialog.style.cssText = 'max-width:85vw;max-height:80vh;overflow:auto';
+    const title = document.createElement('h3'); title.textContent = '逐项选择需要导入的差异（默认均不选）'; dialog.append(title);
+    const note = document.createElement('p'); note.textContent = `磁盘与导入副本已备份。共 ${preview.operations.length} 项。未知字段不会被删除。`; dialog.append(note);
+    const selected = [];
+    const choices = preview.operations.flatMap(op => op.type === 'update' ? Object.entries(op.fields).map(([key, value]) => ({ ...op, fields: { [key]: value } })) : [op]);
+    for (const op of choices) { const row = document.createElement('label'); row.style.display = 'block'; const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; row.append(checkbox, document.createTextNode(JSON.stringify(op))); dialog.append(row); selected.push({ op, checkbox }); }
+    const apply = document.createElement('button'); apply.textContent = '提交已选差异';
+    apply.onclick = async () => {
+      const operations = selected.filter(x => x.checkbox.checked).map(x => x.op); if (!operations.length) return;
+      apply.disabled = true;
+      this.setStatus('saving');
+      try { await this.call('/api/commit', { baseVersion: preview.baseVersion, operationId: uniqueId(), operations }); dialog.close(); dialog.remove(); await this.reload(); }
+      catch (e) { note.textContent = e.message; apply.disabled = false; this.setStatus('error', e.message); }
+    };
+    const cancel = document.createElement('button'); cancel.textContent = '取消'; cancel.onclick = () => { dialog.close(); dialog.remove(); };
+    dialog.append(apply, cancel); document.body.append(dialog); dialog.showModal();
+  }
+  async refreshAccess() {
+    if (!this.config) return;
+    if (this.refreshingAccess) { this.accessRefreshQueued = true; return this.refreshingAccess; }
+    this.refreshingAccess = (async () => {
+      do {
+        this.accessRefreshQueued = false;
+        await this.refreshAccessNow();
+      } while (this.accessRefreshQueued);
+    })();
+    try { return await this.refreshingAccess; } finally { this.refreshingAccess = null; }
+  }
+  async refreshAccessNow() {
+    if (this.completeButton) this.completeButton.hidden = !this.viewId.startsWith('session:');
+    const data = await this.call('/api/access'); const select = this.panel.querySelector('#cg-sync-session');
+    this.project = data.project || this.project || null;
+    const received = (data.sessions || []).map(item => typeof item === 'string' ? { id: item, name: '', platform: 'unknown', status: 'active', lastSeen: '' } : item);
+    const sessions = this.urlPinned
+      ? received.filter(item => item.id === this.activeSession || item.id === this.pendingSession)
+      : [...new Map(received.map(item => [item.id, item])).values()];
+    this.grants = this.urlPinned ? (data.grants || {}) : { ...this.grants, ...(data.grants || {}) };
+    const current = sessions.find(item => item.id === this.activeSession);
+    if (current && this.activeSession !== ALL_SESSIONS && this.config?.root?.startsWith('cloud:')) {
+      const publication = await this.call('/api/publication').catch(() => null);
+      if (publication?.status === 'ready') {
+        const result = await this.call('/api/publication', {});
+        if (result?.committed) {
+          this.activeSession = ALL_SESSIONS;
+          this.viewId = 'main';
+          this.sessionUnavailable = false;
+          this.events?.close(); this.events = null;
+          const url = new URL(location.href);
+          url.searchParams.delete('session');
+          history.replaceState(null, '', url);
+          setTimeout(() => this.reload().catch(error => this.setStatus('error', error.message)), 0);
+          return;
+        }
+      }
+    }
+    // A browser belongs to the Session explicitly present in its URL or selected
+    // by the human. Activity in another task must never silently switch maps.
+    if (this.pendingSession && current) {
+      const target = this.pendingSession;
+      this.pendingSession = '';
+      this.activeSession = target;
+      this.events?.close(); this.events = null;
+      this.viewId = `session:${target}`; this.captureKey = null;
+      setTimeout(() => this.reload().catch(error => this.setStatus('error', error.message)), 0);
+      return;
+    }
+    if (this.activeSession !== ALL_SESSIONS && !current) {
+      if (this.config?.root?.startsWith('cloud:')) {
+        const publicationView = this.pendingSession ? `session:${this.pendingSession}` : this.viewId;
+        const publication = await this.call('/api/publication', undefined, 'GET', publicationView).catch(() => null);
+        if (publication?.status === 'published') {
+          this.activeSession = ALL_SESSIONS;
+          this.viewId = 'main';
+          this.sessionUnavailable = false;
+          this.events?.close(); this.events = null;
+          const url = new URL(location.href);
+          url.searchParams.delete('session');
+          history.replaceState(null, '', url);
+          setTimeout(() => this.reload().catch(error => this.setStatus('error', error.message)), 0);
+          return;
+        }
+      }
+      if (!this.pendingSession) {
+        // Keep the canvas and its identity together. A disappearing Session is
+        // unavailable, not an implicit request to edit the Main map.
+        this.events?.close(); this.events = null;
+        this.sessionUnavailable = true;
+        clearTimeout(this.reconnectTimer);
+        this.a.setAccess([], this.activeSession, null, false, this.project?.main || null);
+        this.setStatus('error', '当前 Session 已不可用；请切换主工作台或其他 Session');
+      }
+    }
+    if (current && this.sessionUnavailable) {
+      this.sessionUnavailable = false;
+      this.setStatus('offline', 'Session 已恢复，正在核对未保存内容');
+      this.connect();
+    }
+    const unavailableMeta = this.activeSession !== ALL_SESSIONS && !current && !this.pendingSession
+      ? { ...(this.sessions.find(item => item.id === this.activeSession) || { id: this.activeSession, name: '当前 Session' }), bindingState: 'unavailable', status: 'unavailable' } : null;
+    if (unavailableMeta) sessions.push(unavailableMeta);
+    const pendingMeta = this.pendingSession && !current
+      ? { id: this.pendingSession, name: '当前 Session', platform: 'agent', status: 'syncing', bindingState: 'pending', lastSeen: '' }
+      : null;
+    this.sessions = pendingMeta ? [...sessions, pendingMeta] : sessions;
+    const all = document.createElement('option'); all.value = ALL_SESSIONS; all.textContent = '主工作台 · 全部 Session';
+    const pending = this.pendingSession && !current ? (() => {
+      const option = document.createElement('option'); option.value = this.pendingSession; option.textContent = '当前 Session · 同步中'; option.disabled = true; return option;
+    })() : null;
+    const options = [...(this.urlPinned ? [] : [all]), ...(pending ? [pending] : []), ...sessions.map(item => {
+      const option = document.createElement('option'); option.value = item.id;
+      option.disabled = item.bindingState === 'unavailable';
+      const displayName = [item.name || `${item.platform || 'Agent'} Session`, item.worktreeName, item.branch].filter(Boolean).join(' · ');
+      option.textContent = displayName; option.title = `${item.worktreeRoot || ''}\n${item.bindingState || 'bound'}`; return option;
+    })];
+    select.replaceChildren(...options); select.disabled = false; select.value = this.activeSession;
+    const active = sessions.find(item => item.id === this.activeSession) || null;
+    this.a.setAccess(active && !unavailableMeta ? this.grants?.[this.activeSession]?.nodes || [] : [], this.activeSession, active, this.activeSession === ALL_SESSIONS, this.project?.main || null);
+  }
+  renderCloudStatus(status) {
+    const bindingLabel = status?.configured && status.status === 'conflict'
+      ? status.reason === 'session-bound-elsewhere' ? '当前会话绑定旧设备，请新建会话'
+        : status.reason === 'binding-conflict' ? '会话绑定冲突，请新建会话' : ''
+      : '';
+    if (this.cloudBindingNotice) {
+      this.cloudBindingNotice.hidden = !bindingLabel; this.cloudBindingNotice.textContent = bindingLabel;
+    }
+    if (!this.cloudIndicator) return;
+    if (!status?.configured) { this.cloudIndicator.hidden = true; return; }
+    const value = status.status === 'synced' ? 'synced' : ['conflict', 'error'].includes(status.status) ? status.status : 'syncing';
+    this.cloudIndicator.hidden = false; this.cloudIndicator.className = `cloud-sync-status ${value}`;
+    const label = bindingLabel || (value === 'synced' ? '云端已同步' : value === 'syncing' ? '云端同步中' : value === 'conflict' ? '云端同步冲突' : '云端同步失败');
+    this.cloudIndicator.setAttribute('aria-label', label); this.cloudIndicator.title = bindingLabel ? `${label}；旧记录与队列保持不变` : label;
+  }
+  async refreshCloudStatus() {
+    if (this.config?.root?.startsWith('cloud:')) { this.renderCloudStatus({ configured: true, status: this.pendingSession ? 'syncing' : 'synced' }); return; }
+    try { this.renderCloudStatus(await this.call('/api/cloud-sync')); }
+    catch { if (this.cloudIndicator) this.cloudIndicator.hidden = true; }
+  }
+  async selectSession(sessionId) {
+    if (this.switchingSession) return false;
+    if (this.retrying) await this.retrying;
+    if (this.switchingSession) return false;
+    const unavailable = ['unavailable', 'stale', 'closed', 'published', 'expired', 'deleted', 'invalid'];
+    if (sessionId !== ALL_SESSIONS && !this.sessions.some(item => item.id === sessionId && !unavailable.includes(String(item.bindingState || '').toLowerCase()) && !unavailable.includes(String(item.status || '').toLowerCase()))) return false;
+    const privateCloud = this.config?.root?.startsWith('cloud:') && this.config.root !== 'cloud:overview';
+    const nextView = sessionId === ALL_SESSIONS || (!privateCloud && this.project?.kind !== 'git') ? 'main' : `session:${sessionId}`;
+    let previous, previousTree;
+    const previousUrl = location.href;
+    this.switchingSession = true;
+    try {
+    // A missing Cloud snapshot must not flush the current view's private draft.
+    // This read only checks availability; reload still obtains the final baseline.
+    if (privateCloud && nextView.startsWith('session:') && nextView !== this.viewId) {
+      const target = await this.call('/api/state', undefined, 'GET', nextView);
+      if (target.error || target.recovery || !target.doc?.root) throw Object.assign(new Error(target.error?.message || target.recovery?.message || '地图尚未同步'), { code: target.error?.code || (!target.doc?.root ? 'UNKNOWN_VIEW' : undefined) });
+    }
+    if (this.dirty()) {
+      await this.flush();
+      if (this.dirty()) { this.setStatus(this.status, '当前视图仍有未保存内容，暂不能切换'); return false; }
+    }
+    previous = Object.fromEntries(['activeSession', 'pendingSession', 'manualSession', 'viewId', 'captureKey', 'doc', 'version', 'source', 'baseTree', 'ready', 'initializationRequired', 'pendingRequest', 'inputDraft', 'serverRecovery', 'recoveryBlocked', 'revision', 'cachedDiff', 'sessionUnavailable'].map(key => [key, this[key]]));
+    previousTree = copy(this.a.getRoot());
+    this.activeSession = sessionId;
+    this.sessionUnavailable = false;
+    this.pendingSession = '';
+    this.manualSession = true;
+    if (nextView !== this.viewId) {
+      this.events?.close(); this.events = null; this.viewId = nextView; this.captureKey = null;
+      await this.reload();
+    } else await this.refreshAccess();
+    const url = new URL(location.href);
+    if (sessionId === ALL_SESSIONS) url.searchParams.delete('session'); else url.searchParams.set('session', sessionId);
+    history.replaceState(null, '', url);
+    const hasRecovery = this.loadRecovery();
+    this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.recoveryNotice(this.source?.needsReconcile ? '基线待更新，保留上次版本' : hasRecovery ? '发现保留的草稿，请导入比较' : ''));
+    this.connect();
+    setTimeout(() => this.refreshAccess().catch(error => this.setStatus('error', error.message)), 0);
+    return true;
+    } catch (error) {
+      if (previous) {
+        Object.assign(this, previous);
+        history.replaceState(null, '', previousUrl);
+        if (previous.doc) this.a.apply({ ...previous.doc, root: previousTree });
+        this.panel.querySelector('#cg-sync-initialize').hidden = !previous.initializationRequired || (previous.viewId === 'main' && previous.source?.status !== 'local-folder');
+        this.loadGeneration = (this.loadGeneration || 0) + 1;
+        if (!this.sessionUnavailable) this.connect();
+      }
+      this.setStatus('error', error.code === 'UNKNOWN_VIEW' ? '地图尚未同步；原地图和草稿已保留' : '无法切换地图，原地图和草稿已保留：' + error.message);
+      return false;
+    } finally { this.switchingSession = false; }
+  }
+  isAllSessions() { return this.activeSession === ALL_SESSIONS; }
+  grantsFor(sessionId) { return this.grants?.[sessionId]?.nodes || []; }
+  async reviewTask(input) {
+    if (!this.config.interfaceCapabilities?.humanReview || this.viewId !== 'main') throw new Error('请在 Cloud 主工作台验收');
+    const key = `cg-task-review:${this.config.root}:${JSON.stringify(input)}`;
+    const request = stored(key) || { ...input, operationId: uniqueId() };
+    localStorage.setItem(key, JSON.stringify(request));
+    const result = await this.call('/api/task-review', request);
+    if (result.operationId !== request.operationId || result.review?.taskId !== input.taskId || result.review?.resultVersion !== input.resultVersion || result.review?.decision !== input.decision) throw new Error('验收回执不匹配，请重试原操作');
+    localStorage.removeItem(key);
+    return result;
+  }
+  async connectCloud(password) {
+    const id = uniqueId();
+    const result = await this.call('/api/v2/messages', { v: 2, id, type: 'auth.open', payload: { repository: 'auto', clientId: 'local-backend', password } });
+    if (result.id !== id || result.ok !== true) throw new Error('Cloud 没有返回有效连接回执');
+    return result.data;
+  }
+  openCloudLogin() {
+    const dialog = document.createElement('dialog');
+    dialog.innerHTML = '<form><h3>连接 Cloud</h3><p>使用项目已配置的 Cloud 地址，仓库自动识别。</p><label>密码 <input type="password" autocomplete="current-password" required></label><p role="status"></p><button type="submit">连接</button> <button type="button" data-cancel>取消</button></form>';
+    const input = dialog.querySelector('input'), status = dialog.querySelector('[role="status"]'), submit = dialog.querySelector('[type="submit"]');
+    dialog.querySelector('[data-cancel]').onclick = () => dialog.close();
+    dialog.onclose = () => { input.value = ''; dialog.remove(); };
+    dialog.querySelector('form').onsubmit = async event => {
+      event.preventDefault(); if (submit.disabled) return;
+      const password = input.value; input.value = ''; submit.disabled = true; status.textContent = '正在连接…';
+      try { await this.connectCloud(password); status.textContent = '后端已连接，Session 正在自动同步。'; }
+      catch { status.textContent = '连接未确认。请检查密码、Cloud 地址或网络；本地数据未清空。'; }
+      finally { submit.disabled = false; }
+    };
+    document.body.append(dialog); dialog.showModal(); input.focus();
+  }
+  watchTask(taskId, sessionId, state = '') {
+    if (!taskId || !sessionId) return;
+    const previous = this.taskStates.get(taskId) || {};
+    this.taskStates.set(taskId, { ...previous, taskId, sessionId, ...(state ? { state } : {}) });
+  }
+  watchDocument(root) {
+    const pending = [root];
+    while (pending.length) {
+      const value = pending.pop();
+      if (!value || typeof value !== 'object') continue;
+      if (value.dispatch?.task_id && value.dispatch?.session_id) this.watchTask(value.dispatch.task_id, value.dispatch.session_id, value.dispatch.status);
+      pending.push(...Object.values(value));
+    }
+  }
+  taskState(taskId) { return this.taskStates.get(taskId)?.state || ''; }
+  taskResult(taskId) { return this.taskStates.get(taskId)?.result || null; }
+  projectTaskState(kind, nodeId, itemId) { return this.projectTaskStates?.get(`${kind}:${nodeId}:${itemId}`) || null; }
+  async refreshTaskStatuses() {
+    if (!this.config.interfaceCapabilities?.taskDispatch || this.taskStatusRunning) return;
+    this.taskStatusRunning = true;
+    try {
+      const result = await this.call('/api/task-status', { tasks: [...this.taskStates.values()].map(({ taskId, sessionId }) => ({ taskId, sessionId })) });
+      let changed = false;
+      for (const item of result.tasks || []) {
+        const previous = this.taskStates.get(item.taskId);
+        if (!previous || previous.state !== item.state || previous.version !== item.version) changed = true;
+        this.taskStates.set(item.taskId, item);
+      }
+      const projectTasks = new Map();
+      for (const item of result.projectTasks || []) {
+        const key = `${item.kind}:${item.nodeId}:${item.itemId}`, previous = projectTasks.get(key);
+        if (!previous || Date.parse(item.updatedAt) >= Date.parse(previous.updatedAt)) projectTasks.set(key, item);
+      }
+      if (!same([...(this.projectTaskStates || new Map()).entries()], [...projectTasks.entries()])) changed = true;
+      this.projectTaskStates = projectTasks;
+      if (changed) this.a.statusChanged?.();
+    } finally { this.taskStatusRunning = false; }
+  }
+  async toggleAccess(ids) {
+    if (this.activeSession === ALL_SESSIONS) { this.setStatus(this.status, '请先选择具体 Session 再调整授权'); return; }
+    if (!this.activeSession) { this.setStatus(this.status, '尚无真实 Agent 会话，请先启动会话'); return; }
+    try { await this.call('/api/access', { sessionId: this.activeSession, nodes: ids }); await this.refreshAccess(); }
+    catch (e) { this.setStatus(this.status, '授权失败：' + e.message); }
+  }
+}

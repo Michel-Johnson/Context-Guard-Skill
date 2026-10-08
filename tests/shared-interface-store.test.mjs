@@ -1,0 +1,279 @@
+import '../.github/scripts/test-environment.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { withFileLock, pause } from '../scripts/shared/io.mjs';
+import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
+
+const principal = { repositoryId: 'repo-1', deviceId: 'device-1', agentId: 'agent-1' };
+test('IF-040: concurrent stale-owner recovery never removes a new live lock', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-lock-recovery-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const child = spawn(process.execPath, ['-e', 'process.exit(0)'], { windowsHide: true });
+  await once(child, 'exit');
+  const file = path.join(dir, 'state.lock');
+  await fs.writeFile(file, JSON.stringify({ pid: child.pid, host: os.hostname() }));
+  let active = 0, peak = 0, completed = 0;
+  await Promise.all(Array.from({ length: 16 }, () => withFileLock(file, async () => {
+    active++; peak = Math.max(peak, active);
+    await pause(5); completed++; active--;
+  })));
+  assert.equal(peak, 1); assert.equal(completed, 16);
+  await assert.rejects(fs.stat(file), { code: 'ENOENT' });
+});
+const session = { id: 'session-1', generation: 1 };
+const msg = (id, type, payload, scoped = true) => ({ v: 2, id, type, ...(scoped ? { session } : {}), payload });
+async function fixture(t) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-protocol-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const store = new ProtocolStore(dir);
+  const bind = msg('bind', 'session.bind', { sessionId: session.id, worktreeId: 'wt-1', agentId: principal.agentId, expectedBindingVersion: '' }, false);
+  await store.handle(principal, bind, { verifyBinding: () => true });
+  return { dir, store, bind };
+}
+test('Cross-device binding rejection identifies the conflict without exposing or mutating the old Session', async t => {
+  const { dir, store, bind } = await fixture(t);
+  await store.handle(principal, msg('old-object', 'object.put', { kind: 'plan', ref: 'old-plan', baseVersion: '', content: { text: 'Preserve the original plan' } }));
+  await store.handle({ ...principal, role: 'coordinator' }, msg('old-brief', 'brief.submit', { taskId: 'old-task', text: 'Preserve the original task' }));
+  const before = await store.transaction(state => state, { readOnly: true });
+  assert.ok(Object.keys(before.tasks).length > 0);
+  assert.ok(Object.keys(before.objects).length > 0);
+  assert.equal(before.tasks[scopedObjectKey(principal, session, 'task:old-task')].session.id, session.id);
+  const plan = before.objects[scopedObjectKey(principal, session, 'old-plan')];
+  assert.equal(plan.versions[plan.latest].content.text, 'Preserve the original plan');
+  const original = Object.values(before.bindings)[0];
+  const other = { ...principal, deviceId: 'different-device', role: 'device' };
+  for (const allowMigration of [false, true]) for (const expectedBindingVersion of ['', 'stale-version', original.version]) {
+    const request = { ...bind, id: `different-${allowMigration}-${expectedBindingVersion || 'empty'}`,
+      payload: { ...bind.payload, expectedBindingVersion } };
+    await assert.rejects(new ProtocolStore(dir).handle(other, request, { verifyBinding: () => true, allowMigration }), error => {
+      assert.equal(error.code, 'CONFLICT'); assert.equal(error.status, 409);
+      assert.deepEqual(error.details, { reason: 'session-bound-elsewhere' });
+      for (const secret of [original.version, original.deviceId, original.worktreeId]) assert.equal(error.message.includes(secret), false);
+      return true;
+    });
+    const after = await store.transaction(state => state, { readOnly: true });
+    for (const field of ['bindings', 'queues', 'tasks', 'objects']) assert.deepEqual(after[field], before[field], field);
+    for (const [id, receipt] of Object.entries(before.receipts)) assert.deepEqual(after.receipts[id], receipt);
+  }
+  await assert.rejects(store.handle(other, { ...bind, id: 'unverified-other' }, { verifyBinding: () => false }), { code: 'FORBIDDEN' });
+  await assert.rejects(store.handle({ ...other, role: 'executor', agentId: 'wrong-agent' }, { ...bind, id: 'wrong-agent' },
+    { verifyBinding: () => true }), { code: 'FORBIDDEN' });
+  assert.equal((await store.handle(principal, msg('owner-read', 'sync.read', { afterSeq: 0, limit: 50 }))).data.messages.length, 1);
+  await store.handle(other, { ...bind, id: 'new-host-session', payload: { ...bind.payload, sessionId: 'fresh-host-session', worktreeId: 'fresh-worktree' } },
+    { verifyBinding: () => true });
+  const afterFresh = await store.transaction(state => state, { readOnly: true });
+  for (const [id, binding] of Object.entries(before.bindings)) assert.deepEqual(afterFresh.bindings[id], binding);
+  for (const [id, queue] of Object.entries(before.queues)) assert.deepEqual(afterFresh.queues[id], queue);
+});
+
+test('Same-device binding versions and explicitly authorized worktree migration retain existing semantics', async t => {
+  const { store, bind } = await fixture(t);
+  const original = await store.registeredBinding(principal, session.id);
+  const same = await store.handle(principal, { ...bind, id: 'same' }, { verifyBinding: () => true });
+  assert.equal(same.data.bindingVersion, original.version);
+  await assert.rejects(store.handle(principal, { ...bind, id: 'stale-same', payload: { ...bind.payload, expectedBindingVersion: 'stale' } },
+    { verifyBinding: () => true }), { code: 'CONFLICT', details: { currentVersion: original.version } });
+  for (const [id, allowMigration, expectedBindingVersion] of [['disabled', false, original.version], ['stale', true, 'stale']]) {
+    await assert.rejects(store.handle(principal, { ...bind, id, payload: { ...bind.payload, worktreeId: 'wt-2', expectedBindingVersion } },
+      { verifyBinding: () => true, allowMigration }), { code: 'CONFLICT', details: { currentVersion: original.version } });
+    assert.deepEqual(await store.registeredBinding(principal, session.id), original);
+  }
+  const moved = await store.handle(principal, { ...bind, id: 'authorized-move', payload: { ...bind.payload, worktreeId: 'wt-2', expectedBindingVersion: original.version } },
+    { verifyBinding: () => true, allowMigration: true });
+  assert.equal(moved.data.session.generation, original.generation + 1);
+  assert.equal((await store.registeredBinding(principal, session.id)).worktreeId, 'wt-2');
+});
+
+test('Native Session creation is human requested, device scoped and durable without duplicate identities', async t => {
+  const { dir, store } = await fixture(t);
+  const human = { ...principal, role: 'human' }, device = { ...principal, role: 'device' };
+  const input = { operationId: 'create-one', templateSessionId: session.id, name: 'New developer' };
+  await assert.rejects(store.requestSessionCreation(device, input), { code: 'FORBIDDEN' });
+  await assert.rejects(store.requestSessionCreation(human, { ...input, command: 'arbitrary shell' }), { code: 'INVALID_ARGUMENT' });
+  const [first, concurrent] = await Promise.all([store.requestSessionCreation(human, input), store.requestSessionCreation(human, input)]);
+  assert.deepEqual(first, concurrent);
+  assert.match(first.sessionId, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(await new ProtocolStore(dir).requestSessionCreation(human, input), first);
+  await assert.rejects(store.requestSessionCreation(human, { ...input, name: 'Different' }), { code: 'ID_REUSED' });
+  assert.deepEqual(await store.pendingSessionCreations(device), [first]);
+  assert.deepEqual(await store.pendingSessionCreations({ ...device, deviceId: 'other' }), []);
+  assert.deepEqual(await store.pendingSessionCreations({ ...device, repositoryId: 'other' }), []);
+  await assert.rejects(store.finishSessionCreation({ ...device, deviceId: 'other' }, { id: first.id }), { code: 'FORBIDDEN' });
+  await assert.rejects(store.finishSessionCreation(device, { id: first.id }), { code: 'CONFLICT' });
+  await store.handle(device, { v: 2, id: 'new-bind', type: 'session.bind', payload: {
+    sessionId: first.sessionId, worktreeId: 'new-worktree', agentId: first.sessionId, expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  const finished = await store.finishSessionCreation(device, { id: first.id });
+  assert.equal(finished.state, 'registered');
+  assert.equal(finished.sessionId, first.sessionId);
+  assert.deepEqual(await new ProtocolStore(dir).finishSessionCreation(device, { id: first.id }), finished);
+  assert.deepEqual(await store.pendingSessionCreations(device), []);
+  await assert.rejects(store.finishSessionCreation(device, { id: first.id, error: 'FAILED' }), { code: 'ID_REUSED' });
+});
+test('Coordinator retries a failed creation with the same execution Session identity', async t => {
+  const { dir, store } = await fixture(t);
+  const coordinator = { ...principal, role: 'coordinator', agentId: 'scheduler:repo-1', creationTemplates: [session.id] };
+  const device = { ...principal, role: 'device' };
+  const input = { operationId: 'task:one', templateSessionId: session.id, name: 'Task one' };
+  const first = await store.requestSessionCreation(coordinator, input);
+  const failed = await store.finishSessionCreation(device, { id: first.id, error: 'NATIVE_START_FAILED' });
+  assert.equal(failed.state, 'failed');
+  await assert.rejects(store.retrySessionCreation({ ...coordinator, agentId: 'other' }, first.id), { code: 'FORBIDDEN' });
+  const retried = await store.retrySessionCreation(coordinator, first.id);
+  assert.equal(retried.state, 'pending');
+  assert.equal(retried.id, first.id);
+  assert.equal(retried.sessionId, first.sessionId);
+  assert.equal(retried.retryCount, 1);
+  assert.equal(retried.lastError, 'NATIVE_START_FAILED');
+  assert.ok(retried.lastFailedAt);
+  assert.deepEqual(await new ProtocolStore(dir).retrySessionCreation(coordinator, first.id), retried);
+  assert.deepEqual(await store.pendingSessionCreations(device), [retried]);
+  await store.handle(device, { v: 2, id: 'retry-bind', type: 'session.bind', payload: {
+    sessionId: first.sessionId, worktreeId: 'recovered-worktree', agentId: first.sessionId, expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  const registered = (await store.sessionCreations({ ...principal, role: 'human' }))[0];
+  assert.equal(registered.state, 'registered');
+  assert.equal(registered.sessionId, first.sessionId);
+});
+test('human task results remain reviewable across binding generations but isolated from Agents', async t => {
+  const { store, dir } = await fixture(t);
+  const human = { ...principal, role: 'human' };
+  const task = { repositoryId: principal.repositoryId, session, id: 'old', stage: 'finished', version: 'result-v1', result: { outcome: 'success', summary: 'Verified result' } };
+  await store.transaction(state => { state.tasks[scopedObjectKey(principal, session, 'task:old')] = task; Object.values(state.bindings)[0].generation = 2; });
+  assert.equal((await store.taskStatus(human, { ...session, generation: 2 }, 'old')).result.summary, task.result.summary);
+  assert.equal((await new ProtocolStore(dir).humanTaskResult(human, session.id, 'old')).version, 'result-v1');
+  await assert.rejects(store.humanTaskResult(principal, session.id, 'old'), { code: 'FORBIDDEN' });
+  await assert.rejects(store.humanTaskResult({ ...human, repositoryId: 'other' }, session.id, 'old'), { code: 'NOT_FOUND' });
+  await assert.rejects(store.taskStatus(principal, { ...session, generation: 2 }, 'old'), { code: 'NOT_FOUND' });
+});
+
+test('IF-006: concurrent retries persist one mutation, one notification and one receipt', async t => {
+  const { store, dir } = await fixture(t);
+  const input = msg('operation', 'object.put', { kind: 'plan', ref: 'p', baseVersion: '', content: {} });
+  let calls = 0;
+  const reduce = (state, p, m, emit) => { calls++; state.objects.p = { saved: true }; emit(msg('notification', 'sync.event', { latestSeq: 1 })); return { version: 'v1' }; };
+  const replies = await Promise.all(Array.from({ length: 8 }, () => store.execute(principal, input, reduce)));
+  assert.equal(calls, 1); replies.forEach(r => assert.deepEqual(r, replies[0]));
+  assert.deepEqual(await new ProtocolStore(dir).execute(principal, input, () => assert.fail('replayed reducer')), replies[0]);
+  await assert.rejects(store.execute(principal, { ...input, payload: { ...input.payload, ref: 'different' } }, reduce), { code: 'ID_REUSED' });
+  const read = await store.handle(principal, msg('read', 'sync.read', { afterSeq: 0, limit: 50 }));
+  assert.equal(read.data.messages.length, 1);
+});
+test('IF-007: failure before commit rolls back state, queue and receipt together', async t => {
+  const { store, dir } = await fixture(t);
+  const input = msg('operation', 'object.put', { kind: 'plan', ref: 'p', baseVersion: '', content: {} });
+  const broken = new ProtocolStore(dir, { beforeCommit: () => { throw new Error('injected disk failure'); } });
+  const reduce = (state, p, m, emit) => { state.objects.p = true; emit(msg('n', 'sync.event', { latestSeq: 1 })); return {}; };
+  await assert.rejects(broken.execute(principal, input, reduce));
+  const before = await store.handle(principal, msg('read-before', 'sync.read', { afterSeq: 0, limit: 50 }));
+  assert.deepEqual(before.data.messages, []);
+  await store.execute(principal, input, reduce);
+  const after = await store.handle(principal, msg('read-after', 'sync.read', { afterSeq: 0, limit: 50 }));
+  assert.equal(after.data.messages.length, 1);
+});
+test('IF-008: out-of-order acknowledgements do not skip unprocessed messages', async t => {
+  const { store } = await fixture(t);
+  await store.execute(principal, msg('produce', 'object.put', { kind: 'plan', ref: 'p', baseVersion: '', content: {} }), (state, p, m, emit) => {
+    for (let i = 1; i <= 3; i++) emit(msg(`n${i}`, 'sync.event', { latestSeq: i })); return {};
+  });
+  const ack = (id, seq) => store.handle(principal, msg(id, 'sync.ack', { items: [{ seq, outcome: 'applied' }] }));
+  assert.equal((await ack('ack-2', 2)).data.ackedSeq, 0);
+  assert.equal((await ack('ack-1', 1)).data.ackedSeq, 2);
+  await assert.rejects(ack('future', 4), { code: 'INVALID_ARGUMENT' });
+  const read = await store.handle(principal, msg('read', 'sync.read', { afterSeq: 0, limit: 1 }));
+  assert.equal(read.data.nextSeq, 1); assert.equal(read.data.hasMore, true);
+  const beat = await store.handle(principal, msg('beat', 'sync.heartbeat', { sessions: [{ ...session, ackedSeq: 0 }] }, false));
+  assert.deepEqual(beat.data.sessions, [{ ...session, ackedSeq: 2, latestSeq: 3 }]);
+});
+
+test('heartbeat isolates stale, unauthorized and ahead-of-server Sessions', async t => {
+  const { store } = await fixture(t);
+  for (const [bad, code] of [
+    [{ ...session, generation: 2, ackedSeq: 0 }, 'STALE_SESSION'],
+    [{ id: 'not-owned', generation: 1, ackedSeq: 0 }, 'FORBIDDEN'],
+    [{ ...session, ackedSeq: 1 }, 'CONFLICT'],
+  ]) {
+    const reply = await store.handle(principal, msg(`mixed-${code}`, 'sync.heartbeat', {
+      sessions: [bad, { ...session, ackedSeq: 0 }],
+    }, false));
+    assert.deepEqual(reply.data.sessions, [{ ...session, ackedSeq: 0, latestSeq: 0 }]);
+    assert.deepEqual(reply.data.rejected, [{ id: bad.id, generation: bad.generation, code }]);
+    await assert.rejects(store.handle(principal, msg(`invalid-${code}`, 'sync.heartbeat', { sessions: [bad] }, false)), { code });
+  }
+});
+
+test('IF-028: coordinator acknowledgement cannot consume the executor delivery', async t => {
+  const { store } = await fixture(t);
+  const coordinator = { ...principal, deviceId: 'cloud', agentId: 'coordinator', role: 'coordinator', bindings: { [session.id]: 'wt-1' } };
+  await store.execute(principal, msg('produce', 'object.put', { kind: 'plan', ref: 'p', baseVersion: '', content: {} }), (_state, _p, _m, emit) => { emit(msg('notice', 'sync.event', { latestSeq: 1 })); return {}; });
+  await store.handle(coordinator, msg('coordinator-ack', 'sync.ack', { items: [{ seq: 1, outcome: 'applied' }] }));
+  const beat = await store.handle(principal, msg('executor-beat', 'sync.heartbeat', { sessions: [{ ...session, ackedSeq: 0 }] }, false));
+  assert.equal(beat.data.sessions[0].ackedSeq, 0);
+  assert.equal(beat.data.sessions[0].latestSeq, 1);
+  const denied = { ...coordinator, bindings: {} };
+  await assert.rejects(store.handle(denied, msg('coordinator-read', 'sync.read', { afterSeq: 0, limit: 50 })), { code: 'FORBIDDEN' });
+});
+
+test('IF-031: immutable read cache observes another writer and cannot mutate stored state', async t => {
+  const { store, dir } = await fixture(t);
+  const initial = await store.immutableState();
+  assert.equal(await store.immutableState(), initial);
+  await assert.rejects(store.transaction(state => { state.format = 2; }, { readOnly: true }), TypeError);
+  const writer = new ProtocolStore(dir);
+  const saved = await writer.handle(principal, msg('external-write', 'object.put', { kind: 'plan', ref: 'new-plan', baseVersion: '', content: { text: 'updated' } }));
+  const read = await store.handle(principal, msg('read-new', 'object.read', { ref: 'new-plan', version: saved.data.version }));
+  assert.equal(read.data.content.text, 'updated');
+  assert.notEqual(await store.immutableState(), initial);
+  await fs.writeFile(store.file, 'corrupt fixture');
+  await assert.rejects(store.immutableState());
+});
+test('IF-009: identities, generations and revoked authorization remain checked on replay', async t => {
+  const { store } = await fixture(t);
+  const input = msg('read', 'sync.read', { afterSeq: 0, limit: 50 });
+  await store.handle(principal, input);
+  await assert.rejects(store.handle({ ...principal, agentId: 'other' }, input), { code: 'FORBIDDEN' });
+  await assert.rejects(store.handle({ ...principal, repositoryId: 'other' }, input), { code: 'FORBIDDEN' });
+  await assert.rejects(store.handle(principal, { ...input, session: { ...session, generation: 2 } }), { code: 'STALE_SESSION' });
+  await assert.rejects(store.handle(principal, input, { authorize: () => { throw new Error('access revoked'); } }));
+  const bind = msg('bad-bind', 'session.bind', { sessionId: 'another', worktreeId: 'wt', agentId: principal.agentId, expectedBindingVersion: '' }, false);
+  await assert.rejects(store.handle(principal, bind, { verifyBinding: async () => false }), { code: 'FORBIDDEN' });
+});
+test('IF-015: objects retain immutable versions and reject stale writes and forged review objects', async t => {
+  const { store, dir } = await fixture(t);
+  const put = (id, baseVersion, content) => store.handle(principal, msg(id, 'object.put', { kind: 'plan', ref: 'plan-1', baseVersion, content }));
+  const first = await put('put-1', '', { text: 'first' });
+  const second = await put('put-2', first.data.version, { text: 'second' });
+  await assert.rejects(put('stale', first.data.version, { text: 'lost update' }), { code: 'CONFLICT' });
+  const restarted = new ProtocolStore(dir);
+  const read = version => restarted.handle(principal, msg(`read-${version}`, 'object.read', { ref: 'plan-1', version }));
+  assert.deepEqual((await read(first.data.version)).data.content, { text: 'first' });
+  assert.deepEqual((await read(second.data.version)).data.content, { text: 'second' });
+  await assert.rejects(read('not-a-version'), { code: 'NOT_FOUND' });
+  await assert.rejects(store.handle(principal, msg('forged', 'object.put', { kind: 'reviewReceipt', ref: 'approval', baseVersion: '', content: { decision: 'approved' } })), { code: 'INVALID_ARGUMENT' });
+});
+test('IF-017: idle heartbeats for 1/10/50 Sessions do not write data or accumulate receipts', async t => {
+  const { dir, store } = await fixture(t);
+  const sessions = [];
+  for (let i = 0; i < 50; i++) {
+    const id = `load-${i}`;
+    await store.handle(principal, msg(`bind-${i}`, 'session.bind', { sessionId: id, worktreeId: 'wt', agentId: principal.agentId, expectedBindingVersion: '' }, false), { verifyBinding: () => true });
+    sessions.push({ id, generation: 1, ackedSeq: 0 });
+  }
+  const before = await fs.readFile(store.file, 'utf8');
+  const readOnly = new ProtocolStore(dir, { beforeCommit: () => assert.fail('heartbeat wrote storage') });
+  for (const count of [1, 10, 50]) {
+    const cpu = process.cpuUsage(), start = performance.now(); let bytes = 0;
+    for (let i = 0; i < 3; i++) {
+      const reply = await readOnly.handle(principal, msg(`beat-${count}-${i}`, 'sync.heartbeat', { sessions: sessions.slice(0, count) }, false));
+      bytes += Buffer.byteLength(JSON.stringify(reply));
+    }
+    t.diagnostic(JSON.stringify({ sessions: count, heartbeatRepliesBytes: bytes, elapsedMs: performance.now() - start, cpu: process.cpuUsage(cpu), rssBytes: process.memoryUsage().rss }));
+  }
+  assert.equal(await fs.readFile(store.file, 'utf8'), before);
+});

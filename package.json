@@ -50,14 +50,13 @@
     "test:real-clients": "node .github/scripts/smoke-real-client.mjs",
     "test:cd": "node .github/scripts/rehearse-cd.mjs",
     "test:sync": "node --test tests/workbench-sync.test.mjs tests/workbench-inbox.test.mjs",
-    "test:browser": "node tests/workbench-browser.mjs && node tests/workbench-journal-recovery-browser.mjs"
+    "test:browser": "node tests/workbench-browser.mjs && node tests/workbench-journal-recovery-browser.mjs",
+    "pack:shared": "node .github/scripts/release-shared.mjs"
   },
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
-    "@michelj/context-guard-core": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v2.0.1/michelj-context-guard-core-2.0.1.tgz",
-    "@michelj/context-guard-workbench": "https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v1.1.5/michelj-context-guard-workbench-1.1.5.tgz",
     "marked": "15.0.12",
     "playwright": "1.62.1"
   }

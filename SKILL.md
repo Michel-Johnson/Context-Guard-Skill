@@ -36,4 +36,4 @@ description: 维护项目记忆，协调 Codex、Cursor、Claude 的编码任务
 | Claude 接收器和投递 | [Claude 运行指南](references/claude-runtime.md) |
 | 记忆文档格式 | [记忆文件系统](references/design/design-memory-filesystem-v1.0.1.md) |
 
-Cloud 部署和 Slack 由独立的 [Cloud 仓库](https://github.com/Michel-Johnson/Context-Guard-Cloud) 维护，本 Skill 不包含 Cloud 服务。共享运行时、UI、角色与参考由固定 Cloud 发布包构建；修改其 Cloud 源码，不编辑生成的安装文件。
+Cloud 是可选的云端扩展：负责托管、账号与权限、多设备服务、云端模型服务和 Slack。Skill 维护 Map、共享协议、工作台 UI、角色提示词、CLI、hooks、本地后端与客户端同步。共享包由 Skill 发布，Cloud 固定版本使用；部署在云端不改变源码归属。

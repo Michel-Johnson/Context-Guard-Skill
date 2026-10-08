@@ -45,7 +45,7 @@ jobs:
       - name: Install fixed dependencies without personal Skill installation
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
       - name: Setup Python for safe archive inspection
@@ -171,7 +171,7 @@ jobs:
       - name: Install fixed dependencies without personal Skill installation
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
       - name: Setup Python
@@ -213,7 +213,7 @@ jobs:
       - name: Install fixed dependencies without personal Skill installation
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Materialize fixed Cloud core and workbench packages
+      - name: 验证 Skill 自有核心与 UI
         run: npm run build:runtime
 
       - name: Setup Python

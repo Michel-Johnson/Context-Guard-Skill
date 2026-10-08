@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<!-- CG_SERVER_BOOT -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Context Guard · 工作台原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="cg-fonts" data-href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<script>
+(function(){
+  // Optional fonts must never delay the workbench scripts or initial rendering.
+  window.addEventListener("load",function(){ const fonts=document.getElementById("cg-fonts"); fonts.href=fonts.dataset.href; });
+  var q = new URLSearchParams(location.search);
+  function flag(name){
+    if(q.has(name)) return true;
+    /* htmlpreview 把 raw GitHub 地址整段塞进 search，q.has 认不出来。 */
+    return new RegExp("[?&#]"+name+"=").test(location.href);
+  }
+  var preview = flag("preview");
+  var t = q.get("theme");
+  if(!(t==="1"||t==="4"||t==="44"||t==="48")){
+    try{ t = localStorage.getItem("cg-workbench-node-theme")||""; }catch(e){ t=""; }
+  }
+  if(t==="4"||t==="44"||t==="48"){
+    document.documentElement.setAttribute("data-node-theme", t);
+  }else{
+    document.documentElement.removeAttribute("data-node-theme");
+    t = "1";
+  }
+  if(preview) document.documentElement.classList.add("theme-preview");
+  window.__CG_NODE_THEME = t;
+  window.__CG_PREVIEW = preview;
+  /* ?phone=1 电脑上看手机布局；?phone=0 强制电脑布局。Safari「桌面网站」会把视口报成 ~980px。 */
+  var phoneMatch = /[?&#]phone=([^&]*)/.exec(location.href);
+  var phoneQ = q.has("phone") ? q.get("phone") : (phoneMatch ? phoneMatch[1] : null);
+  var phoneForce = phoneQ==null ? null : (phoneQ==="0" ? false : true);
+  window.__CG_PHONE_FORCE = phoneForce;
+  var phone = false;
+  if(phoneForce===true) phone = true;
+  else if(phoneForce===false) phone = false;
+  else {
+    try{
+      phone = window.matchMedia("(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)").matches;
+    }catch(e){}
+    if(!phone){
+      var short = Math.min(screen.width||0, screen.height||0);
+      var tall = Math.max(screen.width||0, screen.height||0);
+      var portrait = (window.innerHeight||0) >= (window.innerWidth||0) || tall >= short;
+      var touch = (navigator.maxTouchPoints||0) > 0;
+      try{ touch = touch || window.matchMedia("(pointer: coarse)").matches; }catch(e){}
+      phone = touch && portrait && short > 0 && short <= 820;
+    }
+  }
+  document.documentElement.classList.toggle("cg-phone", !!phone);
+  if(phoneForce!==null) document.documentElement.classList.add("phone-preview");
+})();
+</script>
+<link rel="stylesheet" href="./workbench.css?v=work-tools-v2">
+</head>
+<body>
+<div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
+<div class="phone-preview-banner" id="phone-preview-banner">手机预览 · 只看布局，电脑顶栏不会跟着砍</div>
+<h1 id="repo-title" hidden>Context Guard 架构导图</h1>
+<header class="top">
+  <div class="brand">
+    <nav class="nav-crumbs" id="nav-crumbs"></nav>
+    <div class="repo-menu" id="repo-menu"></div>
+  </div>
+  <div class="top-tools">
+    <details class="workbench-tools" id="workbench-tools">
+      <summary data-i18n="workbenchTools">工作台工具</summary>
+      <div class="workbench-tools-menu">
+    <button type="button" class="dir-toggle" id="dir-toggle" aria-pressed="false" data-dir="lr" data-i18n-title="dirTitle" title="布局" aria-label="布局">
+      <span class="dir-thumb" aria-hidden="true"></span>
+      <span class="dir-opt on" data-dir="lr">左右</span>
+      <span class="dir-opt" data-dir="tb">上下</span>
+    </button>
+    <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
+      <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
+    </div>
+    <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
+    <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑</button>
+    <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
+    <button class="tray-btn" id="btn-todos">TODO (<span id="todo-count">0</span>)</button>
+    <button type="button" class="tray-btn" id="btn-device-approvals" aria-expanded="false" aria-controls="device-approvals" hidden><span data-i18n="deviceApprovals">设备连接申请</span> (<span id="device-approval-count">0</span>)</button>
+      </div>
+    </details>
+    <button type="button" class="tray-btn" id="btn-coordinator" aria-expanded="false" hidden>Coordinator</button>
+    <div class="session-switch" id="session-switch">
+      <button type="button" class="session-chip" id="session-chip" aria-label="切换 Agent 会话" aria-haspopup="listbox" aria-expanded="false" aria-controls="session-menu">
+        <b id="session-name">暂无 Agent 会话</b>
+        <span id="session-status" class="session-status empty" aria-label="未挂载会话"></span>
+      </button>
+      <div class="session-menu" id="session-menu" role="listbox" aria-label="Agent 会话" hidden></div>
+    </div>
+    <span id="cloud-sync-status" class="cloud-sync-status" role="status" aria-label="云端同步状态" hidden></span>
+    <span id="repo-status" class="repo-status" hidden></span>
+  </div>
+  <div class="settings-wrap" id="settings-wrap">
+    <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n-title="settings" title="设置" aria-label="设置">
+      <svg class="gear-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.83 14.16a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.34.68.22l2.39-.96c.5.39 1.04.7 1.63.94l.36 2.54c.05.24.26.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.25.12.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>
+      </svg>
+    </button>
+    <div class="settings-menu" id="settings-menu">
+      <div class="set-block">
+        <div class="set-label" data-i18n="toolsLabel">工具</div>
+        <div class="set-tools">
+          <div class="rel-toggle" id="lens-toggle" data-i18n-title="lensTitle" title="首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。">
+            <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
+          </div>
+          <button type="button" class="tray-btn" id="btn-tray" aria-expanded="false" aria-controls="tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
+          <button type="button" class="tray-btn" id="btn-link-repo" hidden data-i18n="linkRepo" data-i18n-title="linkRepoTitle" title="选带 SKILL.md 的仓库根，改图可以写回 map.json">连接仓库</button>
+        </div>
+      </div>
+      <div class="set-block">
+        <div class="set-label" data-i18n="betaLabel">实验功能</div>
+        <button type="button" class="tray-btn beta-motion-toggle" id="btn-beta-motion" aria-pressed="false" data-i18n-title="betaMotionTitle" title="Beta：启用 0.5 秒地图层级钻取动效">
+          <span class="beta-badge">BETA</span>
+          <span data-i18n="betaMotion">地图钻取动效</span>
+        </button>
+      </div>
+      <div class="set-block">
+        <div class="set-label" data-i18n="themeLabel">主题</div>
+        <div class="theme-picks" id="theme-picks">
+          <button type="button" class="theme-pick" data-theme="1">
+            <i class="swatch" style="background:#fff3bf;border-color:#2d2d2d"></i>
+            <span data-i18n="themeNow">现在这版</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="44">
+            <i class="swatch" style="background:#fff6e5;border-color:#e6d3a8"></i>
+            <span data-i18n="themeCream">奶油描边</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="48">
+            <i class="swatch" style="background:#ffe08a;border-color:#cfc6b4"></i>
+            <span data-i18n="themeWash">淡彩分层</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="4">
+            <i class="swatch" style="background:#fff4c2;border-color:#bbb"></i>
+            <span data-i18n="themeFlat">无阴影扁平</span>
+          </button>
+        </div>
+      </div>
+      <div class="set-block">
+        <div class="set-label" data-i18n="langLabel">语言</div>
+        <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
+          <button type="button" data-lang="zh" class="on">中</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+<div class="first-use" id="first-use">
+  <div class="card" id="first-use-ask">
+    <div class="kicker" data-i18n="firstKicker">演示 · 第一次使用</div>
+    <h2 id="first-use-heading">从当前仓库建立架构图</h2>
+    <p id="first-use-copy">产品里这一步由当前会话的 Agent 真读仓库，把多个视角的候选模块（标题和用途要一眼能看懂）端到这里。你从各视角挑、改名、删减，拼出自己的第一层，选完才上画布。</p>
+    <p data-i18n="firstProduct">第一层定稿后，Agent 再按你选的模块逐个出第二层候选，同样的池子交互，一层层往下。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。</p>
+    <div class="actions">
+      <button class="primary" id="first-use-go" data-i18n="firstGo">看第一层候选（多视角）</button>
+      <button class="quiet" id="first-use-empty" data-i18n="firstEmpty">仓库几乎是空的</button>
+    </div>
+  </div>
+  <div class="card wide" id="first-use-cuts" hidden>
+    <div class="kicker" data-i18n="cutKicker">Agent 已读仓 · 请你定第一层</div>
+    <h2 data-i18n="cutHeading">候选池不可用</h2>
+    <p data-i18n="cutCopy">没有读到 .codex/context/l1-candidates.json。请让 Agent 先真读仓生成候选文件，或在设置里用「第一层候选」进入画布搁板模式。</p>
+    <div class="actions">
+      <button class="quiet" id="first-use-cut-back" data-i18n="cutBack">返回</button>
+    </div>
+  </div>
+  <div class="card" id="first-use-work" hidden>
+    <div class="kicker" data-i18n="workKicker">演示中 · 未调用 Agent</div>
+    <h2 data-i18n="workHeading">正在播放预置的分析过程</h2>
+    <p data-i18n="workCopy1">浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
+    <ul class="analyze-log" id="analyze-log"></ul>
+    <pre class="arch-md" id="analyze-md" hidden></pre>
+    <p data-i18n="workCopy2">下面的笔记是预置演示稿。真做时先商量第一层怎么切，定了再往下拆；卡名必须一眼能看懂。演示里第一页仍是定稿后的 4–8 张主干。这不是这次点击实时读仓得到的。</p>
+  </div>
+</div>
+
+<div id="viewport">
+  <div id="world">
+    <svg id="links"></svg>
+    <div id="nodes"></div>
+    <div id="currents"></div>
+    <div id="flow-labs"></div>
+  </div>
+</div>
+<div id="dot-hint" hidden role="tooltip"></div>
+<dialog id="device-approvals" class="device-approvals" aria-labelledby="device-approvals-title">
+  <div class="tray-head"><h3 id="device-approvals-title" data-i18n="deviceApprovals">设备连接申请</h3><button type="button" id="device-approvals-close" data-i18n-title="deviceApprovalsClose" aria-label="关闭设备连接申请">×</button></div>
+  <p data-i18n="deviceApprovalScope">仅允许你发起的连接：读取本项目 Main、读写自身 Session；不授予管理或 Main 发布权限。</p>
+  <p role="status" id="device-approvals-status"></p>
+  <div id="device-approval-list"></div>
+  <button type="button" id="device-approvals-refresh" data-i18n="deviceApprovalsRefresh">刷新申请</button>
+</dialog>
+
+<div class="tray" id="tray" role="region" aria-labelledby="tray-title">
+  <div class="tray-head">
+    <h3 id="tray-title" data-i18n="trayTitle">已取消的提议</h3>
+    <button type="button" id="tray-close" data-i18n-title="trayClose" aria-label="关闭已取消的提议" title="关闭已取消的提议">×</button>
+  </div>
+  <p class="hint" data-i18n="trayHint">已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。</p>
+  <ul id="tray-list"></ul>
+</div>
+
+<aside class="bug-panel" id="bug-panel">
+  <h3 id="work-panel-title" data-i18n="openBugs">Bug 处理状态</h3>
+  <ul id="bug-panel-list"></ul>
+</aside>
+
+<div class="drawer-split" id="drawer-split" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="splitTitle" title="拖动调整检查器宽度，双击恢复"></div>
+<aside class="drawer" id="detail"></aside>
+
+<script src="./workbench-data.js?v=bug-claim"></script>
+<script src="./workbench-app.js?v=work-tools-v2"></script>
+</body>
+</html>

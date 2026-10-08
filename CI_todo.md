@@ -1390,3 +1390,9 @@ pending independent gates.
 - [x] Executor 最终一次 Node 22.18.0 `npm run test:browser` 两入口实际退出 0：工作台 55 checks、errors 为空，Journal recovery 通过。新 1.1.4 候选包及授权产品源码未变，没有重跑 441 项或完整本地 CD；前述所有失败仍保留。
 - [ ] 独立 Tester：复核最终 Browser 两入口和同一 `a9d4dd9f` 候选包的原 fresh/upgrade 阶段，复用已验证的官方不可变 0.6.4 基线；随后精确 PR/Main/tag Required 和官方 npm CD 必须全部满足，仍未完成个人安装与真实入口交付。
 - [x] 独立受影响验收：最终 browser SHA256 `40fde957ca9e3b62297e47da667ee607919c208743ddd7050fe9d127728d11f2`，Node 22 正式两入口实际退出 0，55 checks、errors 为空、body/cleanup/passed 均 true，Journal 通过；同一新 `a9d4dd9f` 制品的原 fresh/upgrade 阶段分别退出 0、各保留 300 秒限制，核对基线摘要/SRI、三客户端与个人设置/context/第三方 Hooks 保留。源码/锁/生成物/制品指纹前后相同，未重跑 441 用例、打包或基线下载。报告 `temp/tester-skill065-shared114-independent-acceptance-20261007.md`；Browser 日志 SHA256 `bc2d28d02305117c7732da179ebf7084f44a720caf70a040aa31e658e63f88cd`，安装升级日志 `0eab1bbd488e706e87bf85862877cb7164d765d8f8268c982451b82693a8daf2`。原失败记录不变；PR/Main/tag、官方 npm 和实际个人安装仍另行收口。
+
+## CORE-OWNER-01：核心与 UI 归属 Skill
+
+- 用户批准两仓库依赖反转；源码迁移及独立打包进行中。
+- 待验证：共享包白名单与安全扫描、Skill 独立安装/本地工作台、Cloud 固定包消费、双方 Required、安装后 doctor。
+- 不迁移用户数据，不部署生产；原生 Hook 信任与实际触发仍须分别验收。

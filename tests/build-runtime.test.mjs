@@ -4,127 +4,52 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-
 const exec = promisify(execFile);
-const builder = fileURLToPath(new URL('../bin/build-runtime.mjs', import.meta.url));
-const releaseURL = (name, version) => `https://github.com/Michel-Johnson/Context-Guard-Cloud/releases/download/shared-v${version}/michelj-${name.split('/')[1]}-${version}.tgz`;
-async function fixture(t, { declaredVersion = '1.0.0', installedVersion = '1.0.0' } = {}) {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-build-runtime-'));
-  t.after(() => fs.rm(directory, { recursive: true, force: true }));
-  const root = path.join(directory, 'skill'), outside = path.join(directory, 'outside');
-  await fs.mkdir(path.join(root, 'bin'), { recursive: true });
-  await fs.mkdir(outside);
-  await fs.copyFile(builder, path.join(root, 'bin/build-runtime.mjs'));
-  const dependencies = {};
-  for (const [name, files] of [
-    ['@michelj/context-guard-core', { 'example.mjs': 'export const example = 1;\n', 'roles/Tester.md': '# Tester\n' }],
-    ['@michelj/context-guard-workbench', { 'workbench.html': '<!doctype html><title>Test</title>' }],
-  ]) {
-    dependencies[name] = releaseURL(name, declaredVersion);
-    const packageRoot = path.join(root, 'node_modules', name);
-    await fs.mkdir(packageRoot, { recursive: true });
-    await fs.writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({ name, version: installedVersion, type: 'module' }));
-    for (const [file, data] of Object.entries(files)) {
-      await fs.mkdir(path.dirname(path.join(packageRoot, file)), { recursive: true });
-      await fs.writeFile(path.join(packageRoot, file), data);
-    }
+async function fixture(t) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-core-owner-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  for (const dir of ['bin', 'scripts/shared', 'prototype', 'references']) await fs.mkdir(path.join(root, dir), { recursive: true });
+  await fs.copyFile(new URL('../bin/build-runtime.mjs', import.meta.url), path.join(root, 'bin/build-runtime.mjs'));
+  await fs.writeFile(path.join(root, 'package.json'), '{}');
+  for (const file of ['roles.md', 'Coordinator.md', 'Executor.md', 'Tester.md']) await fs.writeFile(path.join(root, file), '# 用户源码\n');
+  for (const [file, name] of [['scripts/shared/package.json', '@michelj/context-guard-core'], ['prototype/package.json', '@michelj/context-guard-workbench']]) {
+    await fs.writeFile(path.join(root, file), JSON.stringify({ name, version: '1.0.0', repository: 'github:Michel-Johnson/Context-Guard-Skill' }));
   }
-  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ devDependencies: dependencies }));
-  return { root, outside,
-    run: async () => {
-      try { const result = await exec(process.execPath, ['bin/build-runtime.mjs'], { cwd: root, windowsHide: true }); return { code: 0, ...result }; }
-      catch (error) { return { code: error.code, stdout: error.stdout, stderr: error.stderr }; }
-    },
-  };
+  const run = () => exec(process.execPath, ['bin/build-runtime.mjs'], { cwd: root, windowsHide: true });
+  return { root, run };
 }
-
-test('runtime builder materializes pinned core and UI with a repeatable manifest', async t => {
-  const f = await fixture(t);
-  assert.equal((await f.run()).code, 0);
-  const first = await fs.readFile(path.join(f.root, '.runtime-generated.json'), 'utf8');
-  assert.equal((await f.run()).code, 0);
-  assert.equal(await fs.readFile(path.join(f.root, '.runtime-generated.json'), 'utf8'), first);
-  assert.equal(await fs.readFile(path.join(f.root, 'Tester.md'), 'utf8'), '# Tester\n');
-  assert.equal(await fs.readFile(path.join(f.root, 'scripts/shared/example.mjs'), 'utf8'), 'export const example = 1;\n');
+test('Skill build validates local source without Cloud packages or rewriting user edits', async t => {
+  const { root, run } = await fixture(t);
+  await run();
+  await fs.writeFile(path.join(root, 'Tester.md'), '# 新修改\n');
+  await fs.writeFile(path.join(root, '.runtime-generated.json'), '{旧生成记录，不再使用}');
+  await run();
+  assert.equal(await fs.readFile(path.join(root, 'Tester.md'), 'utf8'), '# 新修改\n');
+  assert.equal(await fs.readFile(path.join(root, '.runtime-generated.json'), 'utf8'), '{旧生成记录，不再使用}');
+  await assert.rejects(fs.access(path.join(root, 'node_modules')), { code: 'ENOENT' });
 });
-
-test('runtime builder preserves existing source files instead of overwriting them', async t => {
-  const f = await fixture(t);
-  await fs.writeFile(path.join(f.root, 'Tester.md'), '# User source\n');
-  assert.notEqual((await f.run()).code, 0);
-  assert.equal(await fs.readFile(path.join(f.root, 'Tester.md'), 'utf8'), '# User source\n');
-});
-
-test('runtime builder preserves edits to previously generated files', async t => {
-  const f = await fixture(t);
-  assert.equal((await f.run()).code, 0);
-  await fs.writeFile(path.join(f.root, 'Tester.md'), '# User edit\n');
-  assert.notEqual((await f.run()).code, 0);
-  assert.equal(await fs.readFile(path.join(f.root, 'Tester.md'), 'utf8'), '# User edit\n');
-});
-
-test('runtime builder rejects generated manifest path traversal before modifying files', async t => {
-  const f = await fixture(t);
-  await fs.writeFile(path.join(f.outside, 'sentinel'), 'preserve');
-  await fs.writeFile(path.join(f.root, '.runtime-generated.json'), JSON.stringify({ files: { '../outside/sentinel': 'invalid' } }));
-  assert.notEqual((await f.run()).code, 0);
-  assert.equal(await fs.readFile(path.join(f.outside, 'sentinel'), 'utf8'), 'preserve');
-});
-
-test('runtime builder rejects a destination junction before writing outside the Skill root', async t => {
-  const f = await fixture(t);
-  await fs.mkdir(path.join(f.root, 'scripts'));
-  await fs.symlink(f.outside, path.join(f.root, 'scripts/shared'), process.platform === 'win32' ? 'junction' : 'dir');
-  const result = await f.run();
-  assert.notEqual(result.code, 0, result.stdout);
-  assert.deepEqual(await fs.readdir(f.outside), []);
-});
-
-test('runtime builder rejects a linked manifest before reading or overwriting it', async t => {
-  const f = await fixture(t);
-  const outsideManifest = path.join(f.outside, 'manifest.json');
-  const original = JSON.stringify({ files: {} });
-  await fs.writeFile(outsideManifest, original);
-  try { await fs.symlink(outsideManifest, path.join(f.root, '.runtime-generated.json'), 'file'); }
-  catch (error) {
-    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) { t.skip(`File symlinks unavailable: ${error.code}`); return; }
-    throw error;
+test('Skill rejects a restored dependency on Cloud or its own exported packages', async t => {
+  const { root, run } = await fixture(t);
+  for (const field of ['dependencies', 'devDependencies']) for (const name of ['core', 'workbench', 'cloud']) {
+    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ [field]: { ['@michelj/context-guard-' + name]: '1.0.0' } }));
+    await assert.rejects(run(), /must own its core and UI/);
   }
-  assert.notEqual((await f.run()).code, 0);
-  assert.equal(await fs.readFile(outsideManifest, 'utf8'), original);
 });
-
-test('runtime builder rejects installed 1.0.0 when the fixed release requires 1.1.0', async t => {
-  const f = await fixture(t, { declaredVersion: '1.1.0' });
-  const result = await f.run();
-  assert.notEqual(result.code, 0);
-  assert.match(result.stderr, /Unexpected runtime dependency/);
-  assert.equal(await fs.access(path.join(f.root, '.runtime-generated.json')).then(() => true, () => false), false);
+test('Skill build rejects linked source roots without writing outside the checkout', async t => {
+  const { root, run } = await fixture(t);
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-owner-outside-'));
+  t.after(() => fs.rm(outside, { recursive: true, force: true }));
+  await fs.rmdir(path.join(root, 'references'));
+  await fs.symlink(outside, path.join(root, 'references'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(run(), /symlinks or junctions/);
+  assert.deepEqual(await fs.readdir(outside), []);
 });
-
-test('runtime builder upgrades matching fixed releases from 1.0.0 to 1.0.1', async t => {
-  const f = await fixture(t);
-  assert.equal((await f.run()).code, 0);
-  const packageFile = path.join(f.root, 'package.json');
-  const manifest = JSON.parse(await fs.readFile(packageFile, 'utf8'));
-  for (const name of Object.keys(manifest.devDependencies)) {
-    manifest.devDependencies[name] = releaseURL(name, '1.0.1');
-    const descriptorFile = path.join(f.root, 'node_modules', name, 'package.json');
-    const descriptor = JSON.parse(await fs.readFile(descriptorFile, 'utf8'));
-    descriptor.version = '1.0.1';
-    await fs.writeFile(descriptorFile, JSON.stringify(descriptor));
-  }
-  await fs.writeFile(packageFile, JSON.stringify(manifest));
-  await fs.writeFile(path.join(f.root, 'node_modules/@michelj/context-guard-core/example.mjs'), 'export const example = 2;\n');
-  const result = await f.run();
-  assert.equal(result.code, 0, result.stderr);
-  assert.equal(await fs.readFile(path.join(f.root, 'scripts/shared/example.mjs'), 'utf8'), 'export const example = 2;\n');
-  const generated = JSON.parse(await fs.readFile(path.join(f.root, '.runtime-generated.json'), 'utf8'));
-  for (const name of Object.keys(manifest.devDependencies)) {
-    assert.equal(generated.packages[name].version, '1.0.1');
-    assert.equal(generated.packages[name].dependency, releaseURL(name, '1.0.1'));
-  }
+test('Skill build rejects missing and foreign-identity source packages', async t => {
+  const { root, run } = await fixture(t);
+  await fs.writeFile(path.join(root, 'scripts/shared/package.json'), JSON.stringify({ name: 'foreign', version: '1.0.0' }));
+  await assert.rejects(run(), /Invalid source package identity/);
+  await fs.unlink(path.join(root, 'prototype/package.json'));
+  await assert.rejects(run());
 });

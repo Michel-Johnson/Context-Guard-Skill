@@ -2,13 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SecurityError, git, repositoryRoot, commit, isZero, snapshot, history, initialBase, scanPackage, scan } from "./security-lib.mjs";
+import { sharedPackageFiles } from './shared-package-contract.mjs';
 
 export function run(mode, args = [], root = repositoryRoot()) {
   if (mode === "staged") return snapshot(root);
   if (mode === "tree") return snapshot(root, commit(root, args[0] || git(root, ["rev-parse", "HEAD"]).trim()));
   if (mode === "package") {
     if (!args[0]) throw new SecurityError("Provide the exact package tarball.");
-    return scanPackage(args[0]);
+    return scanPackage(args[0], args[1] ? sharedPackageFiles(args[1]) : undefined);
   }
   if (mode === "audit") {
     if (git(root, ["rev-parse", "--is-shallow-repository"]).trim() !== "false") throw new SecurityError("Audit requires full history.");
