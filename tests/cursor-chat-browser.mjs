@@ -10,6 +10,7 @@ import { pause } from '../scripts/shared/io.mjs';
 // Real Chromium and the shipped UI module. Only the native provider boundary
 // is a controlled HTTP fixture; this suite cannot prove vendor compatibility.
 const workspace = fileURLToPath(new URL('../', import.meta.url));
+await fs.mkdir(path.join(workspace, 'temp'), { recursive: true });
 const evidence = await fs.mkdtemp(path.join(workspace, 'temp/cursor-chat-browser-'));
 const checks = [], errors = [], posts = [], held = [];
 let holdFirst = false, losePost = false, acceptLostPost = true, browser, page;
