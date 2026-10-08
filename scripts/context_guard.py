@@ -1425,7 +1425,7 @@ def maybe_open_browser(url: str, enabled: bool) -> None:
 
 
 def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True, raise_errors: bool = False,
-                    session_id: str = "") -> str | None:
+                    session_id: str = "", context_only: bool = False) -> str | None:
     validate_workbench_host(host)
     if os.environ.get("CONTEXT_GUARD_DISABLE_WORKBENCH") == "1":
         return None
@@ -1435,6 +1435,7 @@ def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_
         result = run_node_workbench([
             "workbench", "--root", str(root), "--port", str(port),
             *(["--session", session_id] if session_id else []),
+            *(["--context"] if context_only else []),
             *(["--claim-open"] if should_open else []),
         ])
         url = result["url"]

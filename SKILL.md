@@ -10,7 +10,7 @@ description: 维护项目记忆，协调 Codex、Cursor、Claude 的编码任务
 ## 开始任务
 
 1. 使用宿主真实的 Session ID 和项目 / 工作树路径，不复制浏览器 URL 中的 ID。
-2. 运行 `context-guard workbench --binding-status --root <project> --session <id>`。未绑定时先看 `workbench --list`，再用 `workbench --root <project> --session <id>` 复用项目已有工作台。仅在项目新建、身份不明确或既有 Session 要更换工作树时询问。
+2. 运行 `context-guard workbench --binding-status --root <project> --session <id>`。未绑定时先看 `workbench --list`；Executor 用 `workbench --context --root <project> --session <id>` 复用已有工作台，仅建立按需读取的绑定。Coordinator 使用原入口。项目新建、身份不明确或既有 Session 要更换工作树时才询问。
 3. 首次连接 Cloud，使用 `workbench connect --url <cloud-origin> --root <project> --session <id> --wait`。展示验证 URL / 验证码，由人在浏览器登录；不在聊天索要密码，也不编造项目 ID。已配置 Cloud 时展示其 URL，不另开本地前端。
 4. 读取 [roles.md](roles.md) 和被分配角色的提示词。Coordinator 对齐需求并审核 Plan；Executor 实现、完成模块测试并写编号 CI TODO；独立 Tester 验证跨模块行为。人的批准与最终验收仍是两个不同门禁。
 

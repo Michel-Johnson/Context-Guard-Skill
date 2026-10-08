@@ -148,7 +148,7 @@ export async function health(state) {
 export { loopbackJSON };
 export { canRetryWorkbenchListen };
 
-export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage, repositoryLookup = lookupRepository } = {}) {
+export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage, repositoryLookup = lookupRepository, contextOnly = false } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   const directory = await defaultDirectoryAvailability();
   if (directory.unavailable) {
@@ -421,8 +421,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     return attachments;
   };
   const sourceFile = path.join(project.sharedDir, 'main-source.json');
-  let server, base;
-  async function updateMainBaseline(source, { force = false } = {}) {
+  let server, base, mainDeferred = false;
+  async function updateMainBaseline(source, { force = false, defer = false } = {}) {
     if (project.kind !== 'git') return source;
     const mainDir = path.join(project.sharedDir, 'main');
     const mainFile = path.join(mainDir, 'map.json');
@@ -430,6 +430,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (project.bindingRequired) {
       if (!await readJSON(mainFile, null)) await atomicWrite(mainFile, encode({ v: 1, project: path.basename(project.worktreeRoot), bootstrap: 'pending', flows: [], root: null }));
       return { ...source, status: 'binding-required', needsReconcile: true };
+    }
+    if (defer && await readJSON(memoryConfigPath(project), null)) {
+      if (!await readJSON(mainFile, null)) await atomicWrite(mainFile, encode({ v: 1, project: path.basename(project.worktreeRoot), bootstrap: 'pending', flows: [], root: null }));
+      mainDeferred = true;
+      return { ...source, status: 'context-only', needsReconcile: true };
     }
     try {
       const { snapshot } = await memoryRequest(project, 'main');
@@ -586,6 +591,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (!peers.size) openClaimed = false;
   }
   async function registerSession(input, { connection } = {}) {
+    if (input.contextOnly !== undefined && typeof input.contextOnly !== 'boolean') throw new MapError('INVALID_ARGUMENT', 'contextOnly 必须是布尔值');
     const prepared = await preparedSessionBinding(input);
     if (prepared.previous && !prepared.sameWorktree) {
       const view = `session:${prepared.sessionId}`;
@@ -624,8 +630,14 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
       }
     }
-    const lazyCloudMap = connection && await connection.supports('private-map-heads') ||
-      prepared.binding.role !== 'coordinator' && !!await readJSON(memoryConfigPath(prepared.sessionProject), null);
+    const contextOnly = input.contextOnly === true && prepared.binding.role !== 'coordinator' && !!await readJSON(memoryConfigPath(prepared.sessionProject), null);
+    if (contextOnly) {
+      const directory = sessionMemoryDir(prepared.sessionProject, prepared.sessionId);
+      if (await readJSON(path.join(directory, 'map.json'), null) && !(await readJSON(path.join(directory, 'base-main.json'), null))?.map) {
+        throw new MapError('SESSION_BASELINE_REQUIRED', '旧 Session 缓存尚未确认 Main 基线，请保留草稿并显式处理继承关系', 409);
+      }
+    }
+    const lazyCloudMap = connection && await connection.supports('private-map-heads') || contextOnly;
     const sessionFiles = project.kind === 'git' && !lazyCloudMap && !stores.has(`session:${prepared.sessionId}`) ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
     const actor = await access.register(prepared.sessionId, prepared.binding);
     if (sessionFiles) {
@@ -727,7 +739,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (project.kind === 'git') {
       const mainDir = path.join(project.sharedDir, 'main');
       const mainFile = path.join(mainDir, 'map.json');
-      mainSource = await updateMainBaseline(mainSource, { force: true });
+      mainSource = await updateMainBaseline(mainSource, { force: true, defer: contextOnly });
       await atomicWrite(sourceFile, encode(mainSource));
       mainStore = await createStore('main', project.worktreeRoot, {
         file: mainFile,
@@ -996,6 +1008,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const actor = auth(req, url);
           const viewId = viewFor(actor, url);
           if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus(viewId)); }
+          if (viewId === 'main' && mainDeferred) {
+            mainSource = await updateMainBaseline(mainSource, { force: true });
+            mainDeferred = false;
+            await atomicWrite(sourceFile, encode(mainSource));
+          }
           const activeStore = await storeFor(viewId);
           if (route === '/api/context' && req.method === 'GET') {
             if (actor.kind !== 'agent') throw new MapError('SESSION_REQUIRED', '请通过已绑定的 Agent 读取上下文', 403);

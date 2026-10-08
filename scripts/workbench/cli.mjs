@@ -576,7 +576,7 @@ async function failStart(logPath) {
   const directory = await defaultDirectoryAvailability();
   throw new MapError('START_FAILED', startFailedMessage({ log, directory }), 503);
 }
-export async function ensureServer(root, port = 8877) {
+export async function ensureServer(root, port = 8877, contextOnly = false) {
   root = await resolveProjectRoot(root);
   await initialize(root);
   root = await fs.realpath(root);
@@ -602,7 +602,7 @@ export async function ensureServer(root, port = 8877) {
   }
   await fs.mkdir(path.join(root, '.codex/context/private'), { recursive: true, mode: 0o700 });
   const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a', 0o600);
-  const child = spawn(process.execPath, [ownFile, 'serve', '--root', root, '--port', String(port)], { detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
+  const child = spawn(process.execPath, [ownFile, 'serve', '--root', root, '--port', String(port), ...(contextOnly ? ['--context'] : [])], { detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref(); await log.close();
   const logPath = path.join(root, '.codex/context/private/node-workbench.log');
   const deadline = Date.now() + 12000;
@@ -776,7 +776,7 @@ async function main(args) {
     return memoryStatus(project, session);
   }
   if (command === 'serve') {
-    const running = await startServer({ root, port: Number(opt.port ?? 8877), host: opt.host || '127.0.0.1' });
+    const running = await startServer({ root, port: Number(opt.port ?? 8877), host: opt.host || '127.0.0.1', contextOnly: !!opt.context });
     process.on('SIGTERM', () => running.close()); process.on('SIGINT', () => running.close());
     console.log(JSON.stringify({ url: running.state.url, protocol: 2 })); return;
   }
@@ -842,11 +842,11 @@ async function main(args) {
   }
   const state = opt['workbench-url']
     ? await stateForWorkbenchUrl(project, opt['workbench-url'])
-    : await ensureServer(root, Number(opt.port ?? 8877));
+    : await ensureServer(root, Number(opt.port ?? 8877), contextAction || !!opt.context || !!sessionId && await hasExecutorContext(project, sessionId));
   if (command === 'workbench') {
     if (opt.role && !sessionId) throw new MapError('SESSION_REQUIRED', '--role requires --session', 400);
     if (opt.role && !['executor', 'coordinator'].includes(opt.role)) throw new MapError('INVALID_ROLE', 'Use executor or coordinator', 400);
-    const bindInput = sessionId ? { sessionId, worktreeRoot: root, allowRebind: !!opt.rebind, ...(opt.role ? { role: opt.role } : {}) } : null;
+    const bindInput = sessionId ? { sessionId, worktreeRoot: root, allowRebind: !!opt.rebind, ...(opt.context ? { contextOnly: true } : {}), ...(opt.role ? { role: opt.role } : {}) } : null;
     if (bindInput) await request(state, '/api/session-prepare', { method: 'POST', body: bindInput });
     const cloud = await readJSON(memoryConfigPath(project), null);
     const refreshed = cloud?.url ? { source: null } : await request(state, '/api/project-refresh', { method: 'POST', body: {} });
@@ -873,7 +873,7 @@ async function main(args) {
   if (!maintenance && !(await bindingStatus(project, sessionId)).session.bound) {
     throw new MapError('SESSION_BINDING_REQUIRED', 'Ask the user to confirm this Session binding, then run workbench --session before Map actions', 409, { projectId: project.projectId, sessionId });
   }
-  const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root, allowRebind: false } });
+  const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root, allowRebind: false, ...(contextAction || await hasExecutorContext(project, sessionId) ? { contextOnly: true } : {}) } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
   const contextOptions = { node: opt.node, mount: opt.mount, refresh: !!opt.refresh, diff: !!opt.diff, restart: !!opt.restart,
     offset: opt.offset, limit: opt.limit, acceptChanges: !!opt['accept-changes'], requireClear: !!opt['require-clear'], ifStarted: !!opt['if-started'] };
