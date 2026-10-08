@@ -4,6 +4,8 @@
 
 - [x] `2ccae20` 真实 installed Cursor 工作台创建原生会话并实际生成 multiply 文件，但调用 plan-start 后 sessions.jsonl 的通用 platform:cli 覆盖原生Cursor身份，GET回显返回403；本次验收 failed，关闭本任务backend后原生job为interrupted。失败日志与现场保留，未宣称完成或重建替代会话。
 - [x] 正式公共HTTP加入后到cli活动先实际失败；保留原生平台仅针对已有 codex/cursor/claude 与 cli活动，不从只有cli的记录伪造宿主。新平台/时间/活动测试与HTTP两个目标实际2/2 exit0。Skill候选0.8.2，shared包与依赖不变；独立Review/完整回归/Required/安装后的原Session恢复待完成。
+- [x] PR #464 准确 `44a86ab` Required 与跨平台检查通过，正常合入 main `2ccae20`；该 main 完整 CI `37828684419` 全部通过。从最新 main 官方安装器更新三平台，逐字节核对各 100 文件，core2.2.0/UI1.2.0；旧安装完整副本保留，客户端 Hook/config 哈希未变，未清理用户项目或其他 worktree。共享包精确 43/14 文件安全扫描通过；尚不表示 Cloud 真实任务、安装入口或项目上下文已验收。
+- [x] 合并后 installed Cursor/Claude doctor 实际抛 TypeError：诊断返回项目绑定错误时没有 runtime 字段。新增两项正式安装入口回归先失败，最小字段保护后实际 2/2、exit0；保持 unknown、原有 required 规则和 not-ready 结果，不修复/替换失效绑定。Skill 候选补丁0.8.1，core/UI与依赖不变；此修订的全量、独立Review、Required、main安装待完成。
 
 - [x] 最新 Skill main `1fa3859` 创建独立 `codex/cursor-workbench` 分支；旧目录、个人修改、第三方 Hook 和 PATH 的 Grok `agent` 均未替换。官方 Cursor CLI 2026.10.01-e373342 解压到本任务新建 temp，未执行会删除既有软链接的官方安装器。
 - [x] 本地 ACP 传输、持久投递、同原生会话追问、凭据白名单、本机配置权限及精确工作树约束已实现。协议测试 11/11；配置/持久化测试 3/3；公共 HTTP 权限入口 1/1，均实际退出 0。以上使用合成协议提供方，不是 Cursor 真实模型验收。
