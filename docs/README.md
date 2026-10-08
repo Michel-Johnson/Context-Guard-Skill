@@ -6,6 +6,10 @@
 
 ## 现行规则与接口
 
+设计文档按主题独立编号，不等于产品、API 或记忆格式版本；命名与升版规则见 [RULE.md](../RULE.md#3-实现)。共享设计源码在 Cloud 的 `scripts/shared/references/design/`，安装后为 `references/design/`，不要复制另一份。
+
+新文档布局使用 Cloud core 2.0.0，工作台 UI 仍固定为 1.1.4。构建须从已发布的精确 URL 读取并校验锁文件；源码和包存在不等于安装已验收，实际证据见 CI_todo。
+
 | 要查什么 | 入口 |
 | --- | --- |
 | 当前开发方向、模式和暂缓范围 | [当前开发方向](current-focus.md) |
@@ -14,14 +18,14 @@
 | 源码与生成物边界 | [仓库布局](repository-layout.md) |
 | Skill 安装与 npm 发布 | [npm 发布](npm-release-runbook.md) |
 | 检查标准与责任分工 | [检查怎样算通过](ci.md)、[测试治理](test-governance.md) |
-| Session 同步、连接与旧数据升级 | [Cloud Sync](../references/cloud-sync-interface.md)，由 Skill 维护 |
-| 协议消息、字段和示例 | Cloud 的 [接口设计](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/docs/interface.md)、[机器契约](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/docs/interface-contract-v2.json) |
-| Cloud 和 Slack 部署 | Cloud 的 [部署手册](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/cloud-deployment.md)、[Slack 接入](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/slack-integration.md) |
-| 当前产品设计版本 | [design-current.md](../references/design-current.md)（生成参考） |
-| Map / CLI / 计划与归档 | [工作台接口](../references/workbench-interface.md)（生成参考） |
-| 私有 Main / Session 与发布 | [服务器记忆](../references/server-memory.md)（生成参考） |
-| 节点及事项文件格式 | [Memory Filesystem v2.1](../references/memory-filesystem-v2/README.md)（生成参考） |
-| 记忆定义与维护职责 | [记忆规范](../references/memory-definition.md)（生成参考） |
+| Session 同步、连接与旧数据升级 | [Cloud Sync](../references/design/design-cloud-sync-v1.0.1.md)，由 Skill 维护 |
+| 协议消息、字段和示例 | Cloud 的 [接口设计](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/scripts/shared/references/design/design-interface-v1.2.1.md)、[机器契约](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/docs/interface-contract-v2.json) |
+| Cloud 和 Slack 部署 | Cloud 的 [部署手册](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/cloud-deployment.md)、[Slack 接入](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/scripts/shared/references/design/design-slack-integration-v1.0.0.md) |
+| 当前记忆存储与文件格式 | [当前记忆规范](../references/design/design-memory-current-v1.0.1.md)（生成参考） |
+| Map / CLI / 计划与归档 | [工作台接口](../references/design/design-workbench-interface-v1.0.1.md)（生成参考） |
+| 私有 Main / Session 与发布 | [服务器记忆](../references/design/design-memory-server-v1.0.1.md)（生成参考） |
+| 节点及事项文件格式 | [Memory Filesystem v2.1](../references/design/design-memory-filesystem-v1.0.1.md)（生成参考） |
+| 记忆定义与维护职责 | [记忆规范](../references/design/design-memory-definition-v0.2.0.md)（生成参考） |
 
 在线 Cloud main 文档用于定位源码；判断已安装客户端实际支持什么，须核对
 Skill 锁定的共享包和服务器能力。文档或源码存在，不等于已部署或已验收。

@@ -1,4 +1,16 @@
-# CI TODO
+# CI 待验证
+
+## DOC-LAYOUT-01 · 中文规范与设计文档迁移（2026-10-08）
+
+- [x] 从最新 Skill main `2f6c51a` 迁移治理与中文文档；保留拆仓库边界，不导入旧 Slack / STATE_BUSY 功能改动。
+- [x] RULE 按开发流程组织，设计命名及简短版本号说明放在“实现”；安装清单、帮助路径和同步设计引用随迁移更新。
+- [ ] 初次文档提交未运行功能测试。用户随后要求更新共享包并合入 main：本地不额外运行功能测试，保留合并必需的 GitHub CI，未运行检查不得写为通过。
+- [x] core 固定依赖更新至 `2.0.0`，workbench 保留 `1.1.4`。Cloud PR #18 已合并为 `a475cdb`，PR CI `37731182961` 和 main CI `37731462681` 全部通过。发布包的 40 文件及安全检查通过，公开 Release 的 SHA-256 为 `2547e2d6580173ee22dda87f1dabee0da1bb3165cc402eccbfea944e386b40e3`。
+- [x] 包管理器通过公开 Release URL 生成 SHA-512 锁文件，与实际发布包一致；没有其他依赖变化，不使用本机 Cloud 目录或浮动版本。
+- [ ] 保留首次 Skill CI `37731988582` 失败：Node 用例 439 项，436 通过、1 失败、2 跳过；唯一失败是 `named-workbench.test.mjs` 仍断言已移除的 `references/named-workbench.md`。按已批准的新目录更新精确路径断言，保留其他条件和用例；修订后等待 CI 重验，不把首次失败记为通过。
+- [ ] 第二次 CI `37732247324` 在 Node 22/最低运行时的同一用例中暴露子进程分支还保留旧路径断言；补齐该断言，并静态核查全体测试及包清单的旧路径引用。不删除用例、不放宽匹配、不修改启动行为；再次等待 CI。
+- [ ] 在准确依赖和修订上完成干净构建、精确打包、安装边界、资料读取与 Required；通过后才合入 main。不发布 Skill npm、不部署生产 Cloud。
+- [ ] 合并后从准确 main 构建和更新本机 Skill，核对版本与 doctor；原生 Hook 信任或实际宿主证据不足时明确保留未完成状态。
 
 ## BROWSER-CLEANUP-13: bounded fixture removal and complete-entry results (2026-10-07)
 

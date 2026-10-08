@@ -48,4 +48,6 @@ output/
 /Executor.md
 /Tester.md
 /references/*
-!/references/cloud-sync-interface.md
+!/references/design/
+/references/design/*
+!/references/design/design-cloud-sync-v1.0.1.md

@@ -1,4 +1,4 @@
 interface:
   display_name: "Context Guard"
-  short_description: "Keep folder-scoped project memory"
-  default_prompt: "Use $context-guard. Four stores: sessions, bugs, tasks, map. Jump with FIND.md."
+  short_description: "维护文件夹范围的项目记忆，记录会话、Bug、任务和架构地图"
+  default_prompt: "使用 $context-guard 读取项目 Map，并按真实 Session 的权限记录任务、Bug 和验证结果。"

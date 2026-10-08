@@ -10,7 +10,7 @@
 | `bin/` | Skill 安装器、命令入口及共享运行时构建 |
 | `scripts/workbench/` | 本地服务、绑定、宿主适配、可靠交付和 Session 同步 |
 | `scripts/*.py`、`hooks.json`、`agents/` | 本地 Agent/Hook 工具与宿主配置 |
-| `references/cloud-sync-interface.md` | Skill 维护的当前 Session 同步与旧状态升级说明 |
+| `references/design/design-cloud-sync-v1.0.1.md` | Skill 维护的当前 Session 同步与旧状态升级说明 |
 | `scripts/shared/` | 从固定 Cloud core 包生成；协议、Map/记忆模型、事务与公共 I/O |
 | `prototype/` | 从固定 Cloud workbench 包生成；Cloud 与离线本地工作台共用 UI |
 | 根目录 roles / Coordinator / Executor / Tester | 从 Cloud core 包生成；不维护第二份角色规范 |
