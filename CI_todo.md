@@ -2,6 +2,9 @@
 
 ## CURSOR-WORKBENCH-01 · 分阶段接入（进行中）
 
+- [x] Skill #466/#467 已按准确 Required 合入 main `cee8e4e`，三平台官方 no-hooks 安装各100文件与该main一致，原安装完整副本保留、Hook/config字节不变。Doctor 不再崩溃，但本任务项目缺有效Map/Session/绑定仍未就绪；未重建项目。Cloud #33 当前准确组合完整468项/466pass/0fail/2skip及独立2/2、Required通过并正常合并，不代表生产部署或厂商验收。
+- [x] 安装0.8.2后恢复原Session再次实际403：Cursor加载用户Claude兼容Hook，pre/post-tool-use带platform:claude覆盖真实Cursor身份。官方第三方Hook契约与本地现场一致，未禁用或修改用户Hook。正式注册表及公共HTTP两目标先实际失败；创建来源/宿主/根路径匹配时固定原生平台，冲突创建来源显示unknown，CLI-only与普通Hook不伪造身份；保留活动、停止、时间。候选Skill0.8.3，core/UI与依赖不变；准确回归、独立Review、Required、安装后原Session恢复待完成。
+
 - [x] `2ccae20` 真实 installed Cursor 工作台创建原生会话并实际生成 multiply 文件，但调用 plan-start 后 sessions.jsonl 的通用 platform:cli 覆盖原生Cursor身份，GET回显返回403；本次验收 failed，关闭本任务backend后原生job为interrupted。失败日志与现场保留，未宣称完成或重建替代会话。
 - [x] 正式公共HTTP加入后到cli活动先实际失败；保留原生平台仅针对已有 codex/cursor/claude 与 cli活动，不从只有cli的记录伪造宿主。新平台/时间/活动测试与HTTP两个目标实际2/2 exit0。Skill候选0.8.2，shared包与依赖不变；独立Review/完整回归/Required/安装后的原Session恢复待完成。
 - [x] PR #464 准确 `44a86ab` Required 与跨平台检查通过，正常合入 main `2ccae20`；该 main 完整 CI `37828684419` 全部通过。从最新 main 官方安装器更新三平台，逐字节核对各 100 文件，core2.2.0/UI1.2.0；旧安装完整副本保留，客户端 Hook/config 哈希未变，未清理用户项目或其他 worktree。共享包精确 43/14 文件安全扫描通过；尚不表示 Cloud 真实任务、安装入口或项目上下文已验收。

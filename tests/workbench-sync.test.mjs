@@ -50,6 +50,31 @@ test('CLI activity preserves a known native Session platform without inventing o
   assert.equal((await access.hookSessionRegistry()).find(session => session.id === 'cli-only').platform, 'cli');
 });
 
+test('Native provision identity survives imported hooks without changing their activity or granting another host', async () => {
+  const f = await fixture(); retainedFixtures.add(f.root);
+  const access = await new Access(f.root).init();
+  const append = async events => fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
+  for (const [platform, source, imported] of [['cursor', 'cursor-acp-provision', 'claude'], ['claude', 'claude-runtime-provision', 'cursor']]) {
+    const id = platform + '-native';
+    await append([{ at: '2026-01-01T00:00:01Z', event: 'session-start', session_id: id, platform, source, worktree_root: f.root },
+      { at: '2026-01-01T00:00:02Z', event: 'pre-tool-use', session_id: id, platform: imported },
+      { at: '2026-01-01T00:00:03Z', event: 'stop', session_id: id, platform: imported }]);
+    const item = (await access.hookSessionRegistry()).find(item => item.id === id);
+    assert.equal(item.platform, platform); assert.equal(item.status, 'stopped');
+    assert.equal(item.lastEvent, 'stop'); assert.equal(item.lastSeen, '2026-01-01T00:00:03Z');
+  }
+  await append([{ at: '2026-01-01T00:00:01Z', event: 'session-start', session_id: 'plain-hook', platform: 'claude' },
+    { at: '2026-01-01T00:00:02Z', event: 'pre-tool-use', session_id: 'plain-hook', platform: 'claude' },
+    { at: '2026-01-01T00:00:01Z', event: 'session-start', session_id: 'wrong-source', platform: 'claude', source: 'cursor-acp-provision', worktree_root: f.root },
+    { at: '2026-01-01T00:00:01Z', event: 'session-start', session_id: 'wrong-root', platform: 'cursor', source: 'cursor-acp-provision', worktree_root: path.join(f.root, 'foreign') },
+    { at: '2026-01-01T00:00:02Z', event: 'pre-tool-use', session_id: 'wrong-root', platform: 'claude' }]);
+  const items = new Map((await access.hookSessionRegistry()).map(item => [item.id, item]));
+  for (const id of ['plain-hook', 'wrong-source', 'wrong-root']) assert.equal(items.get(id).platform, 'claude');
+  await append([{ at: '2026-01-01T00:00:01Z', event: 'session-start', session_id: 'conflicting-hosts', platform: 'cursor', source: 'cursor-acp-provision', worktree_root: f.root },
+    { at: '2026-01-01T00:00:02Z', event: 'session-start', session_id: 'conflicting-hosts', platform: 'claude', source: 'claude-runtime-provision', worktree_root: f.root }]);
+  assert.equal((await access.hookSessionRegistry()).find(item => item.id === 'conflicting-hosts').platform, 'unknown');
+});
+
 // Exercise the actual classic-script status functions without starting a browser.
 // Function boundaries are checked explicitly; a missing function is a test failure.
 async function workItemProgressForTest(projectState = 'closed') {
@@ -1419,7 +1444,8 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
   const f = await fixture(), sessionId = randomUUID(), otherSessionId = randomUUID();
   retainedFixtures.add(f.root); // 用户要求保留本地文件；仅关闭本测试服务。
   for (const [id, platform] of [[sessionId, 'cursor'], [otherSessionId, 'claude']]) {
-    await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform, session_id: id, event: 'session-start' }) + '\n');
+    await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform, session_id: id, event: 'session-start',
+      ...(platform === 'cursor' ? { source: 'cursor-acp-provision', worktree_root: f.root } : {}) }) + '\n');
   }
   const running = await startServer({ root: f.root, port: 0 });
   const base = new URL(running.state.url).origin;
@@ -1434,6 +1460,7 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
     };
     const registered = await register(sessionId); await register(otherSessionId);
     await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform: 'cli', session_id: sessionId, event: 'plan-start' }) + '\n');
+    await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform: 'claude', session_id: sessionId, event: 'pre-tool-use' }) + '\n');
     const config = { command: process.execPath, root: f.root, name: 'Cursor fixture' }, input = { sessionId, action: 'configure', config };
     for (const credential of [running.humanToken, registered.token, 'invalid']) assert.equal((await call(credential, input)).status, 401);
     assert.equal((await call(running.state.adminToken, input, { Origin: base })).status, 401);
