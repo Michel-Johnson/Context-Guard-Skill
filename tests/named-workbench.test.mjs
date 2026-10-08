@@ -1168,6 +1168,6 @@ test('START_FAILED mentions the default directory only when that directory cause
   assert.equal(result.code, 'START_FAILED');
   const startupLog = await fs.readFile(path.join(root, '.codex/context/private/node-workbench.log'), 'utf8');
   assert.match(result.message, /The default directory .+ is unavailable/, startupLog);
-  assert.match(result.message, /references\/named-workbench\.md/);
+  assert.match(result.message, /references\/design\/design-workbench-v1\.0\.1\.md/);
   assert.match(result.message, /inspect private\/node-workbench\.log/);
 });
