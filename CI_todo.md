@@ -2,6 +2,9 @@
 
 ## CURSOR-WORKBENCH-01 · 分阶段接入（进行中）
 
+- [x] `2ccae20` 真实 installed Cursor 工作台创建原生会话并实际生成 multiply 文件，但调用 plan-start 后 sessions.jsonl 的通用 platform:cli 覆盖原生Cursor身份，GET回显返回403；本次验收 failed，关闭本任务backend后原生job为interrupted。失败日志与现场保留，未宣称完成或重建替代会话。
+- [x] 正式公共HTTP加入后到cli活动先实际失败；保留原生平台仅针对已有 codex/cursor/claude 与 cli活动，不从只有cli的记录伪造宿主。新平台/时间/活动测试与HTTP两个目标实际2/2 exit0。Skill候选0.8.2，shared包与依赖不变；独立Review/完整回归/Required/安装后的原Session恢复待完成。
+
 - [x] 最新 Skill main `1fa3859` 创建独立 `codex/cursor-workbench` 分支；旧目录、个人修改、第三方 Hook 和 PATH 的 Grok `agent` 均未替换。官方 Cursor CLI 2026.10.01-e373342 解压到本任务新建 temp，未执行会删除既有软链接的官方安装器。
 - [x] 本地 ACP 传输、持久投递、同原生会话追问、凭据白名单、本机配置权限及精确工作树约束已实现。协议测试 11/11；配置/持久化测试 3/3；公共 HTTP 权限入口 1/1，均实际退出 0。以上使用合成协议提供方，不是 Cursor 真实模型验收。
 - 首轮 ACP 测试取消夹具遗漏请求编号，旧进程被明确停止后实际 10/11、退出 1；补齐替身编号并增加取消等待上限后 11/11、退出 0。保留首次失败，不将其改记通过。

@@ -195,7 +195,9 @@ export class Access {
         sessions.set(id, {
           id,
           name: typeof event.thread_name === 'string' && event.thread_name.trim() ? event.thread_name.trim() : previous?.name || '',
-          platform: typeof event.platform === 'string' && event.platform ? event.platform : previous?.platform || 'unknown',
+          // CLI plan/archive records describe activity, not a different host.
+          platform: event.platform === 'cli' && ['codex', 'cursor', 'claude'].includes(previous?.platform) ? previous.platform
+            : typeof event.platform === 'string' && event.platform ? event.platform : previous?.platform || 'unknown',
           status,
           statusSeen: stopped || activated ? at : previous?.statusSeen || '',
           statusSource: 'hook',

@@ -35,6 +35,21 @@ test('Cursor heartbeat uses actual receiver state instead of a newer lifecycle i
   assert.equal(receiverExecutionHeartbeat({ ...identity, platform: 'claude' }, { configured: true, status: 'stopped', at: '2026-10-09T02:00:01Z' }).status, 'active', 'existing Claude lifecycle precedence is unchanged');
 });
 
+test('CLI activity preserves a known native Session platform without inventing one', async () => {
+  const f = await fixture(); retainedFixtures.add(f.root);
+  const access = await new Access(f.root).init();
+  for (const platform of ['cursor', 'claude', 'codex']) {
+    const id = platform + '-fixture';
+    await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: '2026-01-01T00:00:01Z', event: 'session-start', platform, session_id: id }) + '\n' +
+      JSON.stringify({ at: '2026-01-01T00:00:02Z', event: 'plan-start', platform: 'cli', session_id: id }) + '\n');
+    const session = (await access.hookSessionRegistry()).find(session => session.id === id);
+    assert.equal(session.platform, platform); assert.equal(session.lastEvent, 'plan-start');
+    assert.equal(session.lastSeen, '2026-01-01T00:00:02Z'); assert.equal(session.status, 'active');
+  }
+  await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: '2026-01-01T00:00:02Z', event: 'plan-start', platform: 'cli', session_id: 'cli-only' }) + '\n');
+  assert.equal((await access.hookSessionRegistry()).find(session => session.id === 'cli-only').platform, 'cli');
+});
+
 // Exercise the actual classic-script status functions without starting a browser.
 // Function boundaries are checked explicitly; a missing function is a test failure.
 async function workItemProgressForTest(projectState = 'closed') {
@@ -1418,6 +1433,7 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
       assert.equal(response.status, 200); return response.json();
     };
     const registered = await register(sessionId); await register(otherSessionId);
+    await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform: 'cli', session_id: sessionId, event: 'plan-start' }) + '\n');
     const config = { command: process.execPath, root: f.root, name: 'Cursor fixture' }, input = { sessionId, action: 'configure', config };
     for (const credential of [running.humanToken, registered.token, 'invalid']) assert.equal((await call(credential, input)).status, 401);
     assert.equal((await call(running.state.adminToken, input, { Origin: base })).status, 401);
