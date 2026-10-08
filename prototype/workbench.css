@@ -1077,3 +1077,16 @@ html.cg-phone #coordinator-panel .coordinator-model-menu{left:0;right:auto}
 html.cg-phone #coordinator-panel .coordinator-recovery{min-height:44px;min-width:44px;flex-shrink:0}
 html.cg-phone #coordinator-panel .coordinator-input-shell textarea{min-height:60px;padding-inline-end:60px}
 html.cg-phone #coordinator-panel .coordinator-input-shell > .coordinator-send{width:44px;height:44px;min-height:44px}
+/* Cursor 原生对话沿用工作台表面与控件，不改变地图布局。 */
+.cursor-chat{width:min(680px,calc(100vw - 32px));max-height:calc(100dvh - 32px);box-sizing:border-box;background:var(--paper,#fffdf5);color:var(--ink,#32302b);border:3px solid currentColor;border-radius:24px;padding:20px;}
+.cursor-chat::backdrop{background:rgba(0,0,0,.2);}
+.cursor-chat-head,.cursor-chat-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px;justify-content:space-between;}
+.cursor-chat h2{font-size:1.2rem;margin:0;}
+.cursor-chat label{display:block;margin-block:16px 8px;}
+.cursor-chat select,.cursor-chat textarea{display:block;box-sizing:border-box;width:100%;font:inherit;background:inherit;color:inherit;border:1px solid currentColor;border-radius:12px;padding:10px;margin-block-start:6px;}
+.cursor-chat button{font:inherit;min-height:40px;padding:8px 12px;}
+.cursor-chat :focus-visible{outline-offset:3px;}
+.cursor-chat-messages{max-height:40dvh;overflow:auto;overflow-wrap:anywhere;}
+.cursor-chat-message{margin-block:12px;padding:10px 14px;border-radius:16px;}
+.cursor-chat-message.user{background:var(--accent-soft,#fff1b0);margin-inline-start:24px;}
+.cursor-chat-message p{margin:0 0 10px;white-space:pre-wrap;}

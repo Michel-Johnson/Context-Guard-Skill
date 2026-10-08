@@ -3,6 +3,20 @@
   "status": "draft",
   "interfaces": [
     {
+      "type": "native.prompt",
+      "purpose": "人向空闲的已绑定原生会话发送消息；不代替 Map 任务审批",
+      "payload": { "text": "在当前工作树完成已说明的小任务" },
+      "result": { "state": "queued", "requestId": "native-1", "seq": 1 },
+      "rule": "仅 human 可提交；同 Session 的已有任务未结束时拒绝。固定投递编号，接收不等于完成。"
+    },
+    {
+      "type": "native.result",
+      "purpose": "配对设备回传原生轮次结果",
+      "payload": { "requestId": "native-1", "status": "finished", "text": "实际输出与验证结果", "truncated": false },
+      "result": { "recorded": true, "requestId": "native-1" },
+      "rule": "仅当前 Session 的拥有设备；必须匹配已接受 prompt。厂商轮次结束不构成人工验收或任务收工。"
+    },
+    {
       "type": "main.structure.patch",
       "purpose": "遗留协议类型；运行时拒绝。非人写 Main 结构只走 Coordinator",
       "payload": {

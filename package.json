@@ -50,7 +50,8 @@
     "test:real-clients": "node .github/scripts/smoke-real-client.mjs",
     "test:cd": "node .github/scripts/rehearse-cd.mjs",
     "test:sync": "node --test tests/workbench-sync.test.mjs tests/workbench-inbox.test.mjs",
-    "test:browser": "node tests/workbench-browser.mjs && node tests/workbench-journal-recovery-browser.mjs",
+    "test:browser": "node tests/workbench-browser.mjs && node tests/workbench-journal-recovery-browser.mjs && node tests/cursor-chat-browser.mjs",
+    "test:cursor-browser": "node tests/cursor-chat-browser.mjs",
     "pack:shared": "node .github/scripts/release-shared.mjs"
   },
   "engines": {

@@ -1388,6 +1388,63 @@ test('Session work-item scope hides other assignments and preserves them during 
   assert.deepEqual(changes.changes[0].operations[0].fields.bugs.map(item => item.id), ['B1', 'B3']);
 });
 
+test('Cursor runtime HTTP requires local CLI authority and an exact Cursor binding', async () => {
+  const f = await fixture(), sessionId = randomUUID(), otherSessionId = randomUUID();
+  retainedFixtures.add(f.root); // 用户要求保留本地文件；仅关闭本测试服务。
+  for (const [id, platform] of [[sessionId, 'cursor'], [otherSessionId, 'claude']]) {
+    await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform, session_id: id, event: 'session-start' }) + '\n');
+  }
+  const running = await startServer({ root: f.root, port: 0 });
+  const base = new URL(running.state.url).origin;
+  const call = async (credential, input, headers = {}) => {
+    const response = await fetch(base + '/api/cursor-runtime', { method: 'POST', headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(input) });
+    return { status: response.status, data: await response.json() };
+  };
+  try {
+    const register = async id => {
+      const response = await fetch(base + '/api/session', { method: 'POST', headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: id }) });
+      assert.equal(response.status, 200); return response.json();
+    };
+    const registered = await register(sessionId); await register(otherSessionId);
+    const config = { command: process.execPath, root: f.root, name: 'Cursor fixture' }, input = { sessionId, action: 'configure', config };
+    for (const credential of [running.humanToken, registered.token, 'invalid']) assert.equal((await call(credential, input)).status, 401);
+    assert.equal((await call(running.state.adminToken, input, { Origin: base })).status, 401);
+    assert.equal((await call(running.state.adminToken, { ...input, sessionId: otherSessionId })).status, 409);
+    assert.equal((await call(running.state.adminToken, { ...input, config: { ...config, root: os.tmpdir() } })).status, 409);
+    assert.equal((await call(running.state.adminToken, input)).data.configured, true);
+    const status = await call(running.state.adminToken, { sessionId, action: 'status' });
+    assert.equal(status.status, 200); assert.equal(status.data.status, 'stopped'); assert.equal(status.data.nativeSessionId, sessionId);
+    assert.equal((await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'bad', message: 'No invocation', root: '/foreign' } })).status, 400);
+    const chat = async (route, credential, input) => {
+      const response = await fetch(base + route, { method: input ? 'POST' : 'GET', headers: { Authorization: `Bearer ${credential}`, ...(input ? { 'Content-Type': 'application/json' } : {}) }, ...(input ? { body: JSON.stringify(input) } : {}) });
+      return { status: response.status, data: await response.json() };
+    };
+    assert.equal((await chat('/api/cursor-chat', registered.token)).status, 403);
+    assert.equal((await chat('/api/cursor-chat', 'invalid')).status, 401);
+    assert.deepEqual((await chat('/api/cursor-chat', running.humanToken)).data.sessions, [{ id: sessionId, name: config.name, kind: 'local' }]);
+    assert.equal((await chat('/api/cursor-chat?session=' + otherSessionId, running.humanToken)).status, 403);
+    const module = await fetch(base + '/prototype/cursor-chat.mjs');
+    assert.equal(module.status, 200); assert.match(module.headers.get('content-type'), /javascript/);
+    const sent = await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Synthetic boundary task' });
+    assert.equal(sent.status, 200); assert.equal(sent.data.state, 'received');
+    // Node is intentionally not a Cursor executable. A provider failure must
+    // produce a terminal failure, not a green successful task or missing prompt.
+    let view;
+    const deadline = Date.now() + 6000;
+    do {
+      view = await chat('/api/cursor-chat?session=' + sessionId, running.humanToken);
+      if (view.data.status === 'failed') break;
+      assert.ok(Date.now() < deadline, 'failed native process did not reach its public terminal state');
+      await pause(25);
+    } while (true);
+    assert.equal(view.status, 200); assert.equal(view.data.error, 'CURSOR_DISCONNECTED');
+    assert.deepEqual(view.data.messages, [{ id: 'local-native:fixture-turn:user', role: 'user', text: 'Synthetic boundary task' }]);
+    const duplicate = await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Synthetic boundary task' });
+    assert.deepEqual(duplicate, sent);
+    assert.equal((await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Changed task' })).data.error.code, 'ID_REUSED');
+  } finally { await running.close(); }
+});
+
 test('Claude recovery HTTP is local-operator-only and requires a bound interrupted receiver', async () => {
   const f = await fixture(), sessionId = randomUUID();
   await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform: 'claude', session_id: sessionId, event: 'session-start' }) + '\n');

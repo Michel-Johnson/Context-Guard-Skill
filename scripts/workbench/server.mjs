@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ClaudeRuntime } from './claude-runtime.mjs';
+import { CursorRuntime } from './cursor-runtime.mjs';
 import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from '../shared/io.mjs';
@@ -160,6 +161,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   await inspectRetiredSync(project);
   project = await ensureProjectBinding(project);
   const claudeRuntime = new ClaudeRuntime(path.join(project.sharedDir, 'claude-runtime'));
+  const cursorRuntime = new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime'));
   const ctx = path.join(root, '.codex/context'), lock = projectLockPath(project), sharedState = projectStatePath(project);
   const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(ctx, 'private/named-entry.json');
   let namedEntry = await readJSON(namedFile, null), openClaimed = false;
@@ -191,6 +193,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const taskDelivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), {
     codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }),
     claude: { deliver: input => claudeRuntime.deliverGuidance(input), received: input => claudeRuntime.receivedGuidance(input) },
+    cursor: { deliver: input => cursorRuntime.deliver(input), received: input => cursorRuntime.received(input) },
   });
   const reportControl = message => reportVerifiedControl(protocolStore, backendPrincipal, report => device.send(report), message);
   const resumeAcceptedByHost = async message => {
@@ -264,17 +267,19 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       },
       sessions: async () => {
         if (!taskDeliveryRetry) taskDeliveryRetry = taskDelivery.retryBusy(async input => {
-          if (input.platform !== 'claude' || !access.binding(input.sessionId)) return false;
+          if (!['claude', 'cursor'].includes(input.platform) || !access.binding(input.sessionId)) return false;
           const plan = /^Context Guard：Plan (\S+)@(\S+) 审核/.exec(input.message);
-          if (!plan && input.deliveryType !== 'task.message') return false;
+          if (!plan && input.deliveryType !== 'task.message' && !input.nativeRequest) return false;
           const binding = await protocolStore.registeredBinding(backendPrincipal, input.sessionId);
           const execution = binding && await protocolStore.activeExecution(backendPrincipal, { id: input.sessionId, generation: binding.generation });
-          if (input.deliveryType === 'task.message') {
+          if (input.nativeRequest) {
+            if (!binding || binding.generation !== input.nativeRequest.generation || execution && !execution.closed) return false;
+          } else if (input.deliveryType === 'task.message') {
             if (execution?.closed || execution?.taskId !== input.taskId ||
                 input.planRef && (execution.plan?.ref !== input.planRef || execution.plan.version !== input.planVersion)) return false;
           } else if (execution?.closed || execution?.plan?.ref !== plan[1] || execution.plan.version !== plan[2]) return false;
-          const status = (await claudeRuntime.status(input.sessionId)).status;
-          return status === 'stopped' || input.deliveryType === 'task.message' && status === 'interrupted';
+          const status = (await (input.platform === 'cursor' ? cursorRuntime : claudeRuntime).status(input.sessionId)).status;
+          return status === 'stopped' || input.nativeRequest && ['failed', 'interrupted'].includes(status) || input.deliveryType === 'task.message' && status === 'interrupted';
         }).catch(error => { device.lastError = error.code || 'TASK_DELIVERY_RETRY_FAILED'; })
           .finally(() => { taskDeliveryRetry = null; });
         const registered = [], identities = new Map((await access.sessionRegistry()).map(item => [item.id, item]));
@@ -294,7 +299,15 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               const identity = identities.get(head.session.id), heartbeat = { ...head.session, ackedSeq: 0 };
               if (identity?.name) heartbeat.name = identity.name;
               if (identity?.platform && identity.platform !== 'unknown') heartbeat.platform = identity.platform;
-              const native = identity?.platform === 'claude' ? await claudeRuntime.status(head.session.id) : null;
+              const native = identity?.platform === 'claude' ? await claudeRuntime.status(head.session.id)
+                : identity?.platform === 'cursor' ? await cursorRuntime.status(head.session.id) : null;
+              if (identity?.platform === 'cursor') {
+                for (const report of await cursorRuntime.nativeReports(head.session.id)) {
+                  if (report.message.session.generation !== head.session.generation) continue;
+                  await device.send(report.message);
+                  await cursorRuntime.acknowledgeReport(report);
+                }
+              }
               if (native?.role === 'ci') ciChannel(head.session.id, device);
               if (native?.name) heartbeat.name = native.name;
               const execution = await protocolStore.activeExecution(backendPrincipal, head.session).catch(() => null);
@@ -303,7 +316,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
                 await reportControl(control).catch(error => { device.lastError = error.code || 'CLOSE_REPORT_FAILED'; });
               }
               let resumed = false;
-              if (native?.role === 'executor' && execution && !execution.closed) {
+              if (identity?.platform === 'claude' && native?.role === 'executor' && execution && !execution.closed) {
                 for (const control of await protocolStore.pendingControls(backendPrincipal, head.session, 'resume')) {
                   if (control.payload.taskId !== execution.taskId) continue;
                   resumed = await acceptResumeControl(control, identity).catch(error => {
@@ -311,7 +324,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
                   });
                 }
               }
-              if (native?.role === 'executor' && native.status === 'interrupted' && !resumed) {
+              if (identity?.platform === 'claude' && native?.role === 'executor' && native.status === 'interrupted' && !resumed) {
                 const report = interruptedTaskReport(head.session, execution, native);
                 if (report) await device.send(report).catch(error => { device.lastError = error.code || 'INTERRUPTION_REPORT_FAILED'; });
               }
@@ -327,13 +340,34 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       apply: async message => {
         if (!access.binding(message.session.id)) protocolFail('FORBIDDEN', 'Session registration was revoked');
         const result = (await protocolStore.receiveNotification(backendPrincipal, message)).data;
+        if (message.type === 'native.result') return { ...result, deliveryState: 'stored' };
+        if (message.type === 'native.prompt') {
+          const identity = (await access.sessionRegistry()).find(item => item.id === message.session.id);
+          const native = await cursorRuntime.status(message.session.id);
+          const input = { id: `native:${message.session.generation}:${message.id}`, platform: 'cursor', sessionId: message.session.id,
+            root: access.binding(message.session.id).worktreeRoot, message: message.payload.text,
+            nativeRequest: { id: message.id, generation: message.session.generation } };
+          if (identity?.platform !== 'cursor' || !native.configured) {
+            await cursorRuntime.rejectNative(input, 'RUNTIME_NOT_CONFIGURED');
+            return { ...result, deliveryState: 'stored' };
+          }
+          try {
+            await taskDelivery.deliver(input);
+          } catch (cause) {
+            const receipt = await readJSON(path.join(taskDelivery.directory, hash(input.id) + '.json'), null);
+            if (receipt?.state === 'failed' && receipt.errorCode !== 'RUNTIME_BUSY') await cursorRuntime.rejectNative(input, receipt.errorCode || 'DELIVERY_FAILED');
+            if (cause.details?.deliveryState === 'failed' || cause.details?.deliveryState === 'uncertain') return { ...result, deliveryState: 'stored' };
+            throw cause;
+          }
+          return { ...result, deliveryState: 'received' };
+        }
         // A confirmed resumed report is stronger than a lost native acceptance
         // receipt. Replayed controls must not start another model turn.
         if (await protocolStore.resumeControlApplied(backendPrincipal, message)) return { ...result, deliveryState: 'stored', reason: 'Resume control was already applied' };
         if (executionNotifications.has(message.type) || message.type === 'review.result' && message.payload.kind === 'plan') {
           const session = (await access.sessionRegistry()).find(item => item.id === message.session.id);
           if (!session) protocolFail('FORBIDDEN', 'Host Session is unavailable');
-          if (!['codex', 'claude'].includes(session.platform)) return result;
+          if (!['codex', 'claude', 'cursor'].includes(session.platform)) return result;
           const target = await storeFor(project.kind === 'git' ? `session:${session.id}` : 'main');
           if (message.type === 'task.assign' && message.payload.nodeIds.some(id => !access.grants(session.id, target.doc, 'read').includes(id))) protocolFail('FORBIDDEN', 'Assigned node access was revoked');
           try {
@@ -758,6 +792,28 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         const requestOrigin = direct ? base : namedEntry.origin;
         if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
+        if (route === '/api/cursor-runtime' && req.method === 'POST') {
+          if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
+          const input = await body(req);
+          if (input.action === 'create') {
+            const target = await resolveProject(input.config?.root || '');
+            if (target.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Create Cursor only in this project', 403);
+            const created = await cursorRuntime.provision({ operationId: input.operationId, config: input.config });
+            await registerSession({ sessionId: created.sessionId, worktreeRoot: created.root });
+            return send(res, 200, { ...created, url: `${requestOrigin}/prototype/workbench.html?session=${encodeURIComponent(created.sessionId)}` });
+          }
+          const binding = access.binding(input.sessionId);
+          const identity = (await access.sessionRegistry()).find(item => item.id === input.sessionId);
+          if (!binding || identity?.platform !== 'cursor') throw new MapError('SESSION_BINDING_REQUIRED', 'Bind a real Cursor Session first', 409);
+          if (input.action === 'status') return send(res, 200, await cursorRuntime.status(input.sessionId));
+          if (input.action === 'message') {
+            if (!input.message || Object.keys(input.message).some(key => !['id', 'message'].includes(key))) throw new MapError('INVALID_ARGUMENT', 'Use a delivery ID and message');
+            return send(res, 200, await taskDelivery.deliver({ ...input.message, platform: 'cursor', sessionId: input.sessionId, root: binding.worktreeRoot }));
+          }
+          if (input.action !== 'configure') throw new MapError('INVALID_ARGUMENT', 'Use configure, status or message');
+          if (await fs.realpath(input.config?.root || '') !== binding.worktreeRoot) throw new MapError('WORKTREE_MISMATCH', 'Configure only the bound Cursor worktree', 409);
+          return send(res, 200, await cursorRuntime.configure(input.sessionId, input.config));
+        }
         if (route === '/api/claude-runtime' && req.method === 'POST') {
           if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const input = await body(req), binding = access.binding(input.sessionId);
@@ -1007,6 +1063,28 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         if (route.startsWith('/api/')) {
           const actor = auth(req, url);
           const viewId = viewFor(actor, url);
+          if (route === '/api/cursor-chat') {
+            isHuman(actor);
+            if (req.method === 'GET' && !url.searchParams.get('session')) {
+              const sessions = [];
+              for (const identity of await access.sessionRegistry()) if (identity.platform === 'cursor' && access.binding(identity.id)) {
+                const native = await cursorRuntime.status(identity.id);
+                if (native.configured) sessions.push({ id: identity.id, name: native.name, kind: 'local' });
+              }
+              return send(res, 200, { sessions });
+            }
+            const input = req.method === 'POST' ? await body(req) : null;
+            const sessionId = input?.sessionId || url.searchParams.get('session');
+            const binding = access.binding(sessionId);
+            const identity = (await access.sessionRegistry()).find(item => item.id === sessionId);
+            if (!binding || identity?.platform !== 'cursor') protocolFail('FORBIDDEN', 'Select a bound Cursor Session');
+            if (req.method === 'GET') return send(res, 200, await cursorRuntime.conversation(sessionId));
+            if (req.method !== 'POST' || !input || Object.keys(input).some(key => !['sessionId', 'id', 'text'].includes(key))) protocolFail('INVALID_ARGUMENT', 'Use a Session, message ID and text');
+            const protocolBinding = await protocolStore.registeredBinding(backendPrincipal, sessionId);
+            const human = { ...backendPrincipal, role: 'human', agentId: 'local-human' };
+            await protocolStore.handle(human, { v: 2, id: input.id, type: 'native.prompt', session: { id: sessionId, generation: protocolBinding.generation }, payload: { text: input.text } });
+            return send(res, 200, await taskDelivery.deliver({ id: `local-native:${input.id}`, platform: 'cursor', sessionId, root: binding.worktreeRoot, message: input.text }));
+          }
           if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus(viewId)); }
           if (viewId === 'main' && mainDeferred) {
             mainSource = await updateMainBaseline(mainSource, { force: true });
@@ -1153,7 +1231,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           return res.end(html.replace('<!-- CG_SERVER_BOOT -->', `<script>window.__CG_SERVER=${boot};</script>`).replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`));
         }
         if (route === '/prototype/map-model.mjs') { file = path.join(skillRoot, 'scripts/shared/map-model.mjs'); contentType = 'text/javascript; charset=utf-8'; }
-        else if (['/scripts/shared/map-model.mjs', '/prototype/workbench-sync.mjs', '/prototype/attachments.mjs', '/prototype/coordinator-markdown.mjs', '/prototype/coordinator-working-blot.mjs', '/prototype/vendor/marked.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
+        else if (['/scripts/shared/map-model.mjs', '/prototype/workbench-sync.mjs', '/prototype/attachments.mjs', '/prototype/coordinator-markdown.mjs', '/prototype/coordinator-working-blot.mjs', '/prototype/cursor-chat.mjs', '/prototype/vendor/marked.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
         else if (['/prototype/workbench-app.js', '/prototype/workbench-data.js'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
         else if (route === '/prototype/workbench.css') { file = path.join(skillRoot, route.slice(1)); contentType = 'text/css; charset=utf-8'; }
         else if (route === '/prototype/working-blot-atlas.png') { file = path.join(skillRoot, route.slice(1)); contentType = 'image/png'; }
@@ -1224,6 +1302,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         server.closeIdleConnections?.();
         server.closeAllConnections?.();
         await disconnected;
+        await cursorRuntime.close();
         await Promise.all([...syncCoordinators.values()].map(coordinator => coordinator.close()));
         await Promise.all([...new Set(stores.values())].map(store => store.close()));
         await Promise.all([...projectionQueues.values()]);

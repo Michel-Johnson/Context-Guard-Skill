@@ -12,6 +12,11 @@
   },
   "standaloneSuites": [
     {
+      "path": "tests/cursor-chat-browser.mjs",
+      "command": "npm run test:cursor-browser",
+      "purpose": "Real Chromium verifies Cursor conversation UI; native provider responses are synthetic."
+    },
+    {
       "path": ".github/scripts/security-checks.test.mjs",
       "command": "npm run security:test",
       "purpose": "Runs before the shared Node test process so repository security failures stop immediately."
@@ -52,10 +57,14 @@
   ],
   "separatePackages": [],
   "productFiles": [
+    "tests/cursor-chat-browser.mjs",
     "tests/executor-context.test.mjs",
     "tests/browser-login.test.mjs",
     "tests/build-runtime.test.mjs",
     "tests/claude-runtime.test.mjs",
+    "tests/cursor-acp.test.mjs",
+    "tests/cursor-runtime.test.mjs",
+    "tests/cursor-protocol.test.mjs",
     "tests/interface-delivery.test.mjs",
     "tests/interface-map.test.mjs",
     "tests/interface-protocol.test.mjs",
