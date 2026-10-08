@@ -1,4 +1,12 @@
-# CI TODO
+# CI 待验证
+
+## DOC-LAYOUT-01 · 中文规范与设计文档迁移（2026-10-08）
+
+- [x] 从最新 Skill main `2f6c51a` 迁移治理与中文文档；保留拆仓库边界，不导入旧 Slack / STATE_BUSY 功能改动。
+- [x] RULE 按开发流程组织，设计命名及简短版本号说明放在“实现”；安装清单、帮助路径和同步设计引用随迁移更新。
+- [ ] 用户要求本次不运行测试：未执行 npm test、安装、浏览器或真实客户端验收；静态差异核对不代表功能通过。
+- [ ] Skill 当前固定 core / workbench `1.1.4` 未包含新文档布局。须先发布经审核的 Cloud 共享包，再更新本仓库固定依赖和锁文件；不得用本机 Cloud 源码或浮动依赖补齐。
+- [ ] 新依赖就绪后验证干净构建、精确打包、安装边界、资料读取与跨仓库链接，再运行 Required。本次只本地提交，不声明可合并、发布或已部署。
 
 ## BROWSER-CLEANUP-13: bounded fixture removal and complete-entry results (2026-10-07)
 

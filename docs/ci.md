@@ -4,44 +4,23 @@
 
 ## 安全
 
-### What stays out of Git and releases
+### 不得进入 Git 与分发包的内容
 
-The entire `.codex/` tree, output, caches, real environment files, private keys
-and credential files do not belong in source commits or npm packages. Keep public
-templates and empty `.env.example` files only; examples are still scanned for
-secrets. Do not copy private memory into another tracked directory or publish it
-as PR/CI attachments. Necessary product documentation and verification summaries
-remain allowed.
+整个 `.codex/`、输出、缓存、真实环境文件、私钥和凭据文件不得进入源码提交或 npm 包。只保留公开模板与空 `.env.example`，示例仍扫密钥。不得将私有记忆复制到其他跟踪目录或作为 PR / CI 附件公开；必要产品文档和验证摘要允许保留。
 
-This repository's development memory is governed by
-[`references/server-memory.md`](../references/server-memory.md): the private
-server is its authority, while local records are caches or pending drafts. This
-does not permit uploading credentials or machine runtime state as memory. Server
-reads and writes both need authorization; public read-only access is not private.
-Connection details stay out of public source. The private memory backend/client
-has automated acceptance and one verified production deployment/migration; see
-the memory contract and `CI_todo.md` for evidence and remaining limits. Further
-migrations require separate approval. Native Hook trust and actual host delivery
-remain separate acceptance items; Map-only sync alone is not the private memory store.
+开发记忆遵守 [服务器记忆](../references/design/design-memory-server-v1.0.1.md)：私有服务器为准，本地只缓存或待同步草稿。不因此允许上传凭据或机器运行状态。服务器读写都须授权，公开只读不算私有；连接信息不放公开源码。
 
-Product branches retain approved `.github/` checks and the cross-platform product
-tests explicitly listed in `tests/test-manifest.json`. `scripts/branch_guard.py`
-reads that manifest from the index; do not maintain a second test allowlist in
-Python. Temporary experiments, fixtures, and fake repositories still belong only
-on the test branch (local temporary scripts stay in ignored `temp/`).
-Temporary tests and fake repositories remain on `cursor/test-layout-f54e`; do not
-merge them into main. Product fixes belong on product branches. The existing
-`scripts/branch_guard.py` remains part of pre-commit validation.
+私有记忆后端 / 客户端已有自动验收及一次生产部署 / 迁移验证，证据和限制见契约与 `CI_todo.md`；进一步迁移单独批准。原生 Hook 信任、真实宿主投递分别验收，仅同步 Map 不是私有记忆存储。
 
-Removing tracked records is NOT a disk cleanup. Before applying the removal on
-an older checkout, back up `.codex` outside Git-tracked content, verify the backup,
-and restore local records after updating if needed. Old commits, tags, PR refs,
-forks and downloads still retain historical data. Coordinate migration of other
-branches; never reset a dirty worktree to make the removal easier.
+产品分支保留已批准 `.github/` 检查和 `tests/test-manifest.json` 明列的跨平台产品测试。`scripts/branch_guard.py` 从暂存区读该清单，不再维护 Python 白名单。
 
-### One-time developer setup
+临时实验、fixture、模拟仓库只在测试分支，本地临时脚本在忽略的 `temp/`。临时测试和模拟仓库留 `cursor/test-layout-f54e`，不合 main；产品修复在产品分支。既有分支守卫仍参与 pre-commit。
 
-Requirements: Node >= 18, Python >= 3.9, Git and tar (included with modern Windows).
+从 Git 移除跟踪记录不等于清磁盘。旧检出应用移除前，先在非 Git 跟踪位置备份并验证 `.codex`，更新后必要时恢复本地记录。旧提交、标签、PR 引用、fork、下载仍含历史数据；协调其他分支迁移，不重置脏工作树方便删除。
+
+### 首次开发配置
+
+要求：Node >= 18、Python >= 3.9、Git、tar（现代 Windows 已包含）。
 
 ```sh
 npm run dev:setup
@@ -49,96 +28,50 @@ npm run hooks:status
 npm test
 ```
 
-Setup downloads Gitleaks 8.30.1 from its official GitHub release and verifies the
-platform archive against a pinned SHA-256. It installs only into ignored
-`.security-tools/`; it does not globally install a package. The repository-local
-hooksPath points to this checkout's `.githooks` using an absolute path so sibling
-worktrees cannot silently lose the check on old branches. Keep that checkout
-available; rerun setup after relocating it. Setup refuses unrelated custom hooks
-rather than overwriting them. Integrate custom hooks explicitly if refusal occurs.
+配置从官方 GitHub 发布下载 Gitleaks 8.30.1，按固定 SHA-256 验证平台压缩包；仅安装到忽略的 `.security-tools/`，不全局安装。仓库 hooksPath 用绝对路径指向本检出的 `.githooks`，避免关联 worktree 在旧分支静默失去检查；保留该检出，移动后重跑配置。无关自定义 Hook 不覆盖而拒绝，需明确集成。
 
-Consumer `npm install` / `npx` does not install developer hooks or the scanner.
-Normal Skill creation of a user's local `.codex/context` remains unchanged.
+普通用户 `npm install` / `npx` 不安装开发 Hook 或扫描器；Skill 创建用户本地 `.codex/context` 的行为不变。
 
-### Post-merge local acceptance
+### 合并后本机验收
 
-A Context Guard product PR is not delivered merely because GitHub merged it.
-The implementing Agent must immediately fetch the merged `origin/main`, update
-the local global Skill from a checkout containing that merge, and prove that the
-installed Skill/runtime matches the merged source. Then run `context-guard doctor`
-and repeat the feature-specific acceptance through the installed entry point,
-not the development checkout. Record the main merge commit, install source,
-version/hash comparison, and runtime output. An explicit request to implement or
-merge already authorizes these normal delivery steps; do not ask again. Native
-Hook trust is still a host security boundary: report it when pending and never
-use a dangerous trust bypass.
+产品 PR 合入 GitHub 不等于交付。实施 Agent 须立即获取合并后的 `origin/main`，从包含合并的源码更新本机全局 Skill，证明安装副本与源码一致，再运行 `context-guard doctor`，经安装入口而非开发检出重复功能验收。
 
-Repository-only documentation changes that do not affect distributed content or
-runtime behavior may record installation/runtime acceptance as N/A with evidence,
-under `RULE.md`. This does not waive `npm test`, Required, security, applicable
-protocol closure, or any pre-existing product acceptance. Workflow and governance
-documents still require review of their behavioral impact.
+记录合并提交、安装来源、版本 / 哈希比对及运行输出。明确实现或合并已授权正常交付步骤，不重复询问。原生 Hook 信任仍是宿主安全边界，未完成如实报告，不危险绕过。
 
-### When checks run
+仓库专用文档不影响分发或运行时，可按 RULE.md 以证据将安装 / 运行验收记 N/A；不免除 `npm test`、Required、安全、适用协议收口或已有产品验收。工作流和治理文档仍需审核行为影响。
 
-| Stage | Input | Result |
+### 检查运行阶段
+
+| 阶段 | 输入 | 结果 |
 | --- | --- | --- |
-| pre-commit | Actual index snapshot, then existing branch policy | Reject private paths or detected secrets |
-| pre-push | Each outgoing head and its commit range | Catch secrets added then removed before push |
-| CI | Checked-out tree and push/PR commit range | Security must succeed for Required |
-| CI/CD package | Exact tarball, safely extracted | Reject unexpected files or secret content before artifact upload |
+| pre-commit | 实际暂存区快照，再检查现有分支政策 | 拒绝私有路径或检出的密钥 |
+| pre-push | 每个待推送提交头及提交范围 | 检出推送前曾加入后又删除的密钥 |
+| CI | 检出树及 push / PR 提交范围 | 安全检查成功才可通过 Required |
+| CI/CD 打包 | 安全解包的精确 tarball | 上传前拒绝异常文件或密钥内容 |
 
-First pushes compare to a known main merge base where possible, otherwise scan
-the head's full history. Missing objects, shallow history, scanner failure and
-timeouts fail closed. Source scans include tracked documentation and test code;
-there are no directory-wide secret exemptions. `gitleaks:allow` comments and
-unreviewed fingerprint ignores cannot suppress a result through this wrapper.
+首次推送尽量比较已知 main 合并基线，否则扫提交头完整历史。对象缺失、浅历史、扫描器失败或超时均拒绝放行。扫描包含跟踪文档和测试代码，不设整目录密钥豁免；包装器不允许 `gitleaks:allow` 或未审核指纹忽略压制结果。
 
-Outgoing commit history is also checked for newly added private paths, even if
-removed in a later commit. For a full-history first push, the repository's known
-pre-migration commit `011682f7b640a7db3cf2ab1c9b6e01674266c0e4` is the legacy PATH
-boundary only. It does not exempt any secret content from scanning, and does not
-claim the records in older public commits have been removed.
+待推送历史也查新增私有路径，即使后来删除。全历史首次推送仅以已知迁移前提交 `011682f7b640a7db3cf2ab1c9b6e01674266c0e4` 作为旧路径边界，不豁免密钥扫描，也不声称旧公开记录已删除。
 
-The final package must match `.github/scripts/package-contract.mjs`, contain only
-regular files and remain byte-identical during scanning. Existing artifact hashes
-preserve the same package through installation tests and npm publication. CD
-continues to run on version tags and uses OIDC; no long-lived npm token is added.
-It also verifies an upgrade from the integrity-pinned npm `latest` without changing
-user settings, project context, or third-party hooks. After publication, the npm
-tarball must match the pre-publish SHA-256 and the result is recorded in the
-Actions summary.
+最终包须精确匹配 `.github/scripts/package-contract.mjs`，仅含普通文件，扫描期间字节不变。产物哈希保证安装和 npm 发布复用同包。CD 仍由版本标签触发并用 OIDC，不增加长期 npm Token。
 
-### Investigating a block
+还从完整性固定的 npm `latest` 验证升级，不改用户设置、项目上下文或第三方 Hook。发布后 npm tarball 须匹配发布前 SHA-256，结果记录 Actions 摘要。
 
-The wrapper never prints raw scanner stdout/stderr, matching source lines, secret
-values or file paths (paths may themselves contain secrets). Findings contain a
-rule, line number, commit ID when known, and a file ID: first 16 hexadecimal digits
-of SHA-256 of the scan-root-relative file path using `/`. Resolve IDs against candidate paths locally;
-do not upload original files or unredacted reports to Actions or issue comments.
+### 排查阻断
 
-Run `npm run security:staged` to recheck the index. `npm run security:audit` scans
-all locally available branch/tag history; fetch intended refs first and record
-coverage. A clean scan means no patterns were detected, not a proof of no secrets.
-Rotate/revoke a confirmed leaked credential before separately planning history
-cleanup. Do not add broad baselines or delete suspect content silently to publish.
+包装器不打印扫描器原始输出、命中源码行、密钥值或路径（路径也可能含密钥）。结果含规则、行号、已知提交 ID、文件 ID；文件 ID 为使用 `/` 的扫描根相对路径 SHA-256 前 16 位十六进制。在本机用候选路径解析，不向 Actions 或 issue 上传原文件或未脱敏报告。
 
-### Limits and evidence
+`npm run security:staged` 重查暂存区；`npm run security:audit` 扫本地全部分支 / 标签历史，先获取目标引用并记录覆盖。未检出只代表没匹配模式，不证明无密钥。确认泄露先撤销或轮换，再单独规划历史清理；不为发布加宽泛基线或静默删可疑内容。
 
-Git ignore rules only affect untracked files. Hooks can be bypassed and are not
-server-side access control; CI runs after the GitHub upload. Keep GitHub secret
-scanning/push protection enabled. This does not control cloud drives or other
-applications. Historical removal/force pushes require separate authorization.
+### 限制与证据
 
-`npm run security:test` covers clean and rejected staged content, historical
-secrets, actual hooks, safe archive handling and sanitized output using synthetic
-credentials generated at runtime. It is also part of `npm test`; successful tests
-clean their own temporary directory. Failures retain only synthetic test evidence.
-`npm run test:cd` exercises the release rehearsal with the same package security
-gate and a real upgrade from the current npm `latest`, without publishing. Never
-upload a deliberately unsafe test package.
+Git 忽略只影响未跟踪文件。Hook 可绕过，不是服务器访问控制；CI 在 GitHub 上传后才运行。保留 GitHub 密钥扫描和推送保护；此机制不控制云盘或其他应用。历史删除及强推另需授权。
 
-### 中文速查
+`npm run security:test` 使用运行时合成凭据，覆盖干净 / 拒绝暂存内容、历史密钥、真实 Hook、安全压缩包处理和脱敏输出，也包含在 `npm test`。成功清理自有临时目录，失败只保留合成证据。
+
+`npm run test:cd` 用同打包安全门禁和当前 npm `latest` 真实升级演练发布，不实际发布。不得上传故意不安全的测试包。
+
+### 要点速查
 
 - 首次开发运行 `npm run dev:setup`，用 `npm run hooks:status` 确认已启用。
 - 提交前检查暂存区；推送前检查提交历史；CI 决定可否合并；CD 检查最终包后才上传。
@@ -148,23 +81,13 @@ upload a deliberately unsafe test package.
 
 ## 工作台
 
-The `CI` workflow runs on branch/tag pushes and pull requests targeting `main`.
-Pull requests always run security and deterministic impact selection; the selector
-uses the merge-base diff and `.github/ci-impact.json` to run only relevant
-functional, package, installation, minimum-runtime, browser and client jobs.
-Unknown paths, CI config, this file, and `docs/test-governance.md` fail closed to the complete workflow.
-Pushes to `main` and tags always run every job as the result listener/canary.
+`CI` 工作流处理分支 / 标签推送及目标 main 的 PR。PR 总运行安全和确定性影响选择器；用合并基线差异及 `.github/ci-impact.json` 选择相关功能、打包、安装、最低运行时、浏览器、客户端任务。未知路径、CI 配置、本文或 `docs/test-governance.md` 变化执行完整检查。main 和标签推送始终全跑，作为结果监听和验证。
 
-`Required` compares every job's actual result with the selector plan: selected
-jobs must succeed and unselected jobs must be skipped. An arbitrary failed,
-cancelled or skipped selected job is not a pass. The plan is retained as a
-short-lived artifact and rendered in the Actions summary. This workflow does not
-publish npm packages or call AI models.
+`Required` 对比实际任务结果与选择计划：选中任务须成功，未选须跳过。选中任务失败、取消或跳过都不是通过。计划作为短期产物保留并在 Actions 摘要显示。此工作流不发布 npm 或调用 AI 模型。
 
-### Run locally
+### 本地运行
 
-Product checks require Node 18+ and Python 3. Browser development requires Node
-20+ (CI uses Node 24) for the pinned dev-only Playwright dependency.
+产品检查需 Node 18+ 和 Python 3。固定的仅开发 Playwright 依赖要求浏览器开发 Node 20+，CI 用 Node 24。
 
 ```sh
 npm test
@@ -173,39 +96,17 @@ npx --no-install playwright install chromium
 npm run test:browser
 ```
 
-On Linux CI, `playwright install --with-deps chromium` installs the required
-system libraries as described in the [Playwright CI guide](https://playwright.dev/docs/ci).
-`--ignore-scripts` prevents our package's postinstall from modifying a personal
-Skill installation. Browser tests use bundled Chromium, not a signed-in browser.
+Linux CI 用 `playwright install --with-deps chromium` 安装系统库，见 [Playwright CI 指南](https://playwright.dev/docs/ci)。`--ignore-scripts` 防止包 postinstall 改个人 Skill。浏览器测试用自带 Chromium，不用已登录浏览器。
 
-### What is checked
+### 检查内容
 
-- `npm test`: existing client driver/runtime checks; transactional installation
-  boundaries; actual npm package contents, lifecycle hooks, language setup,
-  session/message/bad-case persistence; workbench/inbox checks including
-  interrupted writes, version conflicts, exact acknowledgements, project path
-  aliases, linked-worktree project identity, one-service reuse, main/Session data
-  isolation, shared Cloud binding, Windows short-path watchers and stop-then-restart
-  behavior.
-- `npm run test:browser`: a real SessionStart hook creates a synthetic session in
-  an outside-checkout temporary project. The real page and public CLI check
-  bidirectional persistence, human-only proposal confirmation, inbox redelivery,
-  exact/idempotent ack, preservation of later edits, rejection of stale writes,
-  and duplicate-operation safety. Existing editing/recovery scenarios also run.
-- Browser reports identify the failed stage and completed checks. Screenshots and
-  reports contain only synthetic test data. No credentials, full temporary home,
-  real map, or server private state is uploaded. Success removes owned fixtures;
-  failures retain the browser fixture locally for diagnosis.
+- `npm test`：客户端驱动 / 运行时、事务安装边界、真实 npm 包内容、生命周期 Hook、语言设置、Session / 消息 / Bug 持久化；工作台和 inbox 覆盖中断写入、版本冲突、精确确认、路径别名、关联 worktree 身份、单服务复用、Main / Session 隔离、共享 Cloud 绑定、Windows 短路径监听、停止后重启。
+- `npm run test:browser`：真实 SessionStart 在仓库外临时项目建合成 Session。真实页面和公共 CLI 验证双向持久化、仅人确认提案、inbox 重投、精确幂等确认、保留后来编辑、拒绝旧写入及重复操作安全，并跑既有编辑 / 恢复场景。
+- 浏览器报告列失败阶段及已完成检查。截图和报告只含合成数据，不上传凭据、完整临时 HOME、真实 Map、服务器私有状态。成功删除自有 fixture，失败在本地保留浏览器 fixture 供诊断。
 
-The npm file allowlist and exact package contract exclude all tests, development
-dependencies, CI files and reports. The browser job has no login/API secrets.
-It does not prove model comprehension, native client conversations, reading
-isolation, or background monitoring. Those are outside this CI's scope.
+npm 白名单与精确包契约排除所有测试、开发依赖、CI 文件和报告。浏览器任务不含登录或 API 密钥，也不证明模型理解、原生客户端对话、读取隔离或后台监控，这些不在该 CI 范围。
 
-Path watchers use canonical paths to avoid the Windows short-path assertion
-tracked in [libuv #5010](https://github.com/libuv/libuv/issues/5010).
-Shutdown explicitly closes idle connections for [Node 18 compatibility](https://nodejs.org/download/release/v18.20.3/docs/api/http.html#servercloseidleconnections)
-and waits for the project lock to be released before reporting CLI success.
+路径监听用规范路径，避免 [libuv #5010](https://github.com/libuv/libuv/issues/5010) 所述 Windows 短路径断言。关闭时显式关闭空闲连接以 [兼容 Node 18](https://nodejs.org/download/release/v18.20.3/docs/api/http.html#servercloseidleconnections)，释放项目锁后才报告 CLI 成功。
 
 ## 三个客户端
 
@@ -252,11 +153,11 @@ npm run test:clients -- --client codex --tools output/client-tools/codex --evide
 
 ### 官方依据
 
-- [OpenAI Docs：App Server](https://learn.chatgpt.com/docs/app-server)：发现查询与生成请求分离。
-- [Claude Code CLI](https://code.claude.com/docs/en/cli-reference)：`--init-only` 执行 Setup/SessionStart 后退出，不开始对话。
+- [OpenAI App Server 文档](https://learn.chatgpt.com/docs/app-server)：发现查询与生成请求分离。
+- [Claude Code 命令行参考](https://code.claude.com/docs/en/cli-reference)：`--init-only` 执行 Setup / SessionStart 后退出，不开始对话。
 - [Claude Hook 测试说明](https://code.claude.com/docs/en/hooks-guide)：直接输入 JSON 测试命令 Hook。
-- [Cursor ACP](https://cursor.com/docs/cli/acp)：初始化、认证、创建 Session 和发送 Prompt 是不同步骤。
-- [Cursor 安装](https://cursor.com/docs/cli/installation)：官方客户端分发入口。
+- [Cursor ACP 文档](https://cursor.com/docs/cli/acp)：初始化、认证、创建 Session、发送 Prompt 是不同步骤。
+- [Cursor 安装指南](https://cursor.com/docs/cli/installation)：官方客户端分发入口。
 
 ## 自动化覆盖
 
@@ -274,7 +175,7 @@ npm run test:clients -- --client codex --tools output/client-tools/codex --evide
 | P07 CI | `.github/workflows/ci.yml` 的 Required | 不允许按 R0–R3 跳过现有 needs；核对准确提交的远端结果 |
 | P08 npm | `.github/workflows/npm-publish.yml`、[发布手册](npm-release-runbook.md) | 不是合并 Main 就发布；本次不执行 npm 发布 |
 | P08 运行恢复 | 专项安装/部署手册、人工运行验收 | 未实现统一灰度/指标自动回滚；不声称已经无人值守 |
-| P09 关闭与记忆 | [服务器契约](../references/server-memory.md) 和现有任务协议 | 真实部署与各宿主覆盖查 CI_todo；新流程不会绕过协议 |
+| P09 关闭与记忆 | [服务器契约](../references/design/design-memory-server-v1.0.1.md) 和现有任务协议 | 真实部署与各宿主覆盖查 CI_todo；新流程不会绕过协议 |
 | P10 改进 | 复盘/CI_todo/PR | 尚无自动汇总项目质量指标的产品功能 |
 
 ### 明确待实现

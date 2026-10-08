@@ -1,47 +1,40 @@
-# Third-party notices
+# 第三方组件说明
+
+本文说明组件来源、版本、用途和本仓库的修改。链接中的第三方许可证与版权声明保留原文，以原文为准。
 
 ## JSONParse
 
-- Upstream: https://github.com/creationix/jsonparse
-- Vendored version: `jsonparse@1.3.1` in `scripts/shared/vendor/jsonparse.cjs`.
-- Changes: legacy `Buffer()` constructors use the Node 18+ `Buffer.alloc/from`
-  equivalents; parser behavior is unchanged.
-- MIT license and upstream copyright notices:
+- 上游：https://github.com/creationix/jsonparse
+- 内置版本：`jsonparse@1.3.1`，文件为 `scripts/shared/vendor/jsonparse.cjs`。
+- 修改：将旧式 `Buffer()` 构造函数替换为 Node 18+ 的等价 `Buffer.alloc/from`，解析行为不变。
+- MIT 许可证及上游版权声明：
   [licenses/JSONParse-MIT.txt](licenses/JSONParse-MIT.txt).
-- Used to parse production-scale Cloud memory JSON incrementally without creating
-  a JavaScript string for the complete file.
+- 用途：增量解析生产规模的 Cloud 记忆 JSON，避免把整个文件转成一个 JavaScript 字符串。
 
 ## Marked
 
-- Upstream: https://github.com/markedjs/marked
-- Pinned version: npm `marked@15.0.12` (Node 18 compatible); integrity is recorded in package-lock.json.
-- Distributed browser module: `prototype/vendor/marked.mjs`, copied from `lib/marked.esm.js` without behavioral changes.
-- MIT license and upstream copyright notices: [licenses/Marked-MIT.txt](licenses/Marked-MIT.txt).
-- Used only as a Markdown lexer. Context Guard builds restricted DOM nodes instead of inserting generated HTML; remote images are not fetched.
+- 上游：https://github.com/markedjs/marked
+- 固定版本：npm `marked@15.0.12`，兼容 Node 18；完整性信息记录在 package-lock.json。
+- 分发的浏览器模块：`prototype/vendor/marked.mjs`，从 `lib/marked.esm.js` 复制，未改变行为。
+- MIT 许可证及上游版权声明：[licenses/Marked-MIT.txt](licenses/Marked-MIT.txt)。
+- 用途：仅作 Markdown 词法分析器。Context Guard 构建受限的 DOM 节点，不直接插入生成的 HTML，也不获取远程图片。
 
-## Ready-derived loading animation
+## 基于 Ready 的加载动画
 
-- Source: `Michel-Johnson/Ready@d0771a1c8dc8086f49fbe924c2b5cbb621d0fd8b`,
-  `platform/frontend/src/components/WorkingBlot.tsx` and its atlas asset.
-- Distributed files: `prototype/coordinator-working-blot.mjs` and
-  `prototype/working-blot-atlas.png`, materialized from the fixed Cloud UI package.
-- Public redistribution was explicitly authorized by the project maintainer;
-  see [prototype/LICENSES/Ready-redistribution.txt](prototype/LICENSES/Ready-redistribution.txt).
+- 来源： `Michel-Johnson/Ready@d0771a1c8dc8086f49fbe924c2b5cbb621d0fd8b`,
+  `platform/frontend/src/components/WorkingBlot.tsx` 及其图集资源。
+- 分发文件： `prototype/coordinator-working-blot.mjs` and
+  `prototype/working-blot-atlas.png`，由固定 Cloud UI 包生成。
+- 项目维护者已明确授权公开再分发；范围归属与授权声明随共享 UI 包提供，见 [prototype/LICENSES/Ready-redistribution.txt](prototype/LICENSES/Ready-redistribution.txt).
 
 ## Portless
 
-- Upstream: https://github.com/vercel-labs/portless
-- Referenced version: npm `portless@0.15.6`, source module `src/routes.ts`.
-- Copyright 2025 Vercel Inc.
-- License: Apache License 2.0; full text is distributed in
+- 上游：https://github.com/vercel-labs/portless
+- 参考版本：npm `portless@0.15.6`，源码模块 `src/routes.ts`。
+- 原始版权声明：Copyright 2025 Vercel Inc.
+- 许可证：Apache License 2.0；随包分发的全文见
   [licenses/Portless-Apache-2.0.txt](licenses/Portless-Apache-2.0.txt).
-- Derived file: `scripts/workbench/portless-routes.mjs`.
-- Changes: reduced to local HTTP route storage and name ownership; replaced
-  writes with atomic private-file replacement; added strict project/instance
-  validation; removed force termination, tunnel metadata, stale PID pruning and
-  route-file locks (writes are serialized by one Context Guard proxy process).
+- 派生文件：`scripts/workbench/portless-routes.mjs`。
+- 修改：仅保留本地 HTTP 路由存储和名称归属；改用私有文件的原子替换；增加严格的项目与实例校验；移除强制终止、隧道元数据、过期 PID 清理及路由文件锁。写入由单个 Context Guard 代理进程串行处理。
 
-The workbench proxy, startup adapter and project-binding code are Context Guard
-implementations, not the full Portless CLI. TLS, certificate installation, LAN
-access, tunnels and framework launching are not included. This notice identifies
-the code's origin and does not imply endorsement by Vercel.
+工作台代理、启动适配器和项目绑定代码由 Context Guard 实现，并非完整的 Portless CLI；不包含 TLS、证书安装、局域网访问、隧道或框架启动功能。本文仅说明代码来源，不代表 Vercel 为本项目背书。

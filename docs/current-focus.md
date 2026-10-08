@@ -14,7 +14,7 @@
 
 Cloud 自动派发链（心跳、耐久队列、自动建 worktree、中断恢复、`resumed` 回执）、Quark 附件、CI 接收器匹配、人工验收回执自动化均**暂缓**。不删除现有代码，也不把既有 `[x]` 验收改成失败；只停止新增功能、专项联调和优化投入。维护既有安全门禁及正常回归，不用“暂缓”绕过必需检查。相关未完成项在 [CI_todo.md](../CI_todo.md) 标注。
 
-第 5 步完成前，不新增心跳、耐久队列、自动 worktree 或中断恢复，也不扩写现有自动派发实现。既有两种执行模式分开维护，以 Cloud 仓库的 [接口定义](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/docs/interface.md) 为准：
+第 5 步完成前，不新增心跳、耐久队列、自动 worktree 或中断恢复，也不扩写现有自动派发实现。既有两种执行模式分开维护，以 Cloud 仓库的 [接口定义](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/scripts/shared/references/design/design-interface-v1.2.1.md) 为准：
 
 - **manual**：人批准 brief 后保存 Main 事项并提供可粘贴执行提示，不自动创建执行 Session 或派发。
 - **automatic**：人批准 brief 后才创建新的执行 Session 并派发；保持已有权限、审核和回执门禁。

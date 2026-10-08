@@ -2,7 +2,7 @@
 
 # Context Guard
 
-语言：[English](README.md) | **中文**
+项目说明使用中文；[README.zh-CN.md](README.zh-CN.md) 保留为兼容入口。
 
 **下一代人与编码 Agent 的协作层。**
 
@@ -10,7 +10,7 @@
 
 Context Guard 把 **项目** 当成工作场所：
 
-1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。现行存储法是 [`fs-v2`](references/design-current.md)。
+1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。现行存储法是 [`fs-v2`](references/design/design-memory-current-v1.0.1.md)。
 2. **隔离的 Session** — 每次执行写自己的 Session。对话不是 Main。用户把 Coordinator 挂到节点上时，挂载不写入 Main。执行 Session 要等该事项的 brief 获批后才创建。
 3. **人只跟 Coordinator 说话** — Cloud Coordinator、本地工作台 Coordinator，或 Codex Session 当 Coordinator。确认和「去做」发生在那里。干活的 Session 不对人说。灰卡切片是以后的事，不是当前默认。
 4. **发布进 Main** — 人审核过的工作才进已提交的 main 基线。Session 草稿仍是草稿，直到过门禁。人可以直接改 Main 上的 TODO。
@@ -116,7 +116,7 @@ context-guard workbench --root /path/to/project --session <真实-session-id>
 context-guard doctor --platform cursor --root /path/to/project
 ```
 
-本地入口默认是 `http://项目名.localhost:1355`。绑定钉住命名 URL、Git 项目、后端和 Session；不会因为更新的任务自动切换。见 [命名工作台](references/named-workbench.md)。
+本地入口默认是 `http://项目名.localhost:1355`。绑定钉住命名 URL、Git 项目、后端和 Session；不会因为更新的任务自动切换。见 [命名工作台](references/design/design-workbench-v1.0.1.md)。
 
 ## 一轮怎么走
 
@@ -127,10 +127,10 @@ context-guard doctor --platform cursor --root /path/to/project
 5. **确认** — 普通提案在工作台等待。
 6. **发布** — 经过验证的 Session 工作可以进入 Main。Session 草稿不是 Main。
 
-第一次 Session 若记录语言仍未设定，Hook 会要求 Agent 先问「中文还是 English」，保存后后续 Session 不再问。
+第一次 Session 若记录语言仍未设定，Hook 会要求 Agent 先问「中文还是英文」，保存后后续 Session 不再问。
 
 ```text
-Use $context-guard. 共享 Map、隔离 Session、人确认、发布进 Main。
+使用 $context-guard。 共享 Map、隔离 Session、人确认、发布进 Main。
 ```
 
 常用命令：
@@ -150,7 +150,7 @@ Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在推理�
 
 配置 Cloud 后，它是唯一的人类工作台前端。同步基于事件（项目级 SSE），不是定时全量覆盖。开发前 `sync prepare`，验证后 `sync finish`。不相交的变更会重放；重叠的节点、字段或文件返回 `WORK_IMPACT` 并保持未验证。
 
-服务端、Slack 和部署维护在独立的 [Context Guard Cloud](https://github.com/Michel-Johnson/Context-Guard-Cloud) 仓库。本仓库只维护 Skill、本地后端和宿主适配；公共运行库、工作台页面和角色资料由固定 Cloud 发布包生成。开发和打包前执行 `npm ci --ignore-scripts`、`npm run build:runtime`，不要修改生成文件。连接：[Cloud Sync](references/cloud-sync-interface.md)。记忆权威：[服务器记忆](references/server-memory.md)。
+服务端、Slack 和部署维护在独立的 [Context Guard Cloud](https://github.com/Michel-Johnson/Context-Guard-Cloud) 仓库。本仓库只维护 Skill、本地后端和宿主适配；公共运行库、工作台页面和角色资料由固定 Cloud 发布包生成。开发和打包前执行 `npm ci --ignore-scripts`、`npm run build:runtime`，不要修改生成文件。连接：[Cloud Sync](references/design/design-cloud-sync-v1.0.1.md)。记忆权威：[服务器记忆](references/design/design-memory-server-v1.0.1.md)。
 
 ## 文档
 
@@ -158,10 +158,10 @@ Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在推理�
 | --- | --- |
 | Skill（一页，给 Agent） | [SKILL.md](SKILL.md) |
 | 文档索引 | [docs/README.md](docs/README.md) |
-| 工作台 / Map CLI | [工作台接口](references/workbench-interface.md) |
+| 工作台 / Map CLI | [工作台接口](references/design/design-workbench-interface-v1.0.1.md) |
 | 角色（Coordinator / Executor / Tester） | [roles.md](roles.md) |
 | npm 发布 | [发布手册](docs/npm-release-runbook.md) |
 
 本仓库把 **源码** 放在 GitHub `main`，把 **开发记忆** 放在用户指定的私有服务器。整个 `.codex/` 不进 Git 或 npm。其他项目不会继承本仓库的服务器配置。见 [RULE.md](RULE.md)。
 
-本地 `.codex/context/` 是兼容缓存和草稿，不是第二份权威。Cloud Agent 阅读面正迁向 [Memory Filesystem v2](references/memory-filesystem-v2/README.md) 的 node/module Markdown；在该投影真正暴露之前，不要假装能直接读取服务器私有文件。
+本地 `.codex/context/` 是兼容缓存和草稿，不是第二份权威。Cloud Agent 阅读面正迁向 [Memory Filesystem v2](references/design/design-memory-filesystem-v1.0.1.md) 的 node/module Markdown；在该投影真正暴露之前，不要假装能直接读取服务器私有文件。

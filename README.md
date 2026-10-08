@@ -1,167 +1,167 @@
-[Website & interactive demos](https://michel-johnson.github.io/Context-Guard-Skill/?lang=en)
+[官网与交互演示](https://michel-johnson.github.io/Context-Guard-Skill/?lang=zh)
 
 # Context Guard
 
-Language: **English** | [中文](README.zh-CN.md)
+项目说明使用中文；[README.zh-CN.md](README.zh-CN.md) 保留为兼容入口。
 
-**A next-generation collaboration layer for humans and coding agents.**
+**下一代人与编码 Agent 的协作层。**
 
-Most tools still treat *chat* as the workplace. The thread is the memory, the approval surface, and the project. When it ends, the next agent starts cold. A human “yes” in chat is not a grant, not a publication, and not a durable record.
+多数工具仍把 *对话* 当成工作场所。线程即记忆、即审批面、即项目。对话一结束，下一个 Agent 从零开始。聊天里的一句「好」既不是授权，也不是发布，更不是可复用的记录。
 
-Context Guard treats the **project** as the workplace:
+Context Guard 把 **项目** 当成工作场所：
 
-1. **A shared Map** — modules, responsibilities, bugs, todos, and verification live on one durable structure. Current storage law is [`fs-v2`](references/design-current.md).
-2. **Isolated Sessions** — each execution run writes its own Session. A chat is not Main. Mounting the Coordinator onto a node does not write Main. The execution Session is created only after that item's brief is approved.
-3. **The human talks to Coordinator** — Cloud Coordinator, the local workbench Coordinator, or a Codex Session acting as Coordinator. Confirmation and “go implement this” happen there. Execution Sessions do not talk to the human. Grey-card visibility slicing is later work, not the current default.
-4. **Publication into Main** — only reviewed work enters the committed-main baseline. Session drafts stay drafts until the gate. Humans may edit Main TODOs directly.
+1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。现行存储法是 [`fs-v2`](references/design/design-memory-current-v1.0.1.md)。
+2. **隔离的 Session** — 每次执行写自己的 Session。对话不是 Main。用户把 Coordinator 挂到节点上时，挂载不写入 Main。执行 Session 要等该事项的 brief 获批后才创建。
+3. **人只跟 Coordinator 说话** — Cloud Coordinator、本地工作台 Coordinator，或 Codex Session 当 Coordinator。确认和「去做」发生在那里。干活的 Session 不对人说。灰卡切片是以后的事，不是当前默认。
+4. **发布进 Main** — 人审核过的工作才进已提交的 main 基线。Session 草稿仍是草稿，直到过门禁。人可以直接改 Main 上的 TODO。
 
-It installs as a skill for **Codex**, **Cursor**, and **Claude**. New Hooks are not in scope this round.
+它作为 Skill 安装到 **Codex**、**Cursor** 和 **Claude**。这一轮不开发新 Hook。
 
-[Repository docs and file layout](docs/README.md) · [One-page skill](SKILL.md)
+[仓库文档与文件布局](docs/README.md) · [一页 Skill](SKILL.md)
 
-## Why this is a different paradigm
+## 为什么这是另一种范式
 
-| Chat as the workplace | Context Guard |
+| 把对话当工作场所 | Context Guard |
 | --- | --- |
-| History in a thread | Structure on a Map |
-| Next session starts over | Next session opens the same Map |
-| “Looks good” in a random chat | Human confirms with Coordinator |
-| Agent sees whatever was pasted | Execution Agents work a bound TODO/Bug |
-| Memory is retrieval over files | Memory is owned project state, with version and publication |
+| 历史在线程里 | 结构在 Map 上 |
+| 下一轮从零开始 | 下一轮打开同一张 Map |
+| 随便一个聊天里说「看起来可以」 | 人跟 Coordinator 确认 |
+| Agent 看见什么取决于粘贴了什么 | 执行 Agent 绑定到对应 TODO/Bug |
+| 记忆是对文件的检索 | 记忆是带版本与发布的项目状态 |
 
-This is not another prompt pack, RAG folder, or “remember this” plugin. It is a **human–agent operating loop** for software work: locate the node, confirm the intent, execute in a Session, verify, then publish.
+这不是又一份 prompt 包、RAG 目录，或「记住这个」插件。它是软件工作的 **人–Agent 操作环**：定位节点、确认意图、在 Session 中执行、验证，然后发布。
 
-Role prompts for Coordinator / Executor / Tester exist so a project can split planning, execution, and checks. Role text does not grant protocol permissions. Automatic multi-agent orchestration is still advancing; the collaboration contract (Map, Session, grant, human confirmation, Main) is the product.
+Coordinator / Executor / Tester 的角色提示词用于拆开规划、执行和检查。角色文本不等于协议权限。自动多 Agent 编排仍在推进；产品本身是协作契约（Map、Session、授权、人确认、Main）。
 
-## See the workbench
+## 看工作台
 
-People look at the Map in the workbench. Coordinator may drive focus, tours, and structure edits. Execution Agents do not talk to the human.
+人在工作台里看 Map。Coordinator 可以定位、游览和改结构。干活的 Session 不对人说话。
 
-**Cloud:** when configured, Cloud is the only human-facing workbench. The local service syncs and delivers to the host. Private deployments require browser login. A device logs in once per project; new Sessions reuse that connection.
+**云端：** 配置 Cloud 后，它是唯一的人类工作台前端。本地服务负责同步和宿主投递。私有部署需要浏览器登录。设备每个项目登录一次，新 Session 复用该连接。
 
-**Local:** verify the actual Session binding and reuse the project’s established service. First-time setup, ambiguous identity, and worktree migration need a human choice. A new Session in an already connected project does not.
+**本地：** 校验真实 Session 绑定并复用项目已有服务。首次配置、身份歧义和工作树迁移才需要人选择；已连接项目的新 Session 不必再选。
 
-### Overview
+### 总览
 
-Root catalog: 4–8 module cards. Click a card to enter. Bugs stay in the right-hand list.
+第一页 4–8 张主干模块卡。点一张进入。未修 Bug 在右侧列表。
 
-![Workbench overview](docs/shots/workbench/overview.png)
+![工作台总览](docs/shots/workbench/overview.png)
 
-### Inside a module
+### 进入模块
 
-Work units hang under the module. Hierarchy is parent–child solid curves.
+开工单元挂在模块下面，只画从属实线。
 
-![Inside a module](docs/shots/workbench/module.png)
+![模块内部](docs/shots/workbench/module.png)
 
-### Module relations
+### 模块关系
 
-「关系」 highlights produce/consume partners and dims the rest. It does not enter the module.
+「关系」高亮生产/消费伙伴，其余变暗，不会进入该模块。
 
-![Module relations](docs/shots/workbench/relations.png)
+![模块关系](docs/shots/workbench/relations.png)
 
-### Session flow
+### 会话流动
 
-Click a bug with an assigned session. The path from the root to that node lights up; current session beads run along the chain.
+点一条挂了会话的 Bug。从根到该节点的链路亮起来，当前会话沿线流动。
 
-![Session flow](docs/shots/workbench/session-flow.png)
+![会话流动](docs/shots/workbench/session-flow.png)
 
-### Auth / inspect mode
+### 授权模式
 
-「授权模式」 can mark slices. Grey-card visibility slicing is later work, not the current default. New Sessions currently see their own Session Map.
+「授权模式」可以标切片。灰卡可见范围是以后的事，不是当前默认。新 Session 默认看见自己这张 Session Map。
 
-![Auth mode](docs/shots/workbench/auth-mode.png)
+![授权模式](docs/shots/workbench/auth-mode.png)
 
-Open **Settings** on the far right of the top bar for language and theme. Map titles, purposes, and memories stay in the language they were written.
+顶栏最右 **设置** 里切界面语言和主题。地图上的标题、用途、记忆仍按写入时的语言。
 
-## Install
+## 安装
 
-Install with npx. The installer detects Codex, Cursor, and Claude, then installs both the skill and lifecycle hooks while preserving existing configuration:
+使用 npx 安装。安装器会检测 Codex、Cursor 和 Claude，把 Skill 与生命周期 Hook 一起安装并安全合并现有配置：
 
 ```bash
 npx @michelj/context-guard install
 ```
 
-Or install globally:
+也可以全局安装：
 
 ```bash
 npm install -g @michelj/context-guard --registry=https://registry.npmjs.org
 ```
 
-Force all three clients:
+强制安装到三类客户端：
 
 ```bash
 npx @michelj/context-guard install --platform all
 ```
 
-Hooks are on by default. Skill only:
+默认会安装 Hook。只要 Skill：
 
 ```bash
 npx @michelj/context-guard install --no-hooks
 ```
 
-Default skill paths are `~/.codex/skills/context-guard`, `~/.cursor/skills/context-guard`, and `~/.claude/skills/context-guard`. The installer backs up and merges existing hook/settings files. For Codex it also enables `[features] hooks = true`.
+默认目录分别是 `~/.codex/skills/context-guard`、`~/.cursor/skills/context-guard` 和 `~/.claude/skills/context-guard`。安装器会备份并合并现有 Hook/Settings；对 Codex 还会启用 `[features] hooks = true`。
 
-Before the npm package is published:
+npm 包正式发布前：
 
 ```bash
 npx github:Michel-Johnson/Context-Guard-Skill install
 ```
 
-After installation, clients should discover `SKILL.md` in those skill directories.
+安装后，相应客户端应能在上述 Skill 目录发现 `SKILL.md`。
 
-Then, in a real project:
+然后，在真实项目里：
 
 ```bash
-context-guard workbench --root /path/to/project --session <actual-session-id>
+context-guard workbench --root /path/to/project --session <真实-session-id>
 context-guard doctor --platform cursor --root /path/to/project
 ```
 
-Local URLs default to `http://project-name.localhost:1355`. Binding pins the named URL, Git project, backend, and Session; it never auto-switches to a newer task. See [named workbenches](references/named-workbench.md).
+本地入口默认是 `http://项目名.localhost:1355`。绑定钉住命名 URL、Git 项目、后端和 Session；不会因为更新的任务自动切换。见 [命名工作台](references/design/design-workbench-v1.0.1.md)。
 
-## How a loop runs
+## 一轮怎么走
 
-1. **Open the Map** — first use: human and agent lock L1 together (readable titles), then L2, then L3. Later sessions open that Map.
-2. **Bind the Session** — `context-guard workbench --root <project> --session <actual-session-id>`.
-3. **Grant a slice** — the human marks what this Session may read.
-4. **Work** — the agent reads `map read`, writes through `map apply` with a real session, base version, and stable operation id. Chat assent does not write the Map.
-5. **Confirm** — ordinary proposals wait in the workbench.
-6. **Publish** — verified Session work can enter Main. Session drafts are not Main.
+1. **打开 Map** — 首次使用：人和 Agent 一起锁定第一层（卡名要一眼能看懂），再拆第二层、第三层。之后的 Session 打开这张图。
+2. **绑定 Session** — `context-guard workbench --root <项目> --session <真实-session-id>`。
+3. **授权切片** — 人标出这次 Session 可以读什么。
+4. **开工** — Agent 用 `map read` 读，用 `map apply` 写，必须带真实会话、基准版本和稳定操作编号。聊天附和不会写 Map。
+5. **确认** — 普通提案在工作台等待。
+6. **发布** — 经过验证的 Session 工作可以进入 Main。Session 草稿不是 Main。
 
-On the first session, if record language is still unset, the hook tells the agent to ask “中文 or English?” and persist the answer. Later sessions do not ask again.
+第一次 Session 若记录语言仍未设定，Hook 会要求 Agent 先问「中文还是英文」，保存后后续 Session 不再问。
 
 ```text
-Use $context-guard. Shared Map, isolated Sessions, human confirmation, publication into Main.
+使用 $context-guard。 共享 Map、隔离 Session、人确认、发布进 Main。
 ```
 
-Useful commands:
+常用命令：
 
 ```bash
-context-guard workbench --binding-status --root /path/to/project --session <actual-session-id>
+context-guard workbench --binding-status --root /path/to/project --session <真实-session-id>
 context-guard workbench --list --root /path/to/project
-context-guard map read --root /path/to/project --session <actual-session-id> --node <id>
+context-guard map read --root /path/to/project --session <真实-session-id> --node <id>
 context-guard doctor --platform codex --root /path/to/project
 ```
 
-`record-bad-case` / `record-bad-case-fix` close a failure/fix loop. `archive-session` saves durable Session results onto accepted Map nodes covered by `owns`; unowned files stay unclassified until a human confirms assignment.
+`record-bad-case` / `record-bad-case-fix` 关闭失败/修复闭环。`archive-session` 把耐久的 Session 结果写到 `owns` 覆盖且已确认的 Map 节点上；没有归属的文件保持未分类，直到人确认归属。
 
-Codex installs eleven lifecycle hooks (excluding `SessionEnd`). At reasoning boundaries they deliver the real Map, grants, assigned TODOs/Bugs, and other-session changes. New requirements become Map TODOs. `TODO.md` stays human-owned.
+Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在推理边界投递真实 Map、授权、待办/Bug 和其他 Session 的变更。用户的新要求写成 Map TODO。`TODO.md` 只由人维护。
 
-## Cloud
+## 云端
 
-When Cloud is configured it is the only human-facing workbench. Sync is event-based (project SSE), not a periodic full Map replace. `sync prepare` before development, `sync finish` after verification. Disjoint changes rebase; overlapping node, field, or file scopes return `WORK_IMPACT` and stay unverified.
+配置 Cloud 后，它是唯一的人类工作台前端。同步基于事件（项目级 SSE），不是定时全量覆盖。开发前 `sync prepare`，验证后 `sync finish`。不相交的变更会重放；重叠的节点、字段或文件返回 `WORK_IMPACT` 并保持未验证。
 
-Server and Slack source/deployment live in [Context Guard Cloud](https://github.com/Michel-Johnson/Context-Guard-Cloud). This repository maintains the Skill, local backend and host adapters. Shared runtime/UI/role references are generated from pinned Cloud release packages: run `npm ci --ignore-scripts` then `npm run build:runtime` before developing or packing. Do not edit generated files. Connection: [Cloud Sync](references/cloud-sync-interface.md). Memory authority: [server memory](references/server-memory.md).
+服务端、Slack 和部署维护在独立的 [Context Guard Cloud](https://github.com/Michel-Johnson/Context-Guard-Cloud) 仓库。本仓库只维护 Skill、本地后端和宿主适配；公共运行库、工作台页面和角色资料由固定 Cloud 发布包生成。开发和打包前执行 `npm ci --ignore-scripts`、`npm run build:runtime`，不要修改生成文件。连接：[Cloud Sync](references/design/design-cloud-sync-v1.0.1.md)。记忆权威：[服务器记忆](references/design/design-memory-server-v1.0.1.md)。
 
-## Documentation
+## 文档
 
-| Topic | Where |
+| 主题 | 入口 |
 | --- | --- |
-| Skill (one page, for the agent) | [SKILL.md](SKILL.md) |
-| Docs index | [docs/README.md](docs/README.md) |
-| Workbench / map CLI | [workbench interface](references/workbench-interface.md) |
-| Roles (Coordinator / Executor / Tester) | [roles.md](roles.md) |
-| npm publish | [release runbook](docs/npm-release-runbook.md) |
+| Skill（一页，给 Agent） | [SKILL.md](SKILL.md) |
+| 文档索引 | [docs/README.md](docs/README.md) |
+| 工作台 / Map CLI | [工作台接口](references/design/design-workbench-interface-v1.0.1.md) |
+| 角色（Coordinator / Executor / Tester） | [roles.md](roles.md) |
+| npm 发布 | [发布手册](docs/npm-release-runbook.md) |
 
-This repository keeps **source** on GitHub `main` and **development memory** on the user-designated private server. The entire `.codex/` tree stays out of Git and npm. Other projects do not inherit this repo’s server config. See [RULE.md](RULE.md).
+本仓库把 **源码** 放在 GitHub `main`，把 **开发记忆** 放在用户指定的私有服务器。整个 `.codex/` 不进 Git 或 npm。其他项目不会继承本仓库的服务器配置。见 [RULE.md](RULE.md)。
 
-The local `.codex/context/` tree is a compatibility cache and draft, not a second authority. Cloud Agent read surface is moving to node/module Markdown in [Memory Filesystem v2](references/memory-filesystem-v2/README.md); until that projection is exposed, do not pretend private server files are directly readable.
+本地 `.codex/context/` 是兼容缓存和草稿，不是第二份权威。Cloud Agent 阅读面正迁向 [Memory Filesystem v2](references/design/design-memory-filesystem-v1.0.1.md) 的 node/module Markdown；在该投影真正暴露之前，不要假装能直接读取服务器私有文件。
