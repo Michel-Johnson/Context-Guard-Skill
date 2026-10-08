@@ -120,7 +120,7 @@ export class CursorAcp {
     if (this.initialized) throw error('CURSOR_ALREADY_CONNECTED', 'This transport already has a Session');
     const init = await this.request('initialize', { protocolVersion: 1,
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-      clientInfo: { name: 'context-guard', version: '0.8.1' } });
+      clientInfo: { name: 'context-guard', version: '0.8.2' } });
     if (init?.protocolVersion !== 1) throw error('CURSOR_PROTOCOL_VERSION', 'Unsupported Cursor ACP protocol version');
     if (sessionId && (!validId(sessionId) || init.agentCapabilities?.loadSession !== true)) throw error('CURSOR_RESUME_UNSUPPORTED', 'Cursor cannot load the requested Session');
     await this.request('authenticate', { methodId: 'cursor_login' });
