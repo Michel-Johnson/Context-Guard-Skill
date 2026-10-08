@@ -1132,7 +1132,7 @@ test('START_FAILED mentions the default directory only when that directory cause
   assert.equal(startFailedMessage({ log: 'the process exited before listen', directory: { path: dir, overridden: false, unavailable: true } }), base);
   const named = startFailedMessage({ log: `The default directory ${dir} is unavailable (ENOTDIR)`, directory: { path: dir, overridden: false, unavailable: true } });
   assert.match(named, new RegExp(`The default directory ${dir} is unavailable`));
-  assert.match(named, /references\/named-workbench\.md/);
+  assert.match(named, /references\/design\/design-workbench-v1\.0\.1\.md/);
   assert.match(named, new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   const windowsDirectory = String.raw`C:\Users\fixture\.context-guard\named-workbench`;
   const windowsState = { path: windowsDirectory, overridden: false, unavailable: true };
