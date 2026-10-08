@@ -58,6 +58,7 @@
   "separatePackages": [],
   "productFiles": [
     "tests/cursor-chat-browser.mjs",
+    "tests/doctor.test.mjs",
     "tests/executor-context.test.mjs",
     "tests/browser-login.test.mjs",
     "tests/build-runtime.test.mjs",

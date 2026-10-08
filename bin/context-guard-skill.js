@@ -552,7 +552,7 @@ function doctor(args) {
     try { diagnostic = JSON.parse(probe.stdout); } catch {}
   }
   const runtimeStatus = diagnostic?.runtime?.status || "unknown";
-  check("project.workbench", ["ready", "stopped"].includes(runtimeStatus), diagnostic ? JSON.stringify({ status: runtimeStatus, named: diagnostic.runtime.named, services: diagnostic.runtime.services }) : "diagnosis unavailable", false);
+  check("project.workbench", ["ready", "stopped"].includes(runtimeStatus), diagnostic ? JSON.stringify({ status: runtimeStatus, named: diagnostic.runtime?.named, services: diagnostic.runtime?.services }) : "diagnosis unavailable", false);
   const ok = results.every(item => !item.required || item.ok);
   if (options.json) console.log(JSON.stringify({ ok, results }, null, 2));
   else {
