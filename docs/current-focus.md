@@ -10,11 +10,11 @@
 
 1. **Map 与 fs-v2.1**：项目结构化记忆归用户所有；保持版本、节点、Bug/TODO 和 attempt 可准确读取、编辑及回写。
 2. **对话型 Coordinator**：只取回答所需的 Map 切片，优先聊天速度与事实准确性；不再把调度器或传输层当作它的开发目标。
-3. **跨客户端 Skill + hooks**：Codex、Cursor、Claude 从同一份 Map 读取，并把各自执行结果写回对应 Session。
+3. **Claude Code CLI 与 Cursor 接入**：从项目 Map 按需读取上下文，开发记录保存在本地会话记录 Markdown 文件，不同步到 Cloud。Codex Hook 后续再做，不作为本阶段验收要求。
 
 ## 暂缓范围
 
-Cloud 自动派发链（心跳、耐久队列、自动建 worktree、中断恢复、`resumed` 回执）、Quark 附件、CI 接收器匹配、人工验收回执自动化均**暂缓**。不删除现有代码，也不把既有 `[x]` 验收改成失败；只停止新增功能、专项联调和优化投入。维护既有安全门禁及正常回归，不用“暂缓”绕过必需检查。相关未完成项在 [CI_todo.md](../CI_todo.md) 标注。
+Codex Hook、会话记录同步、Cloud 自动派发链（心跳、耐久队列、自动建 worktree、中断恢复、`resumed` 回执）、Quark 附件、CI 接收器匹配、人工验收回执自动化均**暂缓**。不删除现有代码，也不把既有 `[x]` 验收改成失败；只停止新增功能、专项联调和优化投入。维护既有安全门禁及正常回归，不用“暂缓”绕过必需检查。未完成的开发事项由 Coordinator 跟踪；[CI_todo.md](../CI_todo.md) 只记录已实现模块的测试缺口。
 
 第 5 步完成前，不新增心跳、耐久队列、自动 worktree 或中断恢复，也不扩写现有自动派发实现。既有两种执行模式分开维护，以共享 [接口定义](../references/design/design-interface-v1.2.1.md) 为准：
 
@@ -27,14 +27,14 @@ Cloud 自动派发链（心跳、耐久队列、自动建 worktree、中断恢�
 
 在用户自己的真实项目、本机工作台、已建立的 Map 上，用户就某条真实 Bug 与 Coordinator 连续讨论 5–10 轮。Coordinator 首次有意义回复应在用户发送后 **2 秒内**开始，引用准确模块、Bug 和既有 attempt 结论；每轮都要让用户继续思考，而非等待系统。
 
-讨论收敛后，Coordinator 提出 brief。本 MVP 使用 **manual**：人确认后形成 Main 事项及可粘贴到 Codex、Cursor 或 Claude 的执行提示，内含必要 Map 切片和读写路径；厂商 Agent 自行执行，现有 hooks 将结果写回 Session，成果再按审核与发布规则进入 Main。本场景不要求自动派发能力；离线本地工作台仍须保留，其实际本机 Coordinator 能力另行验收，不由拆仓库或界面存在推断已经接通。
+讨论收敛后，Coordinator 提出 brief。本 MVP 使用 **manual**：人确认后形成 Main 事项及可粘贴到 Claude Code CLI 或 Cursor 的执行提示，内含必要 Map 切片和读写路径；厂商 Agent 自行执行，开发记录只保存在本地，项目 Map 的更新仍按审核与发布规则进入 Main。本场景不要求自动派发能力；离线本地工作台仍须保留，其实际本机 Coordinator 能力另行验收，不由拆仓库或界面存在推断已经接通。
 
 用同一个真实任务与直接使用 Cursor Projects 比较：从提问到得到一条用户无需再改的任务所花的时间，以及等待与思考各占多少。录屏保留原始时间点和修订次数；没有对照与用户验收，不宣称 MVP 更快。
 
 ## 开发顺序
 
 1. 瘦身 Coordinator：快速讨论 / brief 两种模式，小上下文、提前 compact、缓存 Main 前缀；先量准确率与首字延迟，再调 token。
-2. 裁定 Agent 打开模块优先读哪套目录（旧 FIND/snapshot 或 fs-v2.1 Markdown），随后让 Skill 只教一种默认读法；旧入口仅作为明确的迁移/恢复路径。
+2. 统一默认读取入口：`map read --context` 取导航，`--node` 按需读取；需要已启用的 fs-v2.1 事项文件时沿 `index.md` 链接展开。旧 FIND/snapshot 仅用于明确的迁移或恢复。
 3. 验证 manual 的批准→保存 Main 事项→执行提示闭环；automatic 的批准→新执行 Session→派发按既有实现保留并做必要回归。挂载不写 Main、不创建执行 Session；不新增心跳、耐久队列、自动 worktree 或中断恢复。
 4. 用自己的项目跑唯一 MVP 场景、录屏，并与 Cursor Projects 做同任务对照。
 5. 根据录屏改 README：第一句话突出“能和你对话的项目 coordinator”，不以“范式”开场。此前不提前改营销文案。

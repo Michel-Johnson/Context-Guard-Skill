@@ -11,6 +11,10 @@
 - [ ] Required/正常合并/公开固定 core/Skill/Cloud 消费由 Coordinator 统一完成。本轮 Executor 不打包、提交、发布或部署。
 - [ ] 合并后安装/doctor 与新版本真实 Slack 默认 TODO 验收：保留七项及用途、无逐项相同状态/测试标签/日期编号；未知用途不得编造，同名和用户明确要技术详情仍能识别。当前未绑定产品任务，不伪造 Map Main、审批或完成回执。
 
+## LOCAL-RECORDS-01 · 原生客户端验收
+
+- [ ] 在已登录的 Claude Code CLI 与 Cursor 中验证完整生命周期：会话笔记落在本地，归档、压缩及结束均无笔记上传；Cloud 上下文读取与收工检查仍可用。公共 CLI、Hook 函数和隔离归档已有正式回归，不能替代原生宿主验收。
+
 ## COORDINATOR-REPLY-FOLLOWUP-01 · 清单前缀与共同状态（2026-10-08）
 
 - [x] 保留实际验收缺口：上一版已发布角色的真实默认 TODO 回复仍带 E2E / IF11 前缀、重复 pending；不能用旧模块 / 发布通过宣称回复效果已过。

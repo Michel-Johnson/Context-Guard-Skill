@@ -102,6 +102,8 @@ context-guard map operation --root "/path/to/project" --session "actual-hook-ses
 
 `archive-session` 是普通 Agent 收工入口。`--files` 必须是该 Agent 实际修改的仓库相对文件。写 Session 归档前，先做一次带版本的 Map 对齐：
 
+默认按需上下文流程只检查文件归属，不向节点追加开发流水账。开发笔记写入本地 [会话记录文件](design-session-record-v1.0.0.md)，不上传；明确的结构提案仍走原审核。以下节点记忆追加规则仅说明未启用新读取流程的兼容行为，不是默认开发步骤。
+
 - `owns` 覆盖的文件，将归档摘要作为一条记忆加到最长匹配节点；精确文件归属优先于目录归属。
 - 无已确认归属的文件保持 `unclassified`。未匹配 `owns` 不证明存在新产品职责，不能自动建节点。
 - 测试、文档、生成文件、配置不在现有 `owns` 时，可显式 `assignments`，含 `nodeId`、`reason`、`files`。目标须已确认，文件属于本次归档，Session 仍须正常节点授权。

@@ -751,19 +751,8 @@ def sync_command(root: Path, action: str, current_session_id: str = "", paths: l
 
 
 def session_memory_sync(root: Path, current_session_id: str, event: str, payload: object) -> dict[str, object]:
-    """Persist this Session checkpoint directly; a later hook retries preserved local data."""
-    if event != "session-end" and map_snapshot(context_folder(root), current_session_id).get("context_cache"):
-        return {"deferred": True, "reason": "开发记录保留在本地 Session，归档时同步"}
-    event_id, _, _ = event_identity(payload, event, current_session_id)
-    try:
-        return run_node_workbench([
-            "memory", "sync", "--root", str(root), "--session", current_session_id,
-            "--hook-event", HOOK_EVENT_NAMES.get(event, event),
-            "--event-id", event_id,
-            "--occurred-at", payload_time(payload),
-        ])
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
-        return {"error": {"code": "MEMORY_SYNC_PENDING", "message": str(error)[:500]}}
+    """本阶段会话记录只保存在本地；不发请求，也不重放旧上传队列。"""
+    return {"localOnly": True, "synchronized": False}
 
 
 def sync_pending_interrupt(root: Path, session: str, runtime: dict) -> None:
