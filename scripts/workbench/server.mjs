@@ -149,6 +149,14 @@ export async function health(state) {
 export { loopbackJSON };
 export { canRetryWorkbenchListen };
 
+export function receiverExecutionHeartbeat(identity, native) {
+  // A configured Cursor receiver owns this native conversation. A later
+  // Session-start intent does not prove that its model is currently working.
+  return native?.configured && (identity?.platform === 'cursor' || Date.parse(native.at) >= (Date.parse(identity?.statusSeen) || 0))
+    ? { status: native.status, at: native.at }
+    : { status: ['active', 'stopped'].includes(identity?.status) ? identity.status : 'unknown', at: identity?.statusSeen || '' };
+}
+
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage, repositoryLookup = lookupRepository, contextOnly = false } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   const directory = await defaultDirectoryAvailability();
@@ -328,9 +336,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
                 const report = interruptedTaskReport(head.session, execution, native);
                 if (report) await device.send(report).catch(error => { device.lastError = error.code || 'INTERRUPTION_REPORT_FAILED'; });
               }
-              heartbeat.execution = native?.configured && Date.parse(native.at) >= (Date.parse(identity?.statusSeen) || 0)
-                ? { status: native.status, at: native.at }
-                : { status: ['active', 'stopped'].includes(identity?.status) ? identity.status : 'unknown', at: identity?.statusSeen || '' };
+              heartbeat.execution = receiverExecutionHeartbeat(identity, native);
               registered.push(heartbeat);
             }
           } catch (error) { device.lastError = error.code || 'UNAVAILABLE'; }

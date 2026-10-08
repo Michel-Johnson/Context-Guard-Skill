@@ -11,7 +11,7 @@ import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, upd
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { definitiveMemoryRejection } from '../scripts/workbench/memory.mjs';
-import { canRetryWorkbenchListen, prepareSessionCommit, startServer } from '../scripts/workbench/server.mjs';
+import { canRetryWorkbenchListen, prepareSessionCommit, startServer, receiverExecutionHeartbeat } from '../scripts/workbench/server.mjs';
 import { canRetryWorkbenchListen as sharedListenGuard } from '../scripts/workbench/listen.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
@@ -22,6 +22,15 @@ import { WorkbenchSync, reconcileRecoveryDraft, workbenchTimeoutMs } from '../pr
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
 const retainedFixtures = new Set();
+
+test('Cursor heartbeat uses actual receiver state instead of a newer lifecycle intent', () => {
+  const identity = { platform: 'cursor', status: 'active', statusSeen: '2026-10-09T02:00:02Z' };
+  for (const status of ['stopped', 'active', 'failed', 'interrupted', 'unknown']) {
+    const native = { configured: true, status, at: '2026-10-09T02:00:01Z' };
+    assert.deepEqual(receiverExecutionHeartbeat(identity, native), { status, at: native.at });
+  }
+  assert.equal(receiverExecutionHeartbeat({ ...identity, platform: 'claude' }, { configured: true, status: 'stopped', at: '2026-10-09T02:00:01Z' }).status, 'active', 'existing Claude lifecycle precedence is unchanged');
+});
 
 // Exercise the actual classic-script status functions without starting a browser.
 // Function boundaries are checked explicitly; a missing function is a test failure.

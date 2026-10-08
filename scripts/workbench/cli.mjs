@@ -90,7 +90,8 @@ function commandHelp(command, parts = []) {
   --status                 Read the native Cursor turn and latest result.
   --message --input <file|-> Send {id,message} to the same configured Session.
 
-Requires an existing Cursor Session binding. Use an absolute official Cursor CLI path, not a guessed PATH agent.
+Configuration/status/messages require an existing Cursor Session binding; --new creates and binds one explicitly.
+Use an absolute official Cursor CLI path, not a guessed PATH agent.
 Configuration: {command,root,name,model?,environmentFile?,nativeSessionId?,permissionPolicy?,permissionsApproved?,timeoutMs?}.
 Tool permissions default to reject; allow-once requires explicit local permissionsApproved:true.
 ${HELP_EXIT_NOTE}`;
