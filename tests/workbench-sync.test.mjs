@@ -16,6 +16,7 @@ import { canRetryWorkbenchListen as sharedListenGuard } from '../scripts/workben
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
+import { ProtocolDelivery } from '../scripts/workbench/protocol-delivery.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/shared/io.mjs';
@@ -1442,8 +1443,19 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
     const principal = { repositoryId: running.state.projectId, deviceId: running.state.projectId, agentId: sessionId, role: 'device' };
     const protocolSession = registered.protocolBinding.session;
     const taskKey = scopedObjectKey(principal, protocolSession, 'task:assigned');
+    const replay = { v: 2, id: 'accepted-before-assignment', type: 'native.prompt', session: protocolSession, payload: { text: 'Earlier direct task' } };
+    await protocol.handle({ ...principal, role: 'human', agentId: 'local-human' }, replay);
+    const delivery = new ProtocolDelivery(path.join(f.ctx, 'private/project-workbench/interface-v2/task-deliveries'), {
+      cursor: () => { throw Object.assign(new Error('Fixture busy before acceptance'), { code: 'RUNTIME_BUSY' }); },
+    });
+    const priorInput = { id: 'local-native:' + replay.id, platform: 'cursor', sessionId, root: await fs.realpath(f.root), message: replay.payload.text };
+    await assert.rejects(delivery.deliver(priorInput), { code: 'UNAVAILABLE' });
+    const priorFile = path.join(delivery.directory, hash(priorInput.id) + '.json'), priorBytes = await fs.readFile(priorFile, 'utf8');
     for (const stage of ['awaiting-plan-review', 'executing']) {
       await protocol.transaction(state => { state.tasks[taskKey] = { id: 'assigned', repositoryId: principal.repositoryId, session: protocolSession, stage }; });
+      const retry = await call(running.state.adminToken, { sessionId, action: 'message', message: { id: replay.id, message: replay.payload.text } });
+      assert.equal(retry.status, 409); assert.equal(retry.data.error.code, 'CONFLICT');
+      assert.equal(await fs.readFile(priorFile, 'utf8'), priorBytes, 'a saved acceptance receipt cannot authorize retrying an earlier rejected native invocation');
       const blocked = await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'blocked-' + stage, message: 'Unrelated task' } });
       assert.equal(blocked.status, 409); assert.equal(blocked.data.error.code, 'CONFLICT');
       assert.equal((await chat('/api/cursor-chat', running.humanToken, { id: 'ui-blocked-' + stage, sessionId, text: 'Unrelated task' })).status, 409);

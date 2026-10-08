@@ -15,6 +15,12 @@ const requireIdentity = p => {
   if (!p || ['repositoryId', 'deviceId', 'agentId'].some(k => typeof p[k] !== 'string' || !p[k])) fail('UNAUTHORIZED', 'Authenticated identity required');
 };
 const bindingKey = (p, id) => key([p.repositoryId, id]);
+function requireNativePromptAvailable(state, principal, session) {
+  if (principal.role !== 'human') fail('FORBIDDEN', 'Only the project human can submit native prompts');
+  const active = Object.values(state.tasks).some(task => task.repositoryId === principal.repositoryId && canonical(task.session) === canonical(session) && !['closed', 'finished', 'cancelled'].includes(task.stage));
+  const local = state.localExecutions?.[queueKey(principal, session)];
+  if (active || local && !local.closed) fail('CONFLICT', 'Use the existing approved task conversation for this assigned Session');
+}
 export function hasCiReceiver(state, principal, session, config = {}) {
   const executor = state.bindings[bindingKey(principal, session.id)];
   if (!executor || executor.generation !== session.generation) return false;
@@ -440,10 +446,6 @@ export class ProtocolStore extends EventEmitter {
     return this.execute(principal, input, async (state, p, message, emit) => {
       const payload = message.payload;
       if (message.type === 'native.prompt') {
-        if (p.role !== 'human') fail('FORBIDDEN', 'Only the project human can submit native prompts');
-        const active = Object.values(state.tasks).some(task => task.repositoryId === p.repositoryId && canonical(task.session) === canonical(message.session) && !['closed', 'finished', 'cancelled'].includes(task.stage));
-        const local = state.localExecutions?.[queueKey(p, message.session)];
-        if (active || local && !local.closed) fail('CONFLICT', 'Use the existing approved task conversation for this assigned Session');
         const seq = emit(message);
         return { state: 'queued', requestId: message.id, seq };
       }
@@ -559,7 +561,12 @@ export class ProtocolStore extends EventEmitter {
         return { ref: payload.ref, version };
       }
       fail('INVALID_ARGUMENT', 'This message is not implemented by this endpoint yet');
-    }, options.authorize);
+    }, async (state, p, message) => {
+      // A cached acceptance is not renewed permission to start native work:
+      // a workflow assignment may have arrived since a failed delivery.
+      if (message.type === 'native.prompt') requireNativePromptAvailable(state, p, message.session);
+      await options.authorize?.(state, p, message);
+    });
   }
   async authorizeSession(principal, session) {
     requireIdentity(principal);

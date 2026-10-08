@@ -60,10 +60,14 @@ test('Cursor native conversation rejects cross-project/device/generation access 
 
 test('Cursor direct prompts cannot bypass an active approved workflow task', async () => {
   const { store } = await fixture();
+  const prior = message('accepted-before-assignment', 'native.prompt', { text: 'Previously accepted, not yet delivered' });
+  const accepted = await store.handle(human, prior);
   await store.transaction(state => { state.tasks[scopedObjectKey(owner, session, 'task:assigned')] = { id: 'assigned', repositoryId: owner.repositoryId, session, stage: 'executing' }; });
+  await assert.rejects(store.handle(human, prior), { code: 'CONFLICT' });
   await assert.rejects(store.handle(human, message('bypass', 'native.prompt', { text: 'Unrelated new task' })), { code: 'CONFLICT' });
-  assert.deepEqual((await store.nativeConversation(human, session)).messages, []);
+  assert.deepEqual((await store.nativeConversation(human, session)).messages, [{ id: prior.id + ':user', role: 'user', text: prior.payload.text }]);
   await store.transaction(state => { state.tasks[scopedObjectKey(owner, session, 'task:assigned')].stage = 'closed'; });
+  assert.deepEqual(await store.handle(human, prior), accepted, 'the original receipt is retained, not replaced by a later gate failure');
   assert.equal((await store.handle(human, message('idle', 'native.prompt', { text: 'Now follow up' }))).data.state, 'queued');
 });
 
