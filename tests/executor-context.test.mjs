@@ -99,7 +99,8 @@ test('工具输出只有名称与类型，重名补路径，分页有剩余数�
 
 async function clientFixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'executor-context-unit-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const cleanups = [];
+  t.after(async () => { for (const cleanup of cleanups.reverse()) await cleanup(); await fs.rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); });
   const project = await resolveProject(root), snapshot = fixture(), requests = [];
   const localRead = async (key, version) => {
     requests.push({ key, version });
@@ -107,7 +108,7 @@ async function clientFixture(t) {
     return { sessionId: 'executor', ...(key ? { version: snapshot.version, content: contextSlice(contextDocument(snapshot, { sessionId: 'executor' }), key) } : { tree: tree(snapshot) }) };
   };
   const call = (action, options = {}) => executorContext(project, 'executor', action, options, { localRead });
-  return { root, project, snapshot, requests, localRead, call };
+  return { root, project, snapshot, requests, localRead, call, onCleanup: cleanup => cleanups.push(cleanup) };
 }
 
 test('开工只取导航和根说明；按需读取及重复调用复用缓存', async t => {
@@ -190,14 +191,14 @@ test('开发过程仅归档 Session；仍检查文件归属，不追加 Map 记�
 });
 
 test('真实公共 CLI → 本机工作台 → 私有缓存 → 收工检查，进程重启后不丢基线', async t => {
-  const { root, snapshot } = await clientFixture(t);
+  const { root, snapshot, onCleanup } = await clientFixture(t);
   snapshot.memory.map.root.children[0].owns = ['src/home.mjs'];
   await atomicWrite(path.join(root, 'src/home.mjs'), 'export const value = 1;\n');
   const mapFile = path.join(root, '.codex/context/map.json');
   await atomicWrite(mapFile, encode(snapshot.memory.map));
   const before = await fs.readFile(mapFile, 'utf8');
   const server = await startServer({ root, port: 0 });
-  t.after(() => server.close());
+  onCleanup(() => server.close());
   const run = promisify(execFile), launcher = fileURLToPath(new URL('../bin/context-guard-skill.js', import.meta.url));
   const cli = async (args, input) => {
     const child = run(process.execPath, [launcher, ...args, '--root', root, '--session', 'executor'],
@@ -229,7 +230,7 @@ test('真实公共 CLI → 本机工作台 → 私有缓存 → 收工检查，�
 });
 
 test('公共 CLI 的 Cloud 读取契约：只访问薄接口，不下载 Main 或完整 Session', async t => {
-  const { root, project, snapshot } = await clientFixture(t);
+  const { root, project, snapshot, onCleanup } = await clientFixture(t);
   await atomicWrite(sessionBindingsPath(project), encode({ sessions: { executor: await sessionBinding(project, 'executor') } }));
   const requests = [];
   // 这是合成 HTTP 提供方；真实 Cloud handler 另有 Cloud 仓库接口测试。
@@ -244,7 +245,7 @@ test('公共 CLI 的 Cloud 读取契约：只访问薄接口，不下载 Main �
     res.end(JSON.stringify({ projectId: 'project', sessionId: 'executor', ...(key ? { version: snapshot.version, content: contextSlice(contextDocument(snapshot, { sessionId: 'executor' }), key) } : { tree: tree(snapshot) }) }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  onCleanup(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
   await atomicWrite(memoryConfigPath(project), encode({ url: `http://127.0.0.1:${server.address().port}`, projectId: 'project', token: 'synthetic-credential' }));
   const run = promisify(execFile), launcher = fileURLToPath(new URL('../bin/context-guard-skill.js', import.meta.url));
   const cli = async args => JSON.parse((await run(process.execPath, [launcher, ...args, '--root', root, '--session', 'executor'], { windowsHide: true })).stdout);
