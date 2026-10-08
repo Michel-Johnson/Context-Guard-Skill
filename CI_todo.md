@@ -1,5 +1,18 @@
 # CI 待验证
 
+## COORDINATOR-PLAIN-REPLY-01 · 短回复与真实值保留（2026-10-08）
+
+- [x] 从最新 main `98ed9287178806a80409d9a59dbf01cefe55a52a` 开发，只原位替换 Coordinator 自动 / 人工模式各三段回复风格；保留最新资料、审批、核验、完整 brief 和人工 replyComplete 门禁。不引入外部 Skill、模型轮次或服务端文本截断。
+- [x] 默认约 50–100 字、通常不超 150 字；TODO 概览保留总数与可识别短名称，不逐项重复相同状态、不附未问 Bug。必要事实、不确定性、完整清单 / 详情 / 风险确认例外保留；工具参数、代码、命令、URL、回执真实值不变。
+- [x] 复用唯一根角色分发映射；core 候选 `2.1.1`，Skill 候选 `0.7.2`，UI `1.1.6` 与依赖不变。静态自动 profile 2622 字符、人工 1279，人工小于自动一半；文字与大小检查不证明模型实际合规。
+- [x] 开发后一次正式模块验证：`node --test .github/scripts/shared-package.test.mjs tests/build-runtime.test.mjs`，实际 exit 0、8/8 通过、0 失败 / 跳过 / 取消、1327.1489 ms；未运行全量。
+- [x] 一次既有 `release-shared.mjs` 入口（包含 build:runtime 与精确包清单验证）实际 exit 0。core tarball 中 `roles/Coordinator.md` 经 tar 回读，与 canonical 8916 字节逐字节一致，角色 SHA-256 `e28a3c4abbe9fe1664950779bb2b39a7d97ea30d8d8e5b3d2f761b66bb69976e`；本地制品未发布。
+- [x] 独立 Tester 核验准确修订、两个 profile、保真 / 例外 / 门禁和对应制品；不以此模块结果代替 PR Required / main / 标签 CI。
+  - HEAD98ed928+冻结源码/正式测试/版本及tar哈希前后不变；Node24唯一定向3/3、0fail/skip、chunkc982a0 actualexit0，103.8895ms，日志 `temp/coordinator-plain-reply-independent-98ed928-20261008.log` SHA256 `b24e8a42ea132c9af85a26a66600413b3654c5cb9f38bc0d0bcfed97edcb8c60`。独立唯一只读tar角色parity chunk2cdd1a actualexit0，真实core2.1.1内8916字节与canonical相同，自动2622/人工1279字符；parity log SHA256 `76def62a998764d554dc608dd06f9508198ea12621ae0320f19e3e34d024758c`。完整hash/命令/限制见同名`.md`。未重跑全量/gates/打包/安装或调用真实模型，不证明真实聊天风格与Cloud已消费。
+- [ ] PR Required / main / 标签 CI 按原规则完成，不以独立窄模块结果代替。
+- [ ] core 固定公开 Release、Skill npm CD 与 Cloud 固定依赖交付待完成；合并后最新 main 安装、doctor 和安装入口验收待完成，未做生产模型或真实短回复验证。
+- [ ] 当前宿主 Session 在该 worktree 未绑定、runtime stopped，无法校验 Cloud 挂载上下文；未建立虚假任务或将 Git sourceSha 当作 Main 记忆版本。
+
 ## EXECUTOR-CONTEXT-UPGRADE-01 · 旧进程能力识别（2026-10-08）
 
 - [x] 保留复现：旧 v22 健康响应缺少上下文能力，却被 `compatibleRuntime` 接受；正确断言先返回 `true !== false`，不是修改断言求绿。
