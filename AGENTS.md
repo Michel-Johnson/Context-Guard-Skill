@@ -2,7 +2,7 @@
 
 读者：**仓库开发 Agent**。开始任务先读 [当前开发方向](docs/current-focus.md)，再读 `RULE.md`；怎样才算通过见 `docs/ci.md`。底层文件格式为 [`fs-v2.1`](references/design/design-memory-filesystem-v1.0.1.md)。
 
-当前只投入 Map、**本机对话型** Coordinator、跨客户端 Skill + hooks。Cloud 自动派发等链路暂缓；当前已授权的两仓库边界迁移允许修改 Cloud 构建与依赖，不恢复自动派发。`CI_todo.md` 的历史记录不构成继续开发旧链路的授权。
+当前只投入 Map、**本机对话型** Coordinator、Claude Code CLI 与 Cursor 接入。Codex Hook 与会话记录同步暂缓，不作为本阶段验收要求；会话记录只保存在本地，Cloud 上下文读取与收工检查保留。Cloud 自动派发等链路暂缓；当前已授权的两仓库边界迁移允许修改 Cloud 构建与依赖，不恢复自动派发。`CI_todo.md` 的历史记录不构成继续开发旧链路的授权。
 
 - **推广网站**：源码和构建依赖放在 `website` 分支，见 `docs/website.md`。产品前端与 `docs/design/` 保留在 main。
 - **临时测试分支**（`cursor/test-layout-f54e`）：从产品分支合入变更，只修改 `tests/`。模拟仓库放在 `tests/eval/`；不得将临时测试或模拟仓库合回 main。

@@ -2,11 +2,11 @@
 
 第一次使用时通读本文，学会怎么调用。以后直接读已发布 Main。需要或忘记时再打开本文。
 
-Map 用于定位模块及相关资料，不是开发过程记事本。项目知识写在记忆正文，执行过程留在 Session。命令细节以 [工作台接口](design/design-workbench-interface-v1.1.0.md) 为准。
+Map 用于定位模块及相关资料，不是开发过程记事本。项目知识写在记忆正文；执行笔记只存本地会话文件，见 [会话记录模板](design/design-session-record-v1.0.0.md)。命令细节以 [工作台接口](design/design-workbench-interface-v1.1.0.md) 为准。
 
 ## Executor 的三步读法
 
-开工用 `map read --context` 取导航和项目说明；用 `--node` 按需读正文、`--mount` 记录挂载子树。开发时重复读取走本地缓存；新模块或明确 `--refresh` 时查询 Cloud。收工用 `map context-check` 看变化，有变化再读相关 `--diff`，处理后重新检查。完整约定见 [上下文读取设计](design/design-context-v1.0.0.md)。
+默认开工用 `map read --context` 取导航和项目说明；用 `--node` 按需读正文、`--mount` 记录挂载子树。重复读取走本地缓存；新模块或明确 `--refresh` 时，有 Cloud 就查询 Cloud，无 Cloud 就读取本地 Map。收工用 `map context-check` 看变化，有变化再读相关 `--diff`，处理后重新检查。完整约定见 [上下文读取设计](design/design-context-v1.0.0.md)。
 
 下面的 Coordinator 路由及旧读取接口仍按原约定运行；不能把它们的每轮目录规则套用到 Executor 缓存流程。
 
@@ -18,7 +18,7 @@ Ask user 与路由只读**已发布 Main**。Session 草稿不是项目事实，
 
 ## 怎么读
 
-先读足以定位职责的导航（节点标题与职责），再读目标节点上的记忆、Idea、Todo、Bug。按需读取，不要把整张 Map 贴进对话。不要 Grep 整个 `.codex/context/`。当活动接口已经暴露 Filesystem v2 投影时，从目标 `index.md` 跟随 Markdown 链接；链接就是跳转。Agent 打开模块时先读哪套目录（FIND.md / snapshot 与 v2）尚未拍板，不得在本文选边。
+先用默认入口定位节点，再按权限读取记忆、Todo、Bug；Idea 仅 Coordinator 可读。不要把整张 Map 贴进对话，也不要 Grep 整个 `.codex/context/`。需要已启用的 fs-v2.1 事项文件时，从目标 `index.md` 跟随链接。旧 FIND / snapshot 只用于明确的迁移或恢复，不是第二套默认读法。
 
 已知节点时，从该节点读起。未知节点时，沿 Map 的模块与职责定位，不得猜测一个不存在的节点。专用检索是可选加速，不是必经步骤。
 

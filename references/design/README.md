@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | 仓库边界 | [design-repository-v1.0.0.md](design-repository-v1.0.0.md) | 核心、云端扩展与共享包的源码归属 |
 | Executor 上下文 | [design-context-v1.0.0.md](design-context-v1.0.0.md) | 开工导航、按需读取、本地缓存与收工变化检查 |
+| 本地会话记录 | [design-session-record-v1.0.0.md](design-session-record-v1.0.0.md) | 开发笔记的保存位置、现有格式与归档示例；不上传 Cloud |
 | 接口 | [design-interface-v1.2.1.md](design-interface-v1.2.1.md) | Agent、Human、Host、Cloud 的能力与调用边界 |
 | Agent | [design-agent-v1.0.1.md](design-agent-v1.0.1.md) | 角色职责、协作边界和运行提示入口 |
 | 底层文件结构 | [design-memory-filesystem-v1.0.1.md](design-memory-filesystem-v1.0.1.md) | Main / Session 目录、索引、事项文件与生成规则 |

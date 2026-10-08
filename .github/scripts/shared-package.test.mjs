@@ -57,10 +57,17 @@ test('Coordinator 短回复不裁掉必要事实详细清单风险或真实技�
     assert.match(profile, /保留必要事实和不确定性/);
     assert.match(profile, /完整清单、详情或必要风险、确认/);
     assert.match(profile, /完整 brief 和执行提示不裁切/);
-    assert.match(profile, /不附内部 ID、哈希或测试日期前缀/);
-    assert.match(profile, /「E2E\/IF11 登录复测」写「登录复测」/);
-    assert.match(profile, /明确索要技术编号时再提供/);
-    assert.match(profile, /工具参数、链接\/URL、代码、命令、回执和执行提示保留真实值，不改写内部定位/);
+    const naming = profile.split('\n').filter(line => line.startsWith('对人用短名'));
+    assert.equal(naming.length, 1, 'Replace the existing profile rule instead of layering another policy');
+    assert.ok(naming[0].length <= 107, 'The naming preference must not enlarge either static profile');
+    assert.match(naming[0], /只去测试标签及其编号\/日期、内部ID\/哈希/);
+    assert.match(naming[0], /保留业务日期\/版本/);
+    assert.doesNotMatch(naming[0], /去测试标签、ID、哈希、日期/);
+    assert.doesNotMatch(naming[0], /前缀/);
+    assert.match(naming[0], /用途不明不猜/);
+    assert.match(naming[0], /同名加描述/);
+    assert.match(naming[0], /索要技术编号再给/);
+    assert.match(naming[0], /工具参数、链接\/URL、代码、命令、回执和执行提示用原值，不改定位/);
   }
 });
 

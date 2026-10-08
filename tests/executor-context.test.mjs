@@ -301,3 +301,77 @@ test('显式按需绑定 Git Session 不拉全量 Map，旧未确认缓存仍被
   await assert.rejects(cli(['workbench', '--context', '--direct']), error => error.code === 1 && JSON.parse(error.stdout).error.code === 'SESSION_BASELINE_REQUIRED');
   assert.deepEqual(JSON.parse(await fs.readFile(path.join(dir, 'map.json'))), snapshot.memory.map);
 });
+
+test('会话记录仅本地：公共 memory sync 拒绝重放含记录的旧队列，保留本地文件', async t => {
+  const { root, project, snapshot, onCleanup } = await clientFixture(t);
+  await atomicWrite(sessionBindingsPath(project), encode({ sessions: { executor: await sessionBinding(project, 'executor') } }));
+  const requests = [];
+  const server = http.createServer((req, res) => {
+    requests.push({ method: req.method, url: req.url });
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ projectId: 'project', snapshot: null }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  onCleanup(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  await atomicWrite(memoryConfigPath(project), encode({ url: `http://127.0.0.1:${server.address().port}`, projectId: 'project', token: 'synthetic-record-credential' }));
+  const file = path.join(root, '.codex/context/sessions/executor.md');
+  const content = '# 合成会话\n\n开发记录只保存在本地。\n';
+  await atomicWrite(file, content);
+  const pendingFile = path.join(sessionMemoryDir(project, 'executor'), 'pending-upload.json');
+  const pending = encode({ operationId: 'synthetic-old-operation', memory: { map: snapshot.memory.map, records: { 'sessions/executor.md': content } } });
+  await atomicWrite(pendingFile, pending);
+  const run = promisify(execFile), launcher = fileURLToPath(new URL('../bin/context-guard-skill.js', import.meta.url));
+  await assert.rejects(run(process.execPath, [launcher, 'memory', 'sync', '--root', root, '--session', 'executor'],
+    { timeout: 20000, windowsHide: true }), error => error.code === 1 && JSON.parse(error.stdout).error.code === 'RECORD_SYNC_DISABLED');
+  assert.deepEqual(requests, [], '不得联网，也不得重放旧操作');
+  assert.equal(await fs.readFile(pendingFile, 'utf8'), pending);
+  assert.equal(await fs.readFile(file, 'utf8'), content);
+});
+
+test('公共 Map 收尾与不确定结果重放继续可用，不上传本地笔记、不删除服务器历史', async t => {
+  const { root, project, snapshot, onCleanup } = await clientFixture(t);
+  await atomicWrite(sessionBindingsPath(project), encode({ sessions: { executor: await sessionBinding(project, 'executor') } }));
+  const legacy = { 'sessions/executor.md': '# 已在服务器的旧记录\n' };
+  let remote = { version: 's1', sourceCommit: project.head, baseMainVersion: 'v1', memory: { map: snapshot.memory.map, records: legacy } };
+  const posts = [];
+  // 合成 HTTP 提供方；这里验证客户端传输，不冒充生产 Cloud。
+  const server = http.createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.headers.authorization !== 'Bearer synthetic-record-credential') { res.writeHead(401); res.end('{}'); return; }
+    if (req.method === 'POST') {
+      let body = ''; for await (const chunk of req) body += chunk;
+      const input = JSON.parse(body); posts.push(input);
+      remote = { ...remote, version: 's2', memory: input.memory };
+      if (posts.length === 1) { res.writeHead(503); res.end(JSON.stringify({ error: { code: 'MEMORY_UNAVAILABLE', message: '合成丢失回执' } })); return; }
+      res.end(JSON.stringify({ projectId: 'project', snapshot: remote })); return;
+    }
+    res.end(JSON.stringify({ projectId: 'project', snapshot: req.url.endsWith('/main') ? { version: 'v1', memory: snapshot.memory } : remote }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  onCleanup(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  await atomicWrite(memoryConfigPath(project), encode({ url: `http://127.0.0.1:${server.address().port}`, projectId: 'project', token: 'synthetic-record-credential' }));
+  const dir = sessionMemoryDir(project, 'executor'), local = structuredClone(snapshot.memory.map);
+  local.root.children[0].purpose = '结构化 Map 的修改';
+  await atomicWrite(path.join(dir, 'map.json'), encode(local));
+  await atomicWrite(path.join(dir, 'base-main.json'), encode({ version: 'v1', map: snapshot.memory.map }));
+  await atomicWrite(path.join(dir, 'server-receipt.json'), encode({ snapshot: remote }));
+  const file = path.join(root, '.codex/context/sessions/executor.md'), note = '只属于本地的新笔记';
+  await atomicWrite(file, note);
+  await atomicWrite(path.join(root, '.codex/context/sessions.jsonl'), JSON.stringify({ session_id: 'executor', note }) + '\n');
+  const run = promisify(execFile), launcher = fileURLToPath(new URL('../bin/context-guard-skill.js', import.meta.url));
+  const cli = () => run(process.execPath, [launcher, 'sync', 'finish', '--root', root, '--session', 'executor'],
+    { timeout: 20000, windowsHide: true });
+  await assert.rejects(cli(), error => error.code === 1 && JSON.parse(error.stdout).error.code === 'MEMORY_UNAVAILABLE');
+  const queue = path.join(dir, 'pending-map-upload.json');
+  assert.deepEqual(JSON.parse(await fs.readFile(queue, 'utf8')), posts[0]);
+  const result = JSON.parse((await cli()).stdout);
+  assert.equal(result.confirmed, true);
+  assert.equal(result.sessionVersion, 's2');
+  assert.equal(posts.length, 2);
+  assert.deepEqual(posts[1], posts[0], '失去回执后原样重放 Map 操作，不生成新 ID');
+  assert.deepEqual(posts[0].memory.map, local);
+  assert.deepEqual(posts[0].memory.records, legacy, '服务器既有历史原样保留，不替换成空对象');
+  assert.doesNotMatch(JSON.stringify(posts), /只属于本地的新笔记|sessions.jsonl/);
+  assert.equal(await fs.readFile(file, 'utf8'), note);
+  await assert.rejects(fs.access(queue), { code: 'ENOENT' });
+});
