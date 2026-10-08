@@ -28,5 +28,8 @@ test('shared contracts have no dependency on either service and install excludes
   const current = runtimeIdentity();
   const previous = { ...current, buildId: 'project-workbench-v17', capabilities: current.capabilities.filter(c => c !== 'production-data-isolation') };
   assert.equal(compatibleRuntime(previous), false, 'old asset router must restart before adopting the new install');
+  const oldContext = { ...current, buildId: 'project-workbench-v22', capabilities: current.capabilities.filter(c => c !== 'executor-on-demand-context') };
+  assert.equal(compatibleRuntime(oldContext), false, '旧工作台没有上下文接口，不能继续复用');
+  assert.equal(upgradeableRuntime(oldContext), true, '沿原有安全退出与升级流程保留数据');
   assert.equal(upgradeableRuntime(previous), true);
 });

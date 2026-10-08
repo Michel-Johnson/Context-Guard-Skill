@@ -1724,6 +1724,7 @@ def main() -> int:
                 try:
                     repaired = run_node_workbench([
                         "workbench", "--root", str(root), "--session", current_session_id,
+                        *(["--context"] if binding.get("session", {}).get("role") != "coordinator" else []),
                     ])
                     verified_workbench_url = str(repaired.get("url") or "")
                     binding = run_node_workbench([
@@ -1765,6 +1766,7 @@ def main() -> int:
             try:
                 repaired = run_node_workbench([
                     "workbench", "--root", str(root), "--session", current_session_id,
+                    *(["--context"] if binding.get("session", {}).get("role") != "coordinator" else []),
                 ])
                 verified_workbench_url = str(repaired.get("url") or "")
                 binding = run_node_workbench([
@@ -1821,7 +1823,7 @@ def main() -> int:
         if not (isinstance(payload, dict) and payload.get("is_background_agent") is True):
             if not url:
                 try:
-                    url = start_workbench(root, open_browser=False, raise_errors=True, session_id=current_session_id)
+                    url = start_workbench(root, open_browser=False, raise_errors=True, session_id=current_session_id, context_only=binding.get("session", {}).get("role") != "coordinator")
                 except (OSError, RuntimeError, subprocess.TimeoutExpired):
                     return hook_response(platform, event, f"Context Guard could not start or verify the bound project workbench. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}; no replacement service was started and the binding was preserved.")
             if sync_configured(root, current_session_id):

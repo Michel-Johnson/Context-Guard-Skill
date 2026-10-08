@@ -11,11 +11,12 @@ import http from 'node:http';
 import { buildContextTree, contextChanges, contextChangeLines, contextDocument, contextHash, contextSlice, publicContextTree, resolveContextNode } from '../scripts/shared/context-tree.mjs';
 import { buildFilesystemV2 } from '../scripts/shared/filesystem-v2.mjs';
 import { executorContext } from '../scripts/workbench/context.mjs';
-import { resolveProject, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
+import { resolveProject, saveMainBinding, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
 import { memoryConfigPath, sessionMemoryDir } from '../scripts/workbench/memory.mjs';
 import { buildArchiveReconciliation } from '../scripts/workbench/reconcile.mjs';
 import { hash, atomicWrite, encode } from '../scripts/shared/io.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
+import { stopServer } from '../scripts/workbench/cli.mjs';
 
 const node = (id, title, children = []) => ({ id, title, kind: children.length ? 'module' : 'work', purpose: title, children, memories: [], bugs: [], todos: [], ideas: [] });
 const fixture = () => ({ version: 'v1', memory: { map: { root: node('ROOT', '项目', [node('A', '主页', [node('A1', '列表')]), node('B', '登录'), node('C', '支付')]), flows: [{ from: 'A', to: 'B', label: '依赖鉴权' }] }, records: {} } });
@@ -269,4 +270,34 @@ test('公共 CLI 的 Cloud 读取契约：只访问薄接口，不下载 Main �
   assert.equal(await fs.stat(path.join(sessionMemoryDir(project, 'executor'), 'context-cache.json')).then(value => value.mode & 0o777), 0o600);
   await assert.rejects(fs.access(path.join(sessionMemoryDir(project, 'executor'), 'map.json')), { code: 'ENOENT' });
   await assert.rejects(fs.access(path.join(root, '.codex/context/map.json')), { code: 'ENOENT' });
+});
+
+test('显式按需绑定 Git Session 不拉全量 Map，旧未确认缓存仍被拒绝', async t => {
+  const { root, snapshot, onCleanup } = await clientFixture(t), run = promisify(execFile);
+  for (const args of [['init', '-b', 'main'], ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture']]) {
+    await run('git', args, { cwd: root, windowsHide: true });
+  }
+  const project = await saveMainBinding(root, { mode: 'local', branch: 'main' });
+  const requests = [];
+  const remote = http.createServer((req, res) => {
+    requests.push(req.url); res.setHeader('Content-Type', 'application/json');
+    const url = new URL(req.url, 'http://localhost'), key = url.searchParams.get('node');
+    if (!url.pathname.endsWith('/context')) { res.writeHead(503); res.end(JSON.stringify({ error: { code: 'FULL_READ_FORBIDDEN' } })); return; }
+    res.end(JSON.stringify({ projectId: 'project', sessionId: 'executor', ...(key ? { version: snapshot.version, content: contextSlice(contextDocument(snapshot, { sessionId: 'executor' }), key) } : { tree: tree(snapshot) }) }));
+  });
+  await new Promise(resolve => remote.listen(0, '127.0.0.1', resolve));
+  onCleanup(async () => { remote.closeAllConnections(); await new Promise(resolve => remote.close(resolve)); });
+  onCleanup(() => stopServer(root));
+  await atomicWrite(memoryConfigPath(project), encode({ url: `http://127.0.0.1:${remote.address().port}`, projectId: 'project', token: 'synthetic-credential' }));
+  const launcher = fileURLToPath(new URL('../bin/context-guard-skill.js', import.meta.url));
+  const cli = async args => JSON.parse((await run(process.execPath, [launcher, ...args, '--root', root, '--session', 'executor'],
+    { env: { ...process.env, CODEX_THREAD_ID: 'executor', CONTEXT_GUARD_NAMED_WORKBENCH: '0' }, windowsHide: true, timeout: 20000 })).stdout);
+  await cli(['workbench', '--context', '--direct']);
+  const dir = sessionMemoryDir(project, 'executor');
+  await assert.rejects(fs.access(path.join(dir, 'map.json')), { code: 'ENOENT' });
+  assert.equal((await cli(['map', 'read', '--context'])).source, 'cloud');
+  assert.ok(requests.every(url => url.startsWith('/v1/projects/project/context?')), JSON.stringify(requests));
+  await atomicWrite(path.join(dir, 'map.json'), encode(snapshot.memory.map));
+  await assert.rejects(cli(['workbench', '--context', '--direct']), error => error.code === 1 && JSON.parse(error.stdout).error.code === 'SESSION_BASELINE_REQUIRED');
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(dir, 'map.json'))), snapshot.memory.map);
 });
