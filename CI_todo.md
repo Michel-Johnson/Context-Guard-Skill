@@ -1,5 +1,17 @@
 # CI 待验证
 
+## COORDINATOR-REPLY-FOLLOWUP-01 · 清单前缀与共同状态（2026-10-08）
+
+- [x] 保留实际验收缺口：上一版已发布角色的真实默认 TODO 回复仍带 E2E / IF11 前缀、重复 pending；不能用旧模块 / 发布通过宣称回复效果已过。
+- [x] 基于 main `51e0b2193b42bb0d50eb50b972cfaa9cd5374fef`，只替换自动 / 人工模式既有四段：同状态只报一次、不漏事项；用 `E2E/IF11 登录复测` → `登录复测` 紧凑例子说明对人短名称不含测试或日期前缀。保留工具参数、URL、代码、命令、回执、brief 原值与详细 / 风险例外和原审批结束门禁，无服务端 displayRegex 或硬截断。
+- [x] 静态 profile 自动 2622→2619、人工 1279→1278，原上限与人工少于自动一半不变。候选 core `2.1.2` / Skill `0.7.3`；UI `1.1.6` 和依赖不变。
+- [x] 开发后仅一次既有 `shared-package.test.mjs` 正式套件，实际 exit 0、4/4 passed、0 failed / skipped / cancelled、137.9853 ms；没有全量或真实模型测试。
+- [x] 一次 `release-shared.mjs`（含 buildRuntime / 精确包清单）实际 exit 0；core 包安全扫描实际 exit 0、41 文件、SHA-256 `e4f229b0b3a686b16af2b93a2cb11ac870b228df50dc5526e9575c5dc992e5bd`。正式 tar 工具回读角色与 canonical 字节完全一致；本地制品未发布。
+- [x] 独立 Tester 核验准确源 / 角色 / 包与前缀、共同状态、完整性保护；不代替对应 PR Required、合并、公开 core / npm / Cloud 固定消费。
+  - HEAD51e0b219+五源码版本/正式test/coretar冻结hash前后相同，Node24唯一次现有3Coordinator目标chunkfdebb2 actualexit0，3/3、0fail/skip、118.3739ms；log `temp/coordinator-reply-followup-independent-51e0b219-20261008.log` SHA256 `b9bea21ebacf7f8013d707aceef90165aa8f4306e96d2e98ed47ea1b5501cb64`。一次只读真实core2.1.2tar角色8900bytes与canonical完全相等，chunkc275a4 actualexit0，auto2619/manual1278；paritylog SHA256 `1a1148781b561163237b1ed80169b0cf35ff94207aa878be0eb3fc301c350415`。完整hash/命令/限制见同名`.md`，未全量/Git/安装/真实模型或生产，不把static字面规则通过当作原聊天缺口已修复。
+- [ ] 对应 PR Required、合并、公开 core / npm / Cloud 固定消费由 Coordinator 完成。
+- [ ] 合并后安装 / doctor、真实默认 TODO 短回复与混合表情正常继续仍待验收；本轮没有产品绑定、Map、Hook、模型或权限改动，不能声明真实效果已经通过。
+
 ## COORDINATOR-PLAIN-REPLY-01 · 短回复与真实值保留（2026-10-08）
 
 - [x] 从最新 main `98ed9287178806a80409d9a59dbf01cefe55a52a` 开发，只原位替换 Coordinator 自动 / 人工模式各三段回复风格；保留最新资料、审批、核验、完整 brief 和人工 replyComplete 门禁。不引入外部 Skill、模型轮次或服务端文本截断。

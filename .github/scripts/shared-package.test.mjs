@@ -45,7 +45,7 @@ test('Coordinator 两种独立 profile 保留短概览规则且不增加静态�
     assert.match(profile, /50–100 字/);
     assert.match(profile, /通常不超 150 字/);
     assert.match(profile, /TODO 概览报总数与可识别短名称/);
-    assert.match(profile, /不逐条重复(?:相同)?状态、不附未问 Bug/);
+    assert.match(profile, /同状态只报一次、不漏事项，不附未问 Bug/);
     assert.match(profile, /每轮一份最终答复/);
     assert.match(profile, /结论独立成段.*少量短列表.*段间空行/);
     assert.ok(profile.length <= (mode === 'automatic' ? 2700 : 1280), `${mode} profile must remain smaller than the previous source`);
@@ -57,7 +57,8 @@ test('Coordinator 短回复不裁掉必要事实详细清单风险或真实技�
     assert.match(profile, /保留必要事实和不确定性/);
     assert.match(profile, /完整清单、详情或必要风险、确认/);
     assert.match(profile, /完整 brief 和执行提示不裁切/);
-    assert.match(profile, /不附节点、事项、Session、测试 ID 或版本哈希/);
+    assert.match(profile, /不附内部 ID、哈希或测试日期前缀/);
+    assert.match(profile, /「E2E\/IF11 登录复测」写「登录复测」/);
     assert.match(profile, /明确索要技术编号时再提供/);
     assert.match(profile, /工具参数、链接\/URL、代码、命令、回执和执行提示保留真实值，不改写内部定位/);
   }
