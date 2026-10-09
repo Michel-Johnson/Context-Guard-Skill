@@ -4,9 +4,11 @@ const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' });
 export const visibleCharacters = text => [...segmenter.segment(String(text))].length;
 export function coordinatorReplyProfile(text = '') {
   const request = text.trim().replace(/^(?:谢谢|你好|好的|好)[，,：:。\s]*/u, '');
+  const technicalTerms = ['代码', '命令', '执行提示', '技术编号', '内部编号', '事项编号', '节点编号', '原始ID'];
   return {
     detailed: /(?:详细|完整|全部|逐项|展开)/u.test(text) && !/(?:不要|不用|不必|别)(?:详细|展开|逐项)/u.test(text),
-    technical: /(?:代码|命令|执行提示|技术编号|内部编号|事项编号|节点编号|原始ID)/iu.test(text),
+    technical: technicalTerms.some(term => new RegExp(term, 'iu').test(text) &&
+      !new RegExp('(?:不要|不用|不必|别|禁止|不准)(?:输出|显示|提供|写|生成|给)?' + term, 'iu').test(text)),
     reactionOnly: /^(?:请)?(?:只|仅|就)(?:用|回|回复|发|给).{0,24}(?:表情|emoji).{0,12}[。！!]?$/iu.test(request),
   };
 }

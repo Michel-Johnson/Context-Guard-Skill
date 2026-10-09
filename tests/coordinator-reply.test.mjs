@@ -30,4 +30,6 @@ test('详情和表情例外只来自本轮明确输入，不由模型声明', ()
   assert.equal(coordinatorReplyProfile('你好').reactionOnly, false);
   assert.equal(coordinatorReplyProfile('只回复一个表情').reactionOnly, true);
   assert.equal(coordinatorReplyProfile('谢谢，仅用一个表情回应即可。').reactionOnly, true);
+  assert.equal(coordinatorReplyProfile('不要输出代码').technical, false);
+  assert.equal(coordinatorReplyProfile('请给我代码').technical, true);
 });
