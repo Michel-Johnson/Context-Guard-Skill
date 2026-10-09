@@ -86,7 +86,13 @@ Executor 交接和 Tester 回报须匹配可信验证器的原生 Agent/Run、�
 
 传输使用 Streamable HTTP 的 JSON 响应子集，不提供 SSE 或服务器主动请求。凭据由 Cursor 内联 MCP headers 委托；不宣称已实现 OAuth 发现或完整 MCP SDK。
 
-以上角色通讯模块仍在开发验证。生产工厂、调度接线、真实源码/测试证明及 Coordinator 入口未完成，不视为真实任务闭环。
+Cloud 工厂复用原 Coordinator 调度。显式模板只登记逻辑预留，原人审派单后才启动 Plan；独立 Tester 先预留，再由原 `ci.request` 启动。
+
+原生回调复核当前模板、原人审、绑定与 Main 读取权限。初始化不在协议事务内等待；Cursor 配置故障只影响对应宿主，不阻断本地 Claude。
+
+取消只作用于账本确认的自有 Agent/Run。先保存停止意图，再等待厂商终态；未知确认只查询，不重复 POST，也不自动启动替代执行。
+
+角色工厂与公开接口已接线，仍在源码验证。真实源码/测试证明、部署及三路径 Coordinator 任务验收未完成，不视为真实任务闭环。
 
 ## 分阶段与验收
 
