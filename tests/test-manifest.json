@@ -75,6 +75,7 @@
     "tests/claude-runtime.test.mjs",
     "tests/cursor-acp.test.mjs",
     "tests/cursor-runtime.test.mjs",
+    "tests/cursor-ci-source.test.mjs",
     "tests/cursor-protocol.test.mjs",
     "tests/interface-delivery.test.mjs",
     "tests/interface-map.test.mjs",
