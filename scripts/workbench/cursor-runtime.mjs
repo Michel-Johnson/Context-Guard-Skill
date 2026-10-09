@@ -5,7 +5,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { CursorAcp } from './cursor-acp.mjs';
 import { connectCursorCiWorkerClient, serveCursorCiWorker } from './cursor-ci-channel.mjs';
-import { prepareCursorCiProfile } from './cursor-ci-profile.mjs';
+import { prepareCursorCiProfile, cursorCiProfileCleanupConfirmed } from './cursor-ci-profile.mjs';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { canonical, validateMessage } from '../shared/protocol.mjs';
 
@@ -216,8 +216,9 @@ export class CursorRuntime {
           if (config.role === 'ci') {
             const directory = path.join(path.dirname(this.sessionFile(sessionId)), 'profile-owner');
             await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+            const canonicalDirectory = await fs.realpath(directory);
             if (this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
-            const preparing = prepareCursorCiProfile({ directory: await fs.realpath(directory), sessionId, root: config.root,
+            const preparing = prepareCursorCiProfile({ directory: canonicalDirectory, sessionId, root: config.root,
               command: config.command, model: config.model, environment: env, invoke: this.ciProfileInvoke });
             this.ciPreparing.set(sessionId, preparing);
             try { createdProfile = await preparing; } finally { this.ciPreparing.delete(sessionId); }
@@ -435,20 +436,49 @@ export class CursorRuntime {
     await spawned;
     if (!ci || !this.ciClosing) worker.unref();
   }
-  async close() {
+  close() {
     this.ciClosing = true;
-    await Promise.allSettled([...this.ciPreparing.values()].map(async preparing => (await preparing).close()));
-    await Promise.all([...this.pendingCiProfiles.values()].map(profile => profile.close()));
-    this.pendingCiProfiles.clear();
-    const workers = [...this.ciWorkers.values()];
-    // wake() detaches this owning worker. Once IPC is disconnected, an exit
-    // Promise alone cannot keep the host alive to confirm shutdown (Node 18).
-    for (const { worker, bridge } of workers) { worker.ref(); bridge.close(); }
-    const transports = [...new Set([...this.pendingNative.values(), ...this.ciConnecting.values(), ...[...this.ownedTurns.values()].map(turn => turn.acp)])];
-    this.pendingNative.clear();
-    await Promise.all(transports.map(acp => acp.close()));
-    await Promise.allSettled([...this.ownedTurns.values()].map(turn => turn.work));
-    await Promise.all(workers.map(({ stopped }) => stopped));
+    return this.closing ||= Promise.resolve().then(async () => {
+      const failures = [], failed = stage => failures.push(Object.assign(new Error('An owned Cursor resource shutdown is unconfirmed'), { code: stage }));
+      const stop = async (stage, action) => { try { await action(); return true; } catch { failed(stage); return false; } };
+      const profiles = new Set(this.pendingCiProfiles.values());
+      const preparing = await Promise.allSettled([...this.ciPreparing.values()]);
+      for (const result of preparing) {
+        if (result.status === 'fulfilled') profiles.add(result.value);
+        else if (!cursorCiProfileCleanupConfirmed(result.reason)) failed('CURSOR_PROFILE_PREPARATION_STOP_UNCONFIRMED');
+      }
+      for (const profile of this.pendingCiProfiles.values()) profiles.add(profile);
+      const closedProfiles = new Set();
+      await Promise.all([...profiles].map(async profile => {
+        if (await stop('CURSOR_PROFILE_STOP_UNCONFIRMED', () => profile.close())) closedProfiles.add(profile);
+      }));
+      for (const [key, profile] of this.pendingCiProfiles) if (closedProfiles.has(profile)) this.pendingCiProfiles.delete(key);
+      const workers = [...this.ciWorkers.values()];
+      // Preserve the actual owning-worker exit wait, including on Node 18.
+      // One bridge failure must not stop other channels/native resources closing.
+      for (const { worker } of workers) { try { worker.ref(); } catch { failed('CURSOR_WORKER_REFERENCE_UNCONFIRMED'); } }
+      await Promise.all(workers.map(({ bridge }) => stop('CURSOR_WORKER_CHANNEL_STOP_UNCONFIRMED', () => bridge.close())));
+      const turns = [...this.ownedTurns.values()];
+      const transports = new Set([...this.pendingNative.values(), ...this.ciConnecting.values(), ...turns.map(turn => turn.acp)]);
+      this.shutdownOwnership = { profiles, transports, workers, turns }; // Retain failed ownership; never serialize it to a model/API.
+      const closedTransports = new Set();
+      await Promise.all([...transports].map(async acp => {
+        if (await stop('CURSOR_NATIVE_STOP_UNCONFIRMED', () => acp.close())) closedTransports.add(acp);
+      }));
+      for (const table of [this.pendingNative, this.ciConnecting]) {
+        for (const [key, acp] of table) if (closedTransports.has(acp)) table.delete(key);
+      }
+      await Promise.all(turns.map(turn => stop('CURSOR_TURN_STOP_UNCONFIRMED', () => turn.work)));
+      await Promise.all(workers.map(({ stopped }) => stop('CURSOR_WORKER_EXIT_UNCONFIRMED', () => stopped)));
+      if ([this.pendingNative, this.ciConnecting].some(table => [...table.values()].some(acp => !transports.has(acp)))) {
+        failed('CURSOR_LATE_NATIVE_STOP_UNCONFIRMED');
+      }
+      if ([...this.pendingCiProfiles.values()].some(profile => !profiles.has(profile))) failed('CURSOR_LATE_PROFILE_STOP_UNCONFIRMED');
+      if ([...this.ciWorkers.values()].some(worker => !workers.includes(worker))) failed('CURSOR_LATE_WORKER_STOP_UNCONFIRMED');
+      if (failures.length) throw Object.assign(new AggregateError(failures, 'Cursor shutdown could not confirm all owned resources stopped'),
+        { code: 'CURSOR_SHUTDOWN_UNCONFIRMED' });
+      this.shutdownOwnership = null;
+    });
   }
 }
 

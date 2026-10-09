@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -18,6 +19,124 @@ import { fileURLToPath } from 'node:url';
 import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
 import { registeredExecutorCreation } from '../scripts/workbench/server.mjs';
 import { bindCursorCiClient, readCursorCiHostContext } from '../scripts/workbench/cursor-ci-channel.mjs';
+import * as ciProfiles from '../scripts/workbench/cursor-ci-profile.mjs';
+
+test('Cursor close attempts every owned resource, retains failed ownership and shares one safe failure', async () => {
+  const runtime = new CursorRuntime(path.join(os.tmpdir(), `cg-close-${randomUUID()}`)), calls = [];
+  const privateText = 'SYNTHETIC PRIVATE STDERR MUST NOT ESCAPE';
+  const brokenProfile = { async close() { calls.push('profile-broken'); throw new Error(privateText); } };
+  const goodProfile = { async close() { calls.push('profile-good'); } };
+  let rejectWork;
+  const work = new Promise((_, reject) => { rejectWork = reject; }); work.catch(() => {});
+  const brokenNative = { async close() { calls.push('native-broken'); throw new Error(privateText); } };
+  const goodNative = { async close() { calls.push('native-good'); rejectWork(new Error(privateText)); } };
+  runtime.pendingCiProfiles.set('broken', brokenProfile); runtime.pendingCiProfiles.set('good', goodProfile);
+  runtime.ciPreparing.set('same-good-profile', Promise.resolve(goodProfile));
+  runtime.pendingNative.set('broken', brokenNative); runtime.pendingNative.set('good', goodNative);
+  runtime.ciConnecting.set('same-native', goodNative);
+  runtime.ownedTurns.set('original-turn', { acp: goodNative, work });
+  let exited = false;
+  runtime.ciWorkers.set('own-worker', { worker: { ref() { calls.push('worker-ref'); } },
+    bridge: { close() { calls.push('bridge-close'); throw new Error(privateText); } },
+    stopped: Promise.resolve().then(() => { exited = true; }) });
+  const first = runtime.close(), concurrent = runtime.close();
+  first.catch(() => {}); concurrent.catch(() => {});
+  await assert.rejects(first, error => {
+    assert.equal(error.code, 'CURSOR_SHUTDOWN_UNCONFIRMED'); assert.ok(error instanceof AggregateError);
+    assert.equal(error.errors.length, 4);
+    assert.equal(Object.hasOwn(error, 'cause'), false);
+    for (const failure of error.errors) {
+      assert.equal(failure.message.includes(privateText), false); assert.equal(Object.hasOwn(failure, 'cause'), false);
+    }
+    return true;
+  });
+  assert.equal(first, concurrent, 'a second close must share the original operation');
+  assert.deepEqual([...calls].sort(), ['profile-broken', 'profile-good', 'native-broken', 'native-good', 'worker-ref', 'bridge-close'].sort());
+  assert.equal(exited, true); assert.equal(runtime.ciClosing, true);
+  assert.equal(runtime.pendingCiProfiles.get('broken'), brokenProfile); assert.equal(runtime.pendingCiProfiles.has('good'), false);
+  assert.equal(runtime.pendingNative.get('broken'), brokenNative); assert.equal(runtime.pendingNative.has('good'), false);
+  assert.equal(runtime.shutdownOwnership.transports.has(brokenNative), true);
+  const originalCalls = [...calls];
+  await assert.rejects(runtime.close(), { code: 'CURSOR_SHUTDOWN_UNCONFIRMED' });
+  assert.deepEqual(calls, originalCalls, 'unknown cleanup is not permission to blindly stop twice');
+});
+
+test('Cursor close does not remove a replacement owner installed during successful cleanup', async () => {
+  const runtime = new CursorRuntime(path.join(os.tmpdir(), `cg-close-replacement-${randomUUID()}`));
+  const replacement = { async close() { throw new Error('a new owner is not part of the original stop'); } };
+  const original = { async close() { runtime.pendingNative.set('owner', replacement); } };
+  runtime.pendingNative.set('owner', original); runtime.ciConnecting.set('duplicate', original);
+  await assert.rejects(runtime.close(), { code: 'CURSOR_SHUTDOWN_UNCONFIRMED' });
+  assert.equal(runtime.pendingNative.get('owner'), replacement);
+});
+
+for (const cleanupFailure of [false, true]) test(`Cursor close ${cleanupFailure ? 'reports a failed real preparation cleanup' : 'recognizes a confirmed real preparation failure without exposing host errors'}`, async t => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-close-preparation-')));
+  await fs.chmod(directory, 0o700);
+  const owner = path.join(directory, 'owner'), root = path.join(directory, 'source');
+  await fs.mkdir(owner, { mode: 0o700 }); await fs.mkdir(root, { mode: 0o700 });
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'));
+  const privateText = 'SYNTHETIC PRIVATE PREPARATION STDERR';
+  const originalError = Object.assign(new Error(privateText), { code: 'CI_PROFILE_ENABLE_TEST_FAILURE' });
+  let closeError = originalError;
+  if (cleanupFailure) {
+    const seedOwner = path.join(directory, 'earlier-owner'); await fs.mkdir(seedOwner, { mode: 0o700 });
+    try {
+      await ciProfiles.prepareCursorCiProfile({ directory: seedOwner, root, sessionId: randomUUID(), command: process.execPath,
+        environment: { PATH: process.env.PATH, CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` },
+        invoke: async () => { throw originalError; } });
+      assert.fail('the earlier preparation must fail');
+    } catch (error) { closeError = error; }
+    assert.equal(ciProfiles.cursorCiProfileCleanupConfirmed(closeError), true);
+  }
+  const originalClose = http.Server.prototype.close;
+  let entered, release, ownServer, closeAttempts = 0;
+  const started = new Promise(resolve => { entered = resolve; }), waiting = new Promise(resolve => { release = resolve; });
+  t.after(async () => {
+    http.Server.prototype.close = originalClose;
+    if (ownServer?.listening) {
+      const stopped = new Promise(resolve => originalClose.call(ownServer, resolve)); ownServer.closeAllConnections?.(); await stopped;
+    }
+  });
+  const preparation = ciProfiles.prepareCursorCiProfile({ directory: owner, root, sessionId: randomUUID(), command: process.execPath,
+    environment: { PATH: process.env.PATH, CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` },
+    invoke: async () => {
+      if (cleanupFailure) {
+        const profile = await readJSON(path.join(owner, 'ci-profile.json'));
+        const mcp = await readJSON(path.join(profile.profileRoot, 'home', '.cursor', 'mcp.json'));
+        const port = Number(new URL(mcp.mcpServers['context-guard-ci'].url).port);
+        // Replace only this freshly created server's close boundary, not other
+        // HTTP fixtures or native/model/Docker execution.
+        http.Server.prototype.close = function (...args) {
+          if (this.address()?.port === port && this.address()?.address === '127.0.0.1') {
+            ownServer = this; closeAttempts++; throw closeError;
+          }
+          return originalClose.apply(this, args);
+        };
+      }
+      entered(); await waiting; throw originalError;
+    } });
+  preparation.catch(() => {});
+  runtime.ciPreparing.set('original-preparation', preparation);
+  let nativeStops = 0;
+  runtime.pendingNative.set('other-owned-native', { async close() { nativeStops++; } });
+  await started;
+  const closing = runtime.close();
+  const outcome = cleanupFailure ? assert.rejects(closing, { code: 'CURSOR_SHUTDOWN_UNCONFIRMED' }) : closing;
+  release();
+  let failure; try { await preparation; assert.fail('the original preparation must fail'); } catch (error) { failure = error; }
+  await outcome;
+  assert.equal(nativeStops, 1, 'preparation failure must not prevent stopping other owned resources');
+  assert.equal(typeof ciProfiles.cursorCiProfileCleanupConfirmed, 'function');
+  assert.equal(ciProfiles.cursorCiProfileCleanupConfirmed(failure), !cleanupFailure);
+  assert.equal(ciProfiles.cursorCiProfileCleanupConfirmed({ code: failure.code, cleanupConfirmed: true }), false);
+  assert.notEqual(failure, originalError, 'every preparation emits its own safe final error instance');
+  assert.notEqual(failure, closeError, 'later cleanup failure must not inherit an earlier completed-cleanup mark');
+  assert.equal(failure.message.includes(privateText), false);
+  const record = await readJSON(path.join(owner, 'ci-profile.json'));
+  if (cleanupFailure) { assert.equal(closeAttempts, 1); assert.notEqual(record.state, 'failed'); }
+  else assert.equal(record.state, 'failed');
+});
 
 for (const role of ['executor', 'ci']) {
   test(`Cursor ${role} worker keeps tool grants separate from the other role`, async t => {
@@ -270,6 +389,43 @@ test('new CI native creation discovers tools from a private native cwd and keeps
     config: { ...input.config, model: 'foreign-model' } }), { code: 'CI_PROFILE_MODEL_UNSUPPORTED' });
   await assert.rejects(fs.stat(path.dirname(runtime.sessionFile(foreignTester))), { code: 'ENOENT' });
   assert.equal(connects, 1); assert.equal(calls.length, 1); assert.equal(prompts, 0);
+});
+
+test('closing before profile preparation registration never creates a late discovery or native connection', { timeout: 10000 }, async t => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-before-profile-close-')));
+  const root = path.join(directory, 'tester'); await fs.mkdir(root);
+  const environmentFile = path.join(directory, 'provider.json');
+  await fs.writeFile(environmentFile, JSON.stringify({ CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` }), { mode: 0o600 });
+  let invokes = 0, creates = 0, entered, release, held = false;
+  const started = new Promise(resolve => { entered = resolve; }), waiting = new Promise(resolve => { release = resolve; });
+  const tester = randomUUID(), executor = randomUUID();
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), {
+    acpFactory: () => { creates++; throw new Error('No late native connection'); },
+    ciProfileInvoke: async () => { invokes++; return { stdout: '', stderr: '' }; },
+  });
+  await runtime.configure(executor, { command: process.execPath, root: directory, name: 'Executor' });
+  const profileOwner = path.join(path.dirname(runtime.sessionFile(tester)), 'profile-owner');
+  const original = fs.realpath;
+  fs.realpath = async function (...args) {
+    const result = await original.apply(this, args);
+    if (!held && args[0] === profileOwner) { held = true; entered(); await waiting; }
+    return result;
+  };
+  t.after(() => { fs.realpath = original; release(); });
+  const creating = runtime.provision({ operationId: 'before-profile-close', sessionId: tester,
+    config: { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor,
+      ciCommands: ['fixed-test'], environmentFile } });
+  const rejected = assert.rejects(creating, { code: 'RUNTIME_CLOSING' });
+  try {
+    await started;
+    assert.equal(runtime.ciPreparing.size, 0, 'the original preparation has not been registered');
+    await runtime.close(); release(); await rejected;
+    assert.equal(invokes, 0, 'shutdown must not return before a later MCP discovery is created');
+    assert.equal(creates, 0);
+    assert.equal(runtime.ciPreparing.size, 0); assert.equal(runtime.pendingCiProfiles.size, 0);
+    await assert.rejects(fs.stat(path.join(profileOwner, 'ci-profile.json')), { code: 'ENOENT' });
+    await assert.rejects(fs.stat(runtime.sessionFile(tester)), { code: 'ENOENT' });
+  } finally { fs.realpath = original; release(); }
 });
 
 test('closing during CI profile preparation never starts a late native connection', async () => {

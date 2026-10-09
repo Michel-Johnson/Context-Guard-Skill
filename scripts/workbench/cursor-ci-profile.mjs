@@ -16,6 +16,11 @@ const invokePrivate = (command, args, options) => {
 
 const execute = promisify(execFile), uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const fail = code => { throw Object.assign(new Error('The assigned CI native profile is unavailable'), { code }); };
+const cleanedPreparationFailures = new WeakSet();
+// Host-only provenance for this exact failure instance, not a caller-supplied
+// field/code or proof of native tool isolation. There is no public setter.
+export const cursorCiProfileCleanupConfirmed = cause =>
+  cause !== null && (typeof cause === 'object' || typeof cause === 'function') && cleanedPreparationFailures.has(cause);
 const policy = { version: 1, editor: { vimMode: false }, approvalMode: 'allowlist', permissions: {
   allow: CURSOR_CI_TOOL_NAMES.map(name => `Mcp(context-guard-ci:${name})`),
   deny: ['Shell(*)', 'Read(**)', 'Write(**)', 'WebFetch(*)'],
@@ -179,8 +184,14 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
       return verify();
     }) };
   } catch (cause) {
-    await close(); await atomicWrite(file, encode({ ...record, state: 'failed' }));
-    if (/^CI_[A-Z0-9_]+$/.test(cause.code || '')) throw cause;
-    fail('CI_PROFILE_PREPARATION_FAILED');
+    try { await close(); await atomicWrite(file, encode({ ...record, state: 'failed' })); }
+    catch { fail('CI_PROFILE_CLEANUP_UNCONFIRMED'); }
+    let code = 'CI_PROFILE_PREPARATION_FAILED';
+    try { if (/^CI_[A-Z0-9_]+$/.test(cause?.code || '')) code = cause.code; } catch {}
+    // Never rethrow a previously marked Error supplied by an injected command
+    // or a later failed close. The mark belongs only to this completed cleanup.
+    const failure = Object.assign(new Error('The assigned CI native profile is unavailable'), { code });
+    cleanedPreparationFailures.add(failure);
+    throw failure;
   }
 }
