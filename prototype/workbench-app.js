@@ -5454,6 +5454,23 @@ async function installCoordinatorPanel(sync){
     }
     if(extrasKey!==lastRenderedExtras){
     extrasHost.replaceChildren();
+    for(const proposal of state.approvals||[]){
+      if(proposal.kind!=='binding-proposal'||!proposal.pending)continue;
+      const card=document.createElement('section'),description=document.createElement('p');
+      description.style.whiteSpace='pre-wrap';
+      description.textContent='建议绑定到：\n'+proposal.pathText+'\n可回复“同意绑定”或“暂不绑定”，也可点下方按钮。';
+      card.append(description);
+      for(const [decision,label]of [['approved','确认绑定'],['rejected','暂不绑定']]){
+        const button=document.createElement('button');button.type='button';button.textContent=label;
+        const request={id:crypto.randomUUID(),proposalId:proposal.id,version:proposal.version,decision};
+        button.addEventListener('click',async()=>{
+          for(const other of card.querySelectorAll('button'))other.disabled=true;
+          try{await sync.call(conversationUrl('/api/coordinator/binding-review',renderedConversation),request,'POST','main');await refresh();}
+          catch(error){status.textContent='绑定尚未确认：'+error.message;for(const other of card.querySelectorAll('button'))other.disabled=false;}
+        });card.append(button);
+      }
+      extrasHost.append(card);
+    }
     const mountGroups=new Map();
     for(const proposal of state.approvals||[]){
       if(proposal.kind!=='mount-proposal'||!proposal.pending) continue;
@@ -5484,7 +5501,8 @@ async function installCoordinatorPanel(sync){
       const description=document.createElement('p');
       description.textContent='待确认需求：'+approval.text+'\n验收条件：'+approval.acceptance;
       card.append(description);
-      metadata(card,'节点：'+(approval.nodeIds||[]).join('、')+'\nMain：'+approval.mainVersion);
+      if(approval.pathText){const path=document.createElement('p');path.style.whiteSpace='pre-wrap';path.textContent='主节点路径：\n'+approval.pathText;card.append(path);}
+      else metadata(card,'节点：'+(approval.nodeIds||[]).join('、')+'\nMain：'+approval.mainVersion);
       for(const [decision,label] of [['approved','确认需求'],['rejected','拒绝需求']]){
         const button=document.createElement('button'); button.type='button'; button.textContent=label;
         const request={id:`${approval.id}:${decision}`,proposalId:approval.id,decision,reason:label,

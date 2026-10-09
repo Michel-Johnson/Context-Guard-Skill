@@ -268,6 +268,11 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       const actions = doc.createElement('div'); actions.className = 'coordinator-actions';
       if (action.message && action.message !== cleanText) { const label = doc.createElement('p'); label.textContent = action.message; actions.append(label); }
       for (const node of (action.nodes || (action.node ? [action.node] : [])).slice(0, 3)) {
+        if (Array.isArray(node.path) && node.path.length && action.kind !== 'binding-proposal') {
+          const path = doc.createElement('p'); path.style.whiteSpace = 'pre-wrap';
+          path.textContent = node.path.map((item, index) => `${index ? '  '.repeat(index - 1) + '└─ ' : ''}${item.title}：${item.purpose || '尚未填写描述'}`).join('\n');
+          actions.append(path);
+        }
         const button = doc.createElement('button'); button.type = 'button'; button.className = 'coordinator-node-link';
         button.textContent = node.title; button.dataset.nodeId = node.id; button.addEventListener('click', () => onNode?.(node.id)); actions.append(button);
       }
