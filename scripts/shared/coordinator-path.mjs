@@ -20,9 +20,12 @@ export function coordinatorNodePath(root, nodeId, { nodeIds = null, maxMemoryCha
 }
 
 export function coordinatorPathText(path) {
-  return path.map((node, index) => {
-    const purpose = node.purpose || '尚未填写描述';
-    const description = purpose.length > 320 ? purpose.slice(0, 320) + '…（描述已截短）' : purpose;
-    return `${index ? '  '.repeat(index - 1) + '└─ ' : ''}${node.title}：${description}`;
-  }).join('\n');
+  return path.map(node => coordinatorNodeLabel(node)).join(' → ');
+}
+
+export function coordinatorNodeLabel(node) {
+  const title = String(node.title || '').trim();
+  return title === node.id && !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/u.test(title) || /^(?:TD[-_]|NCM)[A-Za-z0-9_-]{8,}$/u.test(title)
+    ? String(node.purpose || '').trim().split(/[。\n]/u)[0] || '未命名节点'
+    : title || '未命名节点';
 }

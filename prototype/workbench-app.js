@@ -5366,7 +5366,7 @@ async function installCoordinatorPanel(sync){
       onAnswer:(question,answer)=>{
         if(busy||pending)return;
         const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
-        void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
+        return submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
       },onNode:id=>{navigationRun++;void openMapNode(id).catch(error=>{status.textContent='无法定位节点：'+error.message;});}});
     const streamingMessage=messages.querySelector('.coordinator-streaming');
     setTyping((busy&&busyConversation===selected)||state.status==='running'||!!streamingMessage||revealSettling);
@@ -5458,9 +5458,19 @@ async function installCoordinatorPanel(sync){
     for(const proposal of state.approvals||[]){
       if(proposal.kind!=='binding-proposal'||!proposal.pending)continue;
       const card=document.createElement('section'),description=document.createElement('p');
+      card.dataset.bindingProposal=proposal.id;
       description.style.whiteSpace='pre-wrap';
       description.textContent=bindingProposalText(proposal);
       card.append(description);
+      if(proposal.path?.length){
+        const details=document.createElement('details'),summary=document.createElement('summary');
+        summary.textContent='节点说明';details.append(summary);
+        for(const level of proposal.path){
+          const line=document.createElement('p');
+          line.textContent=(level.label||level.title)+'：'+(level.purpose||'尚未填写描述');details.append(line);
+        }
+        card.append(details);
+      }
       for(const [decision,label]of [['approved','确认绑定'],['rejected','暂不绑定']]){
         const button=document.createElement('button');button.type='button';button.textContent=label;
         const request={id:crypto.randomUUID(),proposalId:proposal.id,version:proposal.version,decision};

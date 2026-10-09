@@ -42,12 +42,12 @@ test('Coordinator 两种独立 profile 保留短概览规则且不增加静态�
   assert.ok(profiles.manual.length < profiles.automatic.length / 2, 'manual must retain the existing compact profile boundary');
   // 只校验源分发合同与静态大小；文字匹配不能证明真实模型会遵守。
   for (const [mode, profile] of Object.entries(profiles)) {
-    assert.match(profile, /50–100 字/);
-    assert.match(profile, /通常不超 150 字/);
-    assert.match(profile, /TODO 概览报总数与可识别短名称/);
-    assert.match(profile, /同状态只报一次、不漏事项，不附未问 Bug/);
+    assert.match(profile, /每段最多60个可见字符/);
+    assert.match(profile, /不强凑40字/);
+    assert.match(profile, /TODO 概览先报总数和最多两个重点/);
+    assert.match(profile, /不逐条列出全部事项，不附未问 Bug/);
     assert.match(profile, /每轮一份最终答复/);
-    assert.match(profile, /结论独立成段.*少量短列表.*段间空行/);
+    assert.match(profile, /结论独立成段.*段间空行/);
     assert.ok(profile.length <= (mode === 'automatic' ? 2700 : 1280), `${mode} profile must remain smaller than the previous source`);
   }
 });
