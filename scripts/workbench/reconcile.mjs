@@ -67,7 +67,7 @@ function normalizedAssignments(input, files, index, directlyMapped) {
 function isSupportOnlyPath(file) {
   const lower = file.toLowerCase(), parts = lower.split('/');
   const basename = parts.at(-1);
-  if (['test', 'tests', '__tests__', 'docs', 'doc', 'references', '.github'].includes(parts[0])) return true;
+  if (['test', 'tests', '__tests__', 'docs', 'doc', 'references', 'development-docs', 'skill-reference', '.github'].includes(parts[0])) return true;
   if (/^(readme|changelog|contributing|license|todo)(\.|$)/.test(basename) || basename === 'skill.md') return true;
   if (/^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|package\.json)$/.test(basename)) return true;
   if (/(^|[._-])(test|tests|spec)([._-]|$)/.test(basename)) return true;

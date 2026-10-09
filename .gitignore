@@ -23,7 +23,6 @@ secrets.json
 coverage/
 .pytest_cache/
 **/__pycache__/
-temp/
 
 # Product branch does not carry test trees. Use cursor/test-layout-f54e.
 fixtures/
@@ -35,8 +34,6 @@ tests/local/
 workbench-global.png
 
 # Local dependencies and generated CI evidence never ship.
-node_modules/
-output/
 .cloud-data/
 
 # 共享核心、UI 和参考文档由本仓库维护。

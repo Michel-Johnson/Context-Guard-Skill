@@ -21,7 +21,7 @@ try {
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.copyFile(sourceFile, target);
     }
-    // 核心包的角色和参考来自唯一的根目录源码，不在源码树复制副本。
+    // 核心包的角色和参考来自 Skill 唯一源码，不在源码树复制副本。
     const descriptor = JSON.parse(await fs.readFile(path.join(directory, 'package.json'), 'utf8'));
     descriptor.files = sharedMappings(kind).map(([, file]) => file);
     await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify(descriptor, null, 2) + '\n');

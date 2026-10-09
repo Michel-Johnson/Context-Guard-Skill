@@ -12,7 +12,7 @@
 
 先用 `map read --context` 获取轻量导航和项目说明，不复制完整 Map。再按需读取挂载节点的职责、记忆和实际代码；读取节点时用 `--mount` 记录本任务的挂载子树。缺少信息或需要扩大范围时交 Coordinator 处理。
 
-已确认的需求作为方案和验收的共同依据。执行记录写入本地会话 Markdown，不直接改写 Main，见 [会话记录模板](references/design/design-session-record-v1.0.0.md)。
+已确认的需求作为方案和验收的共同依据。执行记录写入本地会话 Markdown，不直接改写 Main，见 [会话记录模板](../skill-reference/formats/session-record.md)。
 
 ## 工作流程
 
@@ -50,10 +50,10 @@
 
 | 当前要做什么 | 阅读哪份规范 |
 | --- | --- |
-| 读取项目及节点背景 | [map-read.md](references/map-read.md) |
-| 接收任务、处理信号、交接、返工和收尾 | [agent-handoff.md](references/agent-handoff.md) |
-| 准备或修订 Plan | [plan-review.md](references/plan-review.md) |
-| 提交节点提案或记录事项 | [map-mount.md](references/map-mount.md) |
-| 执行计划、版本化写入和归档命令 | [工作台接口](references/design/design-workbench-interface-v1.1.0.md) |
+| 读取项目及节点背景 | [map-read.md](../skill-reference/map-read.md) |
+| 接收任务、处理信号、交接、返工和收尾 | [agent-handoff.md](../skill-reference/agent-handoff.md) |
+| 准备或修订 Plan | [plan-review.md](../skill-reference/agent-handoff.md#计划审核) |
+| 提交节点提案或记录事项 | [map-mount.md](../skill-reference/map-read.md#挂载-map) |
+| 执行计划、版本化写入和归档命令 | [工作台接口](../skill-reference/design/design-interface-v1.2.1.md) |
 
-记忆正文与事项记录不同：前者见 [撰写规范](references/design/design-memory-definition-v0.2.0.md)，后者见 [文件结构规范](references/design/design-memory-filesystem-v1.0.1.md)。
+记忆正文与事项记录不同：前者见 [撰写规范](../skill-reference/design/design-memory-definition-v0.2.0.md)，后者见 [文件结构规范](../skill-reference/design/design-memory-filesystem-v1.0.1.md)。

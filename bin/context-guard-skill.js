@@ -12,10 +12,7 @@ const sourceHooksPath = path.join(packageRoot, "hooks.json");
 const pythonScript = path.join(sourceSkillDir, "scripts", "context_guard.py");
 const skillInstallEntries = [
   "SKILL.md",
-  "roles.md",
-  "Coordinator.md",
-  "Executor.md",
-  "Tester.md",
+  "roles",
   "README.md",
   "README.zh-CN.md",
   "THIRD_PARTY_NOTICES.md",
@@ -23,7 +20,7 @@ const skillInstallEntries = [
   "bin",
   "agents",
   "prototype",
-  "references",
+  "skill-reference",
   "scripts"
 ];
 
@@ -400,9 +397,17 @@ function applyInstallPlan(plan, dryRun) {
       staged.push(entry);
       if (entry.kind === "skill") {
         copySkill(entry.next);
-        // Existing Claude receivers may still reference this absolute prompt path.
-        if (fs.existsSync(path.join(entry.target, "Developer.md"))) {
-          fs.copyFileSync(path.join(entry.next, "Executor.md"), path.join(entry.next, "Developer.md"));
+        // 仅兼容旧安装已有的绝对路径；新安装不创建根目录角色副本。
+        const legacyRoles = {
+          "roles.md": "README.md", "Coordinator.md": "Coordinator.md",
+          "Executor.md": "Executor.md", "Tester.md": "Tester.md", "Developer.md": "Executor.md"
+        };
+        for (const [legacy, role] of Object.entries(legacyRoles)) {
+          if (!fs.existsSync(path.join(entry.target, legacy))) continue;
+          const prompt = fs.readFileSync(path.join(entry.next, "roles", role), "utf8")
+            .replaceAll("](../skill-reference/", "](skill-reference/")
+            .replace(/\]\((Coordinator|Executor|Tester)\.md\)/g, "](roles/$1.md)");
+          fs.writeFileSync(path.join(entry.next, legacy), prompt);
         }
       } else fs.writeFileSync(entry.next, entry.content, { mode: entry.mode });
     }
