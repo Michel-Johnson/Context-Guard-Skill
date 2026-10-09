@@ -9,9 +9,13 @@ import { CursorCiDockerRunner } from '../scripts/workbench/cursor-ci-runner.mjs'
 import { exportCursorCiSource } from '../scripts/workbench/cursor-ci-source.mjs';
 import { hash } from '../scripts/shared/io.mjs';
 import { canonical } from '../scripts/shared/protocol.mjs';
+import { assertCursorCiHostEvidence, createCursorCiHostProof, cursorCiNodeTapPassed } from '../scripts/workbench/cursor-ci-proof.mjs';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
+import { startCursorCiMcp } from '../scripts/workbench/cursor-ci-mcp.mjs';
 
 const imageId = 'sha256:' + 'd'.repeat(64), containerId = 'a'.repeat(64);
-async function fixture(t) {
+async function fixture(t, { tap = false, setup } = {}) {
   const parent = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-ci-runner-test-')));
   await fs.chmod(parent, 0o700);
   const root = path.join(parent, 'repo'), directory = path.join(parent, 'records');
@@ -24,10 +28,10 @@ async function fixture(t) {
   await git('add', '.'); await git('commit', '-m', 'synthetic committed fixture');
   const sourceSha = await git('rev-parse', 'HEAD');
   const source = await exportCursorCiSource({ root, sourceSha, directory: parent, paths: ['check.mjs'] });
-  const context = { session: { id: 'executor', generation: 1 }, taskId: 'task', sourceSha, ciTodoRef: 'todo', references: { todo: 'v1' },
-    commands: ['node --test'], tester: { sessionId: 'tester', nativeSessionId: 'native', deliveryId: 'delivery', workerPid: process.pid } };
+  const context = { session: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', generation: 1 }, taskId: 'task', sourceSha, ciTodoRef: 'todo', references: { todo: 'v1' },
+    commands: ['node --test'], tester: { sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', nativeSessionId: 'native', deliveryId: 'delivery', workerPid: process.pid } };
   const policy = { docker: process.execPath, socket: path.join(parent, 'synthetic.sock'), daemonId: 'synthetic-daemon', imageId,
-    imageEnvironment: ['PATH=/usr/bin:/bin', 'NODE_VERSION=24'], tests: [{ id: 'check', todoId: 'todo-one', commandLabel: 'node --test', argv: ['--test', '/source/check.mjs'] }],
+    imageEnvironment: ['PATH=/usr/bin:/bin', 'NODE_VERSION=24'], tests: [{ id: 'check', todoId: 'todo-one', commandLabel: 'node --test', argv: ['--test', ...(tap ? ['--test-reporter=tap'] : []), '/source/check.mjs'] }],
     timeoutMs: 1000, outputBytes: 4096 };
   const state = { calls: [], status: 'created', exitCode: 0, stdout: 'synthetic observed output', stderr: '' };
   const inspected = () => ({ Id: containerId, Name: '/' + state.name, Image: imageId, Config: { Labels: state.labels,
@@ -78,6 +82,7 @@ async function fixture(t) {
     throw new Error('Unexpected synthetic Docker operation');
   };
   const ciTodo = { ref: 'todo', kind: 'ciTodo', version: 'v1', content: { items: [{ id: 'todo-one' }] } };
+  await setup?.({ directory, context, policy, ciTodo });
   const runner = new CursorCiDockerRunner({ directory, policy, source, context, ciTodo, command, user: { uid: 1000, gid: 1000 },
     pulse: callback => { state.pulse = callback; return setInterval(() => {}, 100000); },
     authorize: async () => { if (state.revoked) throw Object.assign(new Error('revoked'), { code: 'CI_AUTHORIZATION_REJECTED' }); return context; } });
@@ -187,6 +192,174 @@ test('CI runner rejects altered actual container policy but still stops by exact
   await assert.rejects(f.runner.run({ id: 'request', testId: 'check' }), { code: 'CI_CONTAINER_POLICY_CHANGED' });
   assert.equal(f.state.calls.some(args => args[0] === 'start'), false);
   assert.equal(f.state.status, 'created');
+});
+
+const passingTap = 'TAP version 13\n# Subtest: fixed check\nok 1 - fixed check\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1\n';
+async function proofFixture(t) {
+  let store, ci, taskKey;
+  const sent = [];
+  const f = await fixture(t, { tap: true, setup: async ({ directory, context, ciTodo }) => {
+    store = new ProtocolStore(path.join(directory, 'synthetic-core'));
+    const device = { repositoryId: 'synthetic-repo', deviceId: 'synthetic-device', agentId: context.session.id, role: 'device' };
+    ci = { ...device, agentId: context.tester.sessionId, role: 'ci', bindings: { [context.session.id]: 'synthetic-worktree' } };
+    await store.handle(device, { v: 2, id: 'fixture-bind', type: 'session.bind', payload: {
+      sessionId: context.session.id, agentId: context.session.id, worktreeId: 'synthetic-worktree', expectedBindingVersion: '' } }, { verifyBinding: () => true });
+    const todo = (await store.handle(ci, { v: 2, id: 'fixture-todo', type: 'object.put', session: context.session,
+      payload: { ref: context.ciTodoRef, baseVersion: '', kind: 'ciTodo', content: ciTodo.content } })).data;
+    context.references[context.ciTodoRef] = todo.version; ciTodo.version = todo.version;
+    taskKey = scopedObjectKey(ci, context.session, 'task:task');
+    // Explicit synthetic authority: real Core reducers, not a real user approval.
+    await store.transaction(state => { state.tasks[taskKey] = { id: 'task', repositoryId: device.repositoryId, session: context.session,
+      stage: 'testing', version: 'synthetic', busy: true, sourceSha: context.sourceSha,
+      handoff: { ciTodoRef: context.ciTodoRef, unitTestRefs: [] }, references: context.references }; });
+  } });
+  f.state.stdout = passingTap;
+  const approvedPlan = { ref: 'synthetic-approved-plan', version: 'synthetic-plan-version', approvalReceiptId: 'synthetic-approval',
+    sourceSha: 'e'.repeat(40), paths: ['check.mjs'] }; // Plan baseline differs from the final handoff SHA.
+  const commit = async (message, { expectedEvidence } = {}) => {
+    sent.push(structuredClone(message));
+    const result = (await store.handle(ci, message, { authorize: (state, principal, input) => {
+      if (input.type === 'ci.result') assertCursorCiHostEvidence(state, principal, input, expectedEvidence);
+    } })).data;
+    if (f.state.lostAck === message.type) { f.state.lostAck = null; throw Object.assign(new Error('synthetic lost ACK'), { code: 'CI_CONNECTION_UNAVAILABLE' }); }
+    return result;
+  };
+  const proof = createCursorCiHostProof({ runner: f.runner, approvedPlan, ciTodo: f.ciTodo, commit });
+  const proposal = observed => ({ v: 2, id: 'original-result', type: 'ci.result', session: f.context.session,
+    payload: { taskId: f.context.taskId, sourceSha: f.context.sourceSha, verdict: observed.status,
+      checks: [{ testId: observed.testId, todoId: observed.todoId, status: observed.status, evidenceRef: observed.evidenceRef,
+        ...(observed.reproductionRef ? { reproductionRef: observed.reproductionRef } : {}) }] } });
+  return { ...f, proof, store, ci, taskKey, sent, proposal, approvedPlan, commit };
+}
+
+test('host proof rejects zero discovery, skips, cancellation, partial and inconsistent TAP', async () => {
+  assert.equal(cursorCiNodeTapPassed({ exitCode: 0, stdout: passingTap, stderr: '' }), true);
+  for (const stdout of [passingTap.replace('# tests 1', '# tests 0'), passingTap.replace('# skipped 0', '# skipped 1'),
+    passingTap.replace('# cancelled 0', '# cancelled 1'), passingTap.replace('# todo 0', '# todo 1'),
+    passingTap.replace('# fail 0', '# fail 1'), passingTap.replace('ok 1 -', 'not ok 1 -'),
+    passingTap.replace('1..1', '1..2'), passingTap.replace('# pass 1', '# pass 2'),
+    passingTap.replace('# pass 1', '# pass 1\n# pass 1'), passingTap.replace('# tests 1\n', ''),
+    passingTap.replace('ok 1 - fixed check', 'ok 2 - fixed check'), 'arbitrary test output']) {
+    assert.equal(cursorCiNodeTapPassed({ exitCode: 0, stdout, stderr: '' }), false, stdout);
+  }
+  assert.equal(cursorCiNodeTapPassed({ exitCode: 3, stdout: passingTap, stderr: '' }), false);
+  assert.equal(cursorCiNodeTapPassed({ exitCode: 0, stdout: passingTap, stderr: 'unaccounted error' }), false);
+});
+
+test('host proof TAP policy accepts actual Node reporter output rather than only handwritten fixtures', async t => {
+  const f = await fixture(t, { tap: true });
+  const output = await promisify(execFile)(process.execPath, ['--test', '--test-reporter=tap', path.join(f.source.snapshot, 'check.mjs')],
+    { env: { PATH: process.env.PATH, ...(process.platform === 'win32' ? { SYSTEMROOT: process.env.SYSTEMROOT } : {}) }, windowsHide: true });
+  assert.equal(cursorCiNodeTapPassed({ exitCode: 0, ...output }), true);
+});
+
+test('host proof requires approved paths, fixed Node reporter and complete numbered CI TODO coverage', async t => {
+  const f = await proofFixture(t), options = { runner: f.runner, approvedPlan: f.approvedPlan, ciTodo: f.ciTodo, commit: f.commit };
+  for (const approvedPlan of [{ ...f.approvedPlan, approvalReceiptId: '' }, { ...f.approvedPlan, paths: ['other.mjs'] },
+    { ...f.approvedPlan, paths: ['check.mjs', 'check.mjs'] }]) {
+    assert.throws(() => createCursorCiHostProof({ ...options, approvedPlan }), { code: 'CI_PROOF_CONFIG_INVALID' });
+  }
+  for (const ciTodo of [{ ...f.ciTodo, version: 'not-current' }, { ...f.ciTodo, content: { items: [{ id: 'todo-one' }, { id: 'uncovered' }] } },
+    { ...f.ciTodo, content: { items: [{ id: 'todo-one' }, { id: 'todo-one' }] } }]) {
+    assert.throws(() => createCursorCiHostProof({ ...options, ciTodo }), { code: 'CI_PROOF_CONFIG_INVALID' });
+  }
+  const noReporter = await fixture(t);
+  assert.throws(() => createCursorCiHostProof({ ...options, runner: noReporter.runner }), { code: 'CI_PROOF_CONFIG_INVALID' });
+  assert.equal(f.state.calls.length, 0); assert.equal(noReporter.state.calls.length, 0);
+});
+
+test('host proof persists actual runner evidence and replays a lost original Core write without rerunning', async t => {
+  const f = await proofFixture(t); f.state.lostAck = 'object.put';
+  await assert.rejects(f.proof.runTest({ id: 'request', testId: 'check' }), { code: 'CI_CONNECTION_UNAVAILABLE' });
+  const observed = await f.proof.runTest({ id: 'request', testId: 'check' });
+  assert.equal(observed.status, 'passed'); assert.ok(observed.evidenceVersion);
+  assert.equal(f.sent.length, 2); assert.deepEqual(f.sent[0], f.sent[1]);
+  assert.equal(f.state.calls.filter(args => args[0] === 'start').length, 1);
+  const saved = (await f.store.handle(f.ci, { v: 2, id: 'read-host-fixture', type: 'object.read', session: f.context.session,
+    payload: { ref: observed.evidenceRef, version: observed.evidenceVersion } })).data;
+  assert.equal(saved.content.observation.containerId, containerId); assert.equal(saved.content.sourceSha, f.context.sourceSha);
+  assert.equal(saved.content.approvedPlan.sourceSha, 'e'.repeat(40));
+  f.state.revoked = true;
+  await assert.rejects(f.proof.runTest({ id: 'request', testId: 'check' }), { code: 'CI_AUTHORIZATION_REJECTED' });
+});
+
+test('host proof keeps original result ID and payload after lost terminal ACK and rejects any changed proposal', async t => {
+  const f = await proofFixture(t), observed = await f.proof.runTest({ id: 'request', testId: 'check' }), message = f.proposal(observed);
+  f.state.lostAck = 'ci.result';
+  await assert.rejects(f.proof.submitVerifiedResult(message), { code: 'CI_CONNECTION_UNAVAILABLE' });
+  assert.equal((await f.store.transaction(state => state.tasks[f.taskKey], { readOnly: true })).stage, 'awaiting-merge');
+  // Recreate the host publisher over the exact private ledger, not the model loop.
+  const restored = createCursorCiHostProof({ runner: f.runner, approvedPlan: f.approvedPlan, ciTodo: f.ciTodo, commit: f.commit });
+  const receipt = await restored.submitVerifiedResult(message);
+  assert.equal(receipt.stage, 'awaiting-merge'); assert.deepEqual(await restored.submitVerifiedResult(message), receipt);
+  assert.deepEqual(f.sent.filter(value => value.type === 'ci.result'), [message, message]);
+  await assert.rejects(restored.submitVerifiedResult({ ...message, id: 'another-result' }), { code: 'CI_RESULT_ALREADY_PENDING' });
+  await assert.rejects(restored.submitVerifiedResult({ ...message, payload: { ...message.payload, verdict: 'incomplete' } }), { code: 'ID_REUSED' });
+  await assert.rejects(restored.runTest({ id: 'request', testId: 'check' }), { code: 'CI_RESULT_ALREADY_PENDING' });
+  f.state.revoked = true;
+  await assert.rejects(restored.submitVerifiedResult(message), { code: 'CI_AUTHORIZATION_REJECTED' });
+});
+
+test('host proof original Core transaction rejects host evidence changed after the observed receipt', async t => {
+  const f = await proofFixture(t), observed = await f.proof.runTest({ id: 'request', testId: 'check' });
+  await f.store.handle(f.ci, { v: 2, id: 'synthetic-evidence-drift', type: 'object.put', session: f.context.session,
+    payload: { ref: observed.evidenceRef, baseVersion: observed.evidenceVersion, kind: 'evidence', content: { observation: 'different evidence' } } });
+  await assert.rejects(f.proof.submitVerifiedResult(f.proposal(observed)), { code: 'CI_EVIDENCE_CHANGED' });
+  assert.equal((await f.store.transaction(state => state.tasks[f.taskKey], { readOnly: true })).stage, 'testing');
+  assert.equal(f.state.calls.filter(args => args[0] === 'start').length, 1);
+});
+
+test('host proof original Core transaction rejects changed content even with the same recorded version', async t => {
+  const f = await proofFixture(t), observed = await f.proof.runTest({ id: 'request', testId: 'check' });
+  await f.store.transaction(state => {
+    const object = state.objects[scopedObjectKey(f.ci, f.context.session, observed.evidenceRef)];
+    object.versions[observed.evidenceVersion].content.observation.exitCode = 7; // Synthetic corruption, not an API write.
+  });
+  await assert.rejects(f.proof.submitVerifiedResult(f.proposal(observed)), { code: 'CI_EVIDENCE_CHANGED' });
+  assert.equal((await f.store.transaction(state => state.tasks[f.taskKey], { readOnly: true })).stage, 'testing');
+});
+
+test('host proof rejects forged or misattributed checks and never promotes skipped output to passed', async t => {
+  const f = await proofFixture(t); f.state.stdout = passingTap.replace('# skipped 0', '# skipped 1');
+  const observed = await f.proof.runTest({ id: 'request', testId: 'check' });
+  assert.equal(observed.status, 'incomplete');
+  const correct = f.proposal(observed);
+  for (const change of [{ evidenceRef: `ci:${f.context.tester.sessionId}:forged` }, { todoId: 'not-handed-off' },
+    { testId: 'not-run' }, { status: 'passed' }]) {
+    const forged = { ...correct, payload: { ...correct.payload, verdict: 'passed', checks: [{ ...correct.payload.checks[0], ...change }] } };
+    await assert.rejects(f.proof.submitVerifiedResult(forged), { code: 'CI_TEST_PROOF_INVALID' });
+  }
+  assert.equal(f.sent.some(value => value.type === 'ci.result'), false);
+  assert.equal((await f.proof.submitVerifiedResult(correct)).stage, 'ci-failed');
+});
+
+test('host proof failed execution returns its fixed command evidence as reproduction, never a passed verdict', async t => {
+  const f = await proofFixture(t); f.state.exitCode = 1; f.state.stdout = passingTap.replace('ok 1 -', 'not ok 1 -').replace('# pass 1', '# pass 0').replace('# fail 0', '# fail 1');
+  const observed = await f.proof.runTest({ id: 'request', testId: 'check' });
+  assert.equal(observed.status, 'failed'); assert.equal(observed.reproductionRef, observed.evidenceRef);
+  assert.equal((await f.proof.submitVerifiedResult(f.proposal(observed))).stage, 'ci-failed');
+  assert.equal(f.state.calls.filter(args => args[0] === 'start').length, 1);
+});
+
+test('MCP test and verified result use private host publication while ordinary model result exchange stays denied', async t => {
+  const f = await proofFixture(t), ordinary = [];
+  const bridge = await startCursorCiMcp({ client: { context: async () => ({ mode: 'ci', ...f.context }),
+    exchange: async message => { ordinary.push(message); throw Object.assign(new Error('model result denied'), { code: 'CI_TEST_PROOF_REQUIRED' }); } },
+    testerSessionId: f.context.tester.sessionId, nativeSessionId: f.context.tester.nativeSessionId,
+    source: f.source, tests: ['check'], ...f.proof });
+  t.after(() => bridge.close());
+  const rpc = async (method, params, id = 'rpc') => {
+    const response = await fetch(bridge.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bridge.credential}` },
+      body: JSON.stringify({ jsonrpc: '2.0', ...(id ? { id } : {}), method, ...(params ? { params } : {}) }) });
+    assert.ok([200, 202].includes(response.status)); return response.status === 202 ? null : response.json();
+  };
+  await rpc('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'synthetic-native', version: '1' } });
+  await rpc('notifications/initialized', undefined, null);
+  const result = await rpc('tools/call', { name: 'context_guard_test', arguments: { id: 'request', testId: 'check' } });
+  const message = f.proposal(result.result.structuredContent), { session, v, ...args } = message;
+  const accepted = await rpc('tools/call', { name: 'context_guard_exchange', arguments: args });
+  assert.equal(accepted.result.structuredContent.stage, 'awaiting-merge'); assert.equal(ordinary.length, 0);
+  assert.deepEqual(f.sent.find(value => value.type === 'ci.result'), message);
 });
 
 function recoveredRunner(f) {

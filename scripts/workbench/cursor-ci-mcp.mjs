@@ -82,11 +82,12 @@ export const CURSOR_CI_TOOL_NAMES = Object.freeze(tools.map(tool => tool.name));
 // One capability per native CI turn. Business truth/receipts remain in the
 // original protocol; this server has no task queue or model loop.
 async function createCiTurn({ client, testerSessionId, nativeSessionId, source, tests = [], runTest,
-  verifyResult, ttlMs = 1800000, now = Date.now } = {}) {
+  verifyResult, submitVerifiedResult, ttlMs = 1800000, now = Date.now } = {}) {
   if (!client || typeof client.context !== 'function' || typeof client.exchange !== 'function' || !uuid.test(testerSessionId || '') ||
       typeof nativeSessionId !== 'string' || !nativeSessionId || nativeSessionId.length > 256 ||
       !Array.isArray(tests) || tests.length > 20 || tests.some(id => typeof id !== 'string' || !id || id.length > 128) ||
-      new Set(tests).size !== tests.length || !Number.isSafeInteger(ttlMs) || ttlMs < 100 || ttlMs > 1800000) fail('CI_CONFIG_INVALID');
+      new Set(tests).size !== tests.length || submitVerifiedResult !== undefined && typeof submitVerifiedResult !== 'function' ||
+      !Number.isSafeInteger(ttlMs) || ttlMs < 100 || ttlMs > 1800000) fail('CI_CONFIG_INVALID');
   const scope = await client.context(), fingerprint = identity(scope), expiresAt = now() + ttlMs;
   if (scope.tester?.sessionId !== testerSessionId || scope.tester?.nativeSessionId !== nativeSessionId ||
       scope.tester?.workerPid !== process.pid ||
@@ -138,7 +139,10 @@ async function createCiTurn({ client, testerSessionId, nativeSessionId, source, 
         await verifyResult(message, { context, source });
         await fresh(true);
       }
-      result = await client.exchange(message); // Original ID, original receipts.
+      // A host proof publisher is a private closure, never a new tool/HTTP gate.
+      // Ordinary model exchange still refuses host evidence and result writes.
+      result = message.type === 'ci.result' && submitVerifiedResult
+        ? await submitVerifiedResult(message) : await client.exchange(message); // Original ID and payload.
       if (message.type === 'ci.result') return result; // 已鉴权的原终态回执是本次操作真值。
     } else fail('CI_TOOL_UNKNOWN');
     await fresh(); // Revocation/drift during a call cannot become a success.
