@@ -9,6 +9,6 @@
 
 源码归属与部署位置分开：Skill 的 UI 可由本地服务或 Cloud 提供。Cloud 固定使用 Skill 发布的 core 与 workbench 包；用户安装 Skill 无需 Cloud 服务、仓库或发布包。Cloud 不加载 Skill 安装器、hooks 或本地服务；仅集成测试可使用固定的 Skill fixture。
 
-共享源码路径保持 scripts/shared/ 与 prototype/；角色和参考在 Skill 根目录及 references/，打包时按清单导出到 core。Cloud 的同名目录是生成物，禁止手改；云端专有文档在 Cloud 的 references/design/。权限、数据权威和协议版本不因迁移改变。
+共享源码路径保持 scripts/shared/ 与 prototype/；角色提示词在 roles/，产品资料在 skill-reference/，打包时按清单导出到 core。Cloud 的同名目录是生成物，禁止手改；云端专有文档在 Cloud 的 references/design/。权限、数据权威和协议版本不因迁移改变。
 
 迁移顺序：Skill 恢复唯一源码和配套测试 → 独立构建、安全扫描与 Required → 合入并发布共享包 → Cloud 更新固定依赖、构建与部署入口 → 移除重复源码 → 双方回归与安装验收。任一门禁失败保持未完成，不部署生产；回退使用记录的提交、依赖与完整性摘要，不删除用户数据。旧发布包保持不可变。

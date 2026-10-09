@@ -9,7 +9,7 @@
     "*.json",
     "vendor/",
     "roles/",
-    "references/",
+    "skill-reference/",
     "LICENSES/"
   ],
   "engines": {

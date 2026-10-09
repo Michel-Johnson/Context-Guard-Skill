@@ -1,6 +1,27 @@
 # 检查怎样算通过
 
-安全、工作台、三个客户端、自动化覆盖，原来是四篇，现已合成这一篇。改本文件时，七项检查全部跑。`docs/test-governance.md` 和 CI 配置一改，同样全跑。
+本文统一说明测试质量、执行入口、安全与验收边界。修改本文件或 CI/治理规则时执行完整检查；不是所有检查都代表真实客户端或生产环境通过。
+
+## 测试质量与责任
+
+`tests/test-manifest.json` 的 `productFiles` 是正式产品测试的批准清单。分支守卫读取暂存区中的同一清单，CI 校验文件与目录覆盖；未暂存的修改不能放行提交。登记在清单中不等于测试已执行。
+
+Executor 为本次改动补单元、接口与已知回归测试；独立 Review 和 CI 找遗漏、验证门禁，不替代基本测试。跨模块改动至少有一条从公共入口到可观察最终状态的集成测试。不能稳定自动执行的浏览器、原生宿主和跨平台验收记入 `CI_todo.md`，不能声称已覆盖。
+
+### 发现与执行入口
+
+- `*.test.mjs` 默认用 `node:test`。当前 `.github/scripts/run-node-tests.mjs` 只运行 `.github/scripts/` 和 `tests/` 顶层文件，并排除独立安全套件；递归清单校验不能证明嵌套测试已运行。新增自动测试放受支持顶层，并核对实际输出。
+- 需要独立进程、特殊依赖或失败立即停止的套件，在清单中写清独立命令与原因。
+- `npm run test:browser` 覆盖核心用户路径、并发页面及恢复；实际 npm 包验证安装与客户端兼容，不用源码调用代替安装入口。
+- 产品浏览器夹具在 `tests/fixtures/`，不进入生产页面或安装包。
+
+### 断言与审查
+
+每个测试说明一种可观察行为，名称写条件和结果。回归先证明旧实现失败，再验证修复；时间、并发、崩溃用例检查最终持久状态，不只检查退出码。测试使用隔离目录与合成数据，清理自有进程、端口和临时目录；Windows 子进程隐藏窗口，不读取个人目录或修改真实记忆。
+
+禁止 `.only`；跳过须有名称和原因，关键路径不能永久跳过。当前清单校验只识别部分文本形式，不能证明没有别名式、选项式聚焦或判断 skip 理由有效，Reviewer 须检查实际语义。相关自动化缺口见 [GATE-01/02](#明确待实现)。
+
+Reviewer 核对正常、错误、重试与幂等路径，公共入口覆盖，错误实现是否仍会变绿，实际测试发现与执行入口，以及影响规则和被跳过 job 是否正确。自动 CI 通过不等于测试设计正确；重要功能还需独立测试审查，高成本真实 E2E 留在发布前和定期回归。任务证据使用 [模板](engineering/README.md#任务与-pr-模板)。
 
 ## 安全
 
@@ -8,7 +29,7 @@
 
 整个 `.codex/`、输出、缓存、真实环境文件、私钥和凭据文件不得进入源码提交或 npm 包。只保留公开模板与空 `.env.example`，示例仍扫密钥。不得将私有记忆复制到其他跟踪目录或作为 PR / CI 附件公开；必要产品文档和验证摘要允许保留。
 
-项目 Map 遵守 [服务器记忆](../references/design/design-memory-server-v1.1.0.md)：使用 Cloud 时以服务器为准，无 Cloud 时以本地 Map 为准。会话笔记只在本地保存，不上传；凭据、机器状态和连接信息不放公开源码。
+项目 Map 遵守 [服务器记忆](../skill-reference/design/design-memory-server-v1.1.0.md)：使用 Cloud 时以服务器为准，无 Cloud 时以本地 Map 为准。会话笔记只在本地保存，不上传；凭据、机器状态和连接信息不放公开源码。
 
 私有记忆后端 / 客户端已有自动验收及一次生产部署 / 迁移验证，证据和限制见契约与 `CI_todo.md`；进一步迁移单独批准。原生 Hook 信任、真实宿主投递分别验收，仅同步 Map 不是私有记忆存储。
 
@@ -71,17 +92,9 @@ Git 忽略只影响未跟踪文件。Hook 可绕过，不是服务器访问控�
 
 `npm run test:cd` 用同打包安全门禁和当前 npm `latest` 真实升级演练发布，不实际发布。不得上传故意不安全的测试包。
 
-### 要点速查
-
-- 首次开发运行 `npm run dev:setup`，用 `npm run hooks:status` 确认已启用。
-- 提交前检查暂存区；推送前检查提交历史；CI 决定可否合并；CD 检查最终包后才上传。
-- 整个 `.codex/` 不进 Git 或分发产物；Cloud 项目的 Map 以服务器为准，会话笔记只存本地。迁移前保留本地文件，历史不会自动清除。
-- 正式测试留在源码仓库、不进 npm；普通用户安装不带扫描器或开发 hooks。
-- 命中后停止并修复，不绕过、不输出原密钥；误报只接受精确、经审查的规则调整。
-
 ## 工作台
 
-`CI` 工作流处理分支 / 标签推送及目标 main 的 PR。PR 总运行安全和确定性影响选择器；用合并基线差异及 `.github/ci-impact.json` 选择相关功能、打包、安装、最低运行时、浏览器、客户端任务。未知路径、CI 配置、本文或 `docs/test-governance.md` 变化执行完整检查。main 和标签推送始终全跑，作为结果监听和验证。
+`CI` 工作流处理分支 / 标签推送及目标 main 的 PR。PR 总运行安全和确定性影响选择器；用合并基线差异及 `.github/ci-impact.json` 选择相关功能、打包、安装、最低运行时、浏览器、客户端任务。未知路径、CI 配置、本文 变化执行完整检查。main 和标签推送始终全跑，作为结果监听和验证。
 
 `Required` 对比实际任务结果与选择计划：选中任务须成功，未选须跳过。选中任务失败、取消或跳过都不是通过。计划作为短期产物保留并在 Actions 摘要显示。此工作流不发布 npm 或调用 AI 模型。
 
@@ -110,7 +123,7 @@ npm 白名单与精确包契约排除所有测试、开发依赖、CI 文件和�
 
 ## 三个客户端
 
-本文描述不调用模型、可重复运行的日常兼容性检查。需要真实模型对话和测试凭据的补充验收保持为独立的手动 workflow，见 [`real-client-acceptance.md`](real-client-acceptance.md)；两者的“通过”含义不同。
+本文描述不调用模型、可重复运行的日常兼容性检查。需要真实模型对话和测试凭据的补充验收保持为独立的手动 workflow，见 [真实客户端对话验收](#真实客户端对话验收)；两者的“通过”含义不同。
 
 这个工作流不需要 AI API Key，不发送模型对话，不读取个人账号，也不代表完整客户端端到端验收。
 
@@ -159,23 +172,44 @@ npm run test:clients -- --client codex --tools output/client-tools/codex --evide
 - [Cursor ACP 文档](https://cursor.com/docs/cli/acp)：初始化、认证、创建 Session、发送 Prompt 是不同步骤。
 - [Cursor 安装指南](https://cursor.com/docs/cli/installation)：官方客户端分发入口。
 
+## 真实客户端对话验收
+
+当前开发与交付要求只覆盖 Claude Code CLI 与 Cursor，Codex Hook 后续再做。以下记录既有三客户端验收工具的能力，不恢复 Codex 开发，也不把旧工具的三家汇总要求变成当前阶段门槛。
+
+`.github/workflows/real-client-acceptance.yml` 独立、手动触发，消耗模型额度并使用测试凭据；不在 push、PR、定时或 `pull_request_target` 上自动运行，不默认加入 Required。它与日常无对话兼容检查不同，本机 `npm run test:real-clients` 会拒绝执行。
+
+三个并行 Ubuntu job 为 Codex、Cursor、Claude 安装同一份通过内容契约、安全扫描和 SHA-256 校验的 npm tarball，执行四轮真实会话：
+
+1. 空项目首次进入，确认 Hook 初始化上下文并询问中文或英文，不擅自推断。
+2. 恢复同一原生会话，选择中文并确认持久化。
+3. 新建会话，确认旧会话保留、不重复询问语言、复用工作台进程。
+4. 报告问题，确认 Bug 卡、索引及地图关联实际落盘。
+
+每轮检查原生 session ID、`session-start` / `user-prompt-submit` / `stop` 事件、消息标记、HTTP 健康状态与项目根目录；模型声称成功不是通过依据。Codex 使用提交 SHA 固定的官方 `openai/codex-action` 隔离 Key，Cursor/Claude 使用锁定安装器，仅在一次性 GitHub-hosted Ubuntu 环境运行。
+
+在仓库 Environment `skill-client-tests` 配置 `OPENAI_API_KEY`、`CURSOR_API_KEY`、`ANTHROPIC_API_KEY`；可选模型变量为 `CODEX_CI_MODEL`、`CURSOR_CI_MODEL`、`CLAUDE_CI_MODEL`。凭据不进入仓库、普通 Actions 变量或聊天。
+
+在 Actions 选择 **验收 | 三个真实客户端对话**，对已审核分支运行。既有 workflow 的 `真实客户端验收结果` 要求打包和三个客户端 job 全部成功；报告当前阶段结果时分别说明 Claude/Cursor 证据，不能凭汇总名称推断 Codex 已验收。
+
+失败证据仅上传白名单内、已脱敏的 JSONL、stderr、阶段报告和会话/Bug 证据，保留 3 天。不上传客户端 HOME、认证、环境变量、npm cache 或 `.codex/context/private`。没有实际 GitHub 成功记录，只能说工具已构建。
+
 ## 自动化覆盖
 
 阶段五。核对基线 `284823a7`，2026-09-12。下面是**源码中实际配置**，远端某次执行与分支保护是否生效仍要读取对应记录；不把本文件当自动化实现。
 
 | 流程要求 | 现有执行入口 | 未覆盖与责任 |
 |---|---|---|
-| P01–P02 需求/设计/风险 | [模板](engineering/templates.md) 与 PR Review | 人工判断，无自动风险分级或 ADR 完整性门禁 |
+| P01–P02 需求/设计/风险 | [任务与 PR 模板](engineering/README.md#任务与-pr-模板) 与 PR Review | 人工判断，无自动风险分级或 ADR 完整性门禁 |
 | P03 层次与过程约束 | 既有模块回归、`verify-hidden-processes.mjs` | 指定模式检查，不证明全部进程/资源生命周期正确；Review 补充 |
 | P04 测试归属 | `tests/test-manifest.json`、`verify-test-governance.mjs`、暂存区分支守卫 | 清单不证明测试实际执行或断言正确，见 GATE-01/02 |
-| P05 总回归 | `npm test` | 不含完整 Browser E2E、website 分支的宣传站包测试、所有真实宿主和付费对话 |
-| P05 附加验收 | `npm run test:browser`、website 分支 `site/` 的 `npm test`、客户端与 CD 专项脚本 | 明确隔离环境；无对话客户端检查不是原生真实对话验收 |
+| P05 总回归 | `npm test` | 不含完整 Browser E2E、所有真实宿主和付费对话 |
+| P05 附加验收 | `npm run test:browser`、客户端与 CD 专项脚本 | 明确隔离环境；无对话客户端检查不是原生真实对话验收 |
 | P06 Review | PR 审查与本地自检 | 没有通用语义审查器；独立性和范围需诚实记录 |
 | P07 安全 | staged/history/package 扫描与 `.githooks` | [安全](#安全) 说明边界；未检出不等于绝无密钥 |
 | P07 CI | `.github/workflows/ci.yml` 的 Required | 不允许按 R0–R3 跳过现有 needs；核对准确提交的远端结果 |
 | P08 npm | `.github/workflows/npm-publish.yml`、[发布手册](npm-release-runbook.md) | 不是合并 Main 就发布；本次不执行 npm 发布 |
 | P08 运行恢复 | 专项安装/部署手册、人工运行验收 | 未实现统一灰度/指标自动回滚；不声称已经无人值守 |
-| P09 关闭与记忆 | [服务器契约](../references/design/design-memory-server-v1.1.0.md) 和现有任务协议 | 真实部署与各宿主覆盖查 CI_todo；新流程不会绕过协议 |
+| P09 关闭与记忆 | [服务器契约](../skill-reference/design/design-memory-server-v1.1.0.md) 和现有任务协议 | 真实部署与各宿主覆盖查 CI_todo；新流程不会绕过协议 |
 | P10 改进 | 复盘/CI_todo/PR | 尚无自动汇总项目质量指标的产品功能 |
 
 ### 明确待实现
@@ -191,10 +225,3 @@ npm run test:clients -- --client codex --tools output/client-tools/codex --evide
 | GATE-05 | 本机 Windows 全量/浏览器回归存在 Python 别名与 Hook 超时问题，见验证记录；根因不一概归为环境 | 统一受支持解释器发现，在未改断言/超时的前提下复现并定位；准确记录受支持 Windows 环境中的全量与隔离浏览器结果 |
 
 GATE-01/02/05 在 [CI_todo](../CI_todo.md) 留入口；本页保存验收定义，避免复制成长篇待办。责任归后续负责测试基础设施的实施者，当前未指派具体人员。
-
-### 迁移方式
-
-1. 本 PR 合并后，后续任务从主流程和相关专项开始，已有在途任务只补缺少的必要证据，不重写私人历史。
-2. 旧的已通过记录保留原版本语境，不追溯标成满足本次所有新规则。
-3. R0 不影响分发时安装 N/A；改变规则行为仍需 R2/R3 审查。不能从“文档”推出“无需测试”。
-4. 后续可先观察连续 10 个已交付 PR 的风险判定、返工、首次测试失败和遗漏验收，维护者再决定是否调整规则；这是人工改进建议，不创建定时任务或承诺已有统计结果。

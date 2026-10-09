@@ -59,7 +59,7 @@ Actions 左侧分别显示 **CI | 代码与功能检查** 和 **CD | npm 发布*
 
 ## 发布契约
 
-需要调用模型的三客户端真实对话验收是独立的手动 workflow，不属于每次发布的自动 CD，也不默认阻塞 `Required`。配置方法和验收边界见 [`docs/real-client-acceptance.md`](real-client-acceptance.md)。
+需要调用模型的三客户端真实对话验收是独立的手动 workflow，不属于每次发布的自动 CD，也不默认阻塞 `Required`。配置方法和验收边界见 [真实客户端对话验收](ci.md#真实客户端对话验收)。
 
 - 稳定标签必须使用 `vX.Y.Z`，并与 `package.json` 完全一致。
 - 目标版本必须尚未发布，并且严格高于 npm 当前稳定的 `latest` 版本。

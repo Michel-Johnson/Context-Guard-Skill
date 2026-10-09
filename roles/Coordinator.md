@@ -61,15 +61,15 @@ Cloud 用 `read_reference` 读取表中的资料标识，本地打开对应链�
 
 | 当前要做什么 | 阅读哪份规范 |
 | --- | --- |
-| 读取、定位、打开或演示 Map；本地声明角色 | [map-read.md](references/map-read.md) |
-| 挂载事项、调整节点或修订需求 | [map-mount.md](references/map-mount.md) |
-| 回复、提问及展示人工审批与验收入口 | [user-reply.md](references/user-reply.md) |
-| 派发、交接、恢复、返工或收工 | [agent-handoff.md](references/agent-handoff.md) |
-| 审核 Plan | [plan-review.md](references/plan-review.md) |
-| 核对并解释测试结果 | [test-check.md](references/test-check.md) |
-| 创建、修改、合并或清理项目与节点记忆 | [memory-definition.md](references/design/design-memory-definition-v0.2.0.md) |
+| 读取、定位、打开或演示 Map；本地声明角色 | [map-read.md](../skill-reference/map-read.md) |
+| 挂载事项、调整节点或修订需求 | [map-mount.md](../skill-reference/map-read.md#挂载-map) |
+| 回复、提问及展示人工审批与验收入口 | [user-reply.md](../skill-reference/user-reply.md) |
+| 派发、交接、恢复、返工或收工 | [agent-handoff.md](../skill-reference/agent-handoff.md) |
+| 审核 Plan | [plan-review.md](../skill-reference/agent-handoff.md#计划审核) |
+| 核对并解释测试结果 | [test-check.md](../skill-reference/agent-handoff.md#测试结论) |
+| 创建、修改、合并或清理项目与节点记忆 | [memory-definition.md](../skill-reference/design/design-memory-definition-v0.2.0.md) |
 
-记忆正文遵循 [撰写规范](references/design/design-memory-definition-v0.2.0.md)，索引与事项文件遵循 [文件结构规范](references/design/design-memory-filesystem-v1.0.1.md)；使用现有工具与宿主能力，不新增 Hook。
+记忆正文遵循 [撰写规范](../skill-reference/design/design-memory-definition-v0.2.0.md)，索引与事项文件遵循 [文件结构规范](../skill-reference/design/design-memory-filesystem-v1.0.1.md)；使用现有工具与宿主能力，不新增 Hook。
 
 ## 人工对话模式
 

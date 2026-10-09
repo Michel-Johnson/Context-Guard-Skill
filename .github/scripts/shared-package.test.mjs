@@ -17,7 +17,15 @@ test('共享包只从 Skill 唯一源码导出，核心不依赖具体后端', (
     }
   }
   assert.ok(sharedPackageFiles('core').includes('interface-contract-v2.json'));
+  assert.deepEqual(sharedMappings('core').filter(([, target]) => target.endsWith('interface-contract-v2.json')),
+    [['skill-reference/interface-contract-v2.json', 'interface-contract-v2.json']], '机器契约在核心包中只保留一个固定入口');
+  for (const removed of ['skill-reference/map-mount.md', 'skill-reference/plan-review.md', 'skill-reference/test-check.md', 'skill-reference/design/design-agent-v1.0.1.md']) {
+    assert.ok(!sharedPackageFiles('core').includes(removed), removed);
+  }
   assert.ok(sharedPackageFiles('core').includes('roles/Coordinator.md'));
+  assert.ok(sharedPackageFiles('core').includes('skill-reference/formats/file-templates.md'));
+  assert.ok(sharedPackageFiles('core').includes('skill-reference/formats/session-record.md'));
+  assert.ok(!sharedPackageFiles('core').some(file => /design-(repository|session-record|cloud-sync|workbench|memory-(node-index|bug|todo|idea))-/.test(file)), '合并后的文档只分发当前入口');
   assert.ok(sharedPackageFiles('workbench').includes('working-blot-atlas.png'));
   assert.ok(!sharedPackageFiles('core').some(file => /design-slack|design-cloud-attachments|design-coordinator-compaction/.test(file)));
   assert.throws(() => sharedPackageFiles('unknown'));
@@ -25,7 +33,7 @@ test('共享包只从 Skill 唯一源码导出，核心不依赖具体后端', (
 
 function coordinatorProfiles() {
   const roleMapping = sharedMappings('core').filter(([, target]) => target === 'roles/Coordinator.md');
-  assert.deepEqual(roleMapping, [['Coordinator.md', 'roles/Coordinator.md']]);
+  assert.deepEqual(roleMapping, [['roles/Coordinator.md', 'roles/Coordinator.md']]);
   const source = fs.readFileSync(roleMapping[0][0], 'utf8').replace(/\r\n/g, '\n');
   const marker = /^## 人工对话模式[ \t]*$/gm;
   const headings = [...source.matchAll(marker)];

@@ -44,10 +44,10 @@ Main 与各 Session 同构、彼此隔离。上图是服务器逻辑目录，不
 
 ## 索引与事项文件的模板与格式
 
-- [节点 / 模块索引模板与格式](design-memory-node-index-v1.0.1.md)
-- [Bug 模板与格式](design-memory-bug-v1.0.1.md)
-- [TODO 模板与格式](design-memory-todo-v1.0.1.md)
-- [Idea 模板与格式](design-memory-idea-v1.0.0.md)
+- [节点 / 模块索引模板与格式](../formats/file-templates.md#节点索引)
+- [Bug 模板与格式](../formats/file-templates.md#bug)
+- [TODO 模板与格式](../formats/file-templates.md#todo)
+- [Idea 模板与格式](../formats/file-templates.md#idea)
 
 这些规范提供文件模板、字段说明和填写示例，不是实际事项记录。各角色共用同一格式，分工写在规范内，不另建角色版。
 
@@ -63,7 +63,7 @@ Main 与各 Session 同构、彼此隔离。上图是服务器逻辑目录，不
 
 项目启用此结构后，通过按版本读取接口或 `context-guard memory file` 读取获授权的文件，不直接访问服务器磁盘。未启用的项目仍走旧兼容传输，不能使用此入口。
 
-默认先用 `map read --context` 定位节点并按需读取；需要本规范的事项文件时再沿 `index.md` 链接展开。旧 FIND / snapshot 仅用于明确的迁移或恢复。开发笔记另存本地 [会话记录](design-session-record-v1.0.0.md)，不属于本目录，也不向 Cloud 同步。
+默认先用 `map read --context` 定位节点并按需读取；需要本规范的事项文件时再沿 `index.md` 链接展开。旧 FIND / snapshot 仅用于明确的迁移或恢复。开发笔记另存本地 [会话记录](../formats/session-record.md)，不属于本目录，也不向 Cloud 同步。
 
 `legacy-records/` 和 `runtime-state.json` 仅用于迁移、事务兼容与回滚，不是日常阅读入口；核对迁移须说明目的。
 
@@ -71,8 +71,8 @@ Main 与各 Session 同构、彼此隔离。上图是服务器逻辑目录，不
 
 ## Session 发布条件
 
-可信审核路径确认 `sessionId`、`generation`、`sessionVersion`、`sourceCommit` 后，才能进入既有 Git 与任务发布流程。上传、心跳或初始 HEAD 已在 Main 上不代表完成；后续修改使完成证明失效。
+发布门禁、完成证明和 Session 代次统一见 [Cloud Map 的发布规则](design-memory-server-v1.1.0.md#main-发布与-session-代次)；生成文件或上传成功不代表已经发布。
 
 ## 待确认
 
-- 安装包里的仓库 `docs/` 链接不可访问时，如何提供文档。
+- 安装包里的仓库 `development-docs/` 链接不可访问时，如何提供文档。
