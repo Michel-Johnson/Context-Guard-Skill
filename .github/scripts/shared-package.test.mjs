@@ -23,6 +23,19 @@ test('共享包只从 Skill 唯一源码导出，核心不依赖具体后端', (
   assert.throws(() => sharedPackageFiles('unknown'));
 });
 
+test('工作台只安装 Coordinator 入口，保留旧 Cursor 组件和后端历史兼容', () => {
+  const html = fs.readFileSync('prototype/workbench.html', 'utf8');
+  const app = fs.readFileSync('prototype/workbench-app.js', 'utf8');
+  assert.match(html, /id="btn-coordinator"/);
+  assert.match(app, /if\(connected\) installCoordinatorPanel\(workbenchSync\)/);
+  assert.doesNotMatch(html, /id="btn-cursor"/);
+  assert.doesNotMatch(app, /installCursorChat|import\(['"]\.\/cursor-chat\.mjs['"]\)/);
+  // 历史兼容仍可由既有受限入口读取；不借退役 UI 删除数据或后端。
+  assert.ok(sharedPackageFiles('workbench').includes('cursor-chat.mjs'));
+  assert.match(fs.readFileSync('prototype/cursor-chat.mjs', 'utf8'), /export function installCursorChat/);
+  assert.match(fs.readFileSync('scripts/workbench/server.mjs', 'utf8'), /\/api\/cursor-chat/);
+});
+
 function coordinatorProfiles() {
   const roleMapping = sharedMappings('core').filter(([, target]) => target === 'roles/Coordinator.md');
   assert.deepEqual(roleMapping, [['Coordinator.md', 'roles/Coordinator.md']]);
