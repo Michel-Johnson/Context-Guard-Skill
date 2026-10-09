@@ -16,6 +16,22 @@ test("push events always run the complete CI", () => {
   assert.ok(Object.values(plan.jobs).every(Boolean));
 });
 
+test("Cursor source branches retain ordinary full CI, exact checkout, main/PR/tag coverage and read-only permissions", () => {
+  const workflow = fs.readFileSync(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+  const triggers = workflow.slice(workflow.indexOf('\non:'), workflow.indexOf('\npermissions:'));
+  const push = triggers.slice(triggers.indexOf('\n  push:'));
+  assert.match(push, /branches:\s*\n\s+- main\s*\n\s+- "cursor\/\*\*"/);
+  assert.match(push, /tags:\s*\n\s+- "\*"/);
+  assert.match(triggers, /pull_request:\s*\n\s+branches:\s*\n\s+- main/);
+  const functional = workflow.slice(workflow.indexOf('\n  test:'), workflow.indexOf('\n  package:'));
+  assert.match(functional, /actions\/checkout@[a-f0-9]{40}[^\n]*\n\s+with:\s*\n\s+ref: \$\{\{ github.sha \}\}/);
+  assert.match(functional, /name: CI \| 运行功能测试\s*\n\s+run: npm test/);
+  assert.match(workflow, /permissions:\s*\n\s+contents: read/);
+  assert.doesNotMatch(workflow, /contents: write|pull_request_target:|session\/prompt|continue-on-error: true/);
+  const plan = selectImpact({ config, eventName: 'push', changedPaths: ['docs/README.md'] });
+  assert.equal(plan.full, true); assert.ok(Object.values(plan.jobs).every(Boolean));
+});
+
 test("repository-only documentation runs security and selector only", () => {
   const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["docs/README.md", "CI_todo.md"] });
   assert.equal(plan.full, false);

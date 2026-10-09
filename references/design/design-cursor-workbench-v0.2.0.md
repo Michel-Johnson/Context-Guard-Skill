@@ -110,6 +110,43 @@ Git 校验使用审核过的 `Plan.content.paths` 相对路径清单。核对原
 
 Git 来源证明不验证 Executor 自测是否通过。单测输出观察、独立 Tester 及可信工作流检查仍须分别验证，不将汇总计数或同名绿色检查自动映射为业务 CI 结论。
 
+### 原任务独立 CI 回报
+
+私有角色配置的 `ciPolicy.checks` 显式关联原 CI TODO 编号、固定测试编号及 argv。每条同时固定 GitHub Actions 检查名、App ID、工作流文件的 Git blob SHA 和实际测试步骤名。配置不是模型提案，不允许任意汇总计数自动覆盖其他 TODO。
+
+服务器在创建独立 Tester 前核对原 TODO 覆盖及版本，并读取原交接分支的准确提交检查。只接受该分支的 `push` 运行，不使用 PR 的合并检出或其他分支结果。缺证据时只观察工作流，不启动替代模型；已有任务的策略变更明确拒绝。
+
+检查事实须关联同一 check suite、workflow run、当前重跑次数、job 和实际测试步骤。源码中的工作流 blob 必须与私有可信版本一致。相同来源的所有匹配检查均保留，包括失败；不是只寻找一项同名绿色检查。
+
+Skill 的普通 CI 为 `cursor/**` 源码推送运行完整检查，功能 job 显式检出 `github.sha`。main、标签、PR、Required 和安全检查保留。其他仓库须先有同等可信工作流；不能把配置检查名等同于完成这项设计。
+
+独立 Tester 从受限上下文取得固定命令、nonce 与 TODO/testId 对应关系，实际执行一次并保存自己的证据。`ci.result` 的 `proof-pending` 只保存原提案；Tester 随后结束 Run，后台读取该 Run 的完整工具观察和准确源码的可信工作流事实。
+
+原生输出只证明观察到命令与实际退出、测试计数，不是虚拟机的不可变源码证明。前后 Git 状态不能排除临时修改或工具环境变化，因此单独原生输出不足以批准 CI；工作流来源与测试覆盖必须独立核对。
+
+两组事实与提案相符，且原授权、任务、TODO 与证据版本未变时，才经原协议保存 CI 结果。接收标记与原任务状态原子提交；并发及失回只读同一标记，不重发模型。CI 通过不产生人类验收、合并或任务关闭回执。
+
+配置形状如下；占位值必须由操作者替换并审核，不能直接用于真实任务：
+
+```json
+{
+  "ciPolicy": {
+    "checks": [{
+      "todoId": "CI-1",
+      "testId": "formal-tests",
+      "argv": ["node", "--test", "--test-reporter=tap", "tests/example.test.mjs"],
+      "name": "CI 1 | 功能测试",
+      "appId": 15368,
+      "workflowPath": ".github/workflows/ci.yml",
+      "workflowBlobSha": "<审核过的工作流 Git blob SHA，40 位小写十六进制>",
+      "testStep": "CI | 运行功能测试"
+    }]
+  }
+}
+```
+
+该对象位于 Cloud 私有项目配置的 `roles` 内。GitHub 读取凭据仍只在 `githubTokenFile`，不进入 MCP 上下文或公开错误。运行中的策略与工作流变化须显式处理，不静默更新旧任务的信任条件。
+
 ## 分阶段与验收
 
 1. 核对环境、最新 main、分支、绑定与凭据。
@@ -130,3 +167,5 @@ Git 来源证明不验证 Executor 自测是否通过。单测输出观察、独
 - [Cursor ACP](https://cursor.com/docs/cli/acp)
 - [Cursor Cloud API](https://cursor.com/docs/cloud-agent/api/endpoints)
 - [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
+- [GitHub workflow run 事实](https://docs.github.com/en/rest/actions/workflow-runs)
+- [GitHub workflow job 与步骤事实](https://docs.github.com/en/rest/actions/workflow-jobs)

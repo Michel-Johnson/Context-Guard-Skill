@@ -13,6 +13,11 @@
 
 ## CURSOR-WORKBENCH-01 · 分阶段接入（进行中）
 
+- [x] 普通 CI 新增 Cursor 源码分支 push，功能 job 显式检出事件 SHA；不新增模型 workflow，不修改 main/PR/标签、Required 或安全门禁。正式触发/权限/selector 回归先在旧 workflow 失败，修正后 14/14、退出0；完整回归及独立审查另记，不代替实际远端分支运行。
+- [x] 本次准确源码完整 npm test610项、608通过、0失败、2既有跳过，退出0、90611.368208ms；39项安全、30项安装边界和ci-smoke通过。普通 CI 的本地合同测试不代替真实 push/Required，独立审查和正常交付仍须分别记录。
+- [x] 独立同冻结 selector14/14、退出0、127.291666ms及workflow校验退出0；指定CI源码、正式测试和设计hash前后一致，原main/PR/标签/Required/安全范围保留。未运行真实分支CI或原生任务，不将模块审查当作最终验收。
+- [ ] 已实现准确源码分支 CI 触发的真实 GitHub push 观察、正常 Required 和合并后入口验收；私有可信 workflow blob 配置与三条 Coordinator 路径尚未验收。
+
 - [x] Cloud 自有角色通讯模块已按 0.2.0 设计开发：单任务短期凭据、MCP 窄工具、事务内批准版本与可信证据版本校验。Cloud 完整492项/490通过/2既有跳过、安全39项及独立17项阶段审查通过；不编辑 Cloud 共享生成物。生产接线与三路径 Coordinator 真实闭环仍未完成。
 
 - [ ] 已实现 Cursor Tester 配置、准确交接 SHA 校验与跨厂商 CI 路由。模块与公共 HTTP 已覆盖角色隔离、禁止普通通道写 Plan、自己的证据命名空间、任务/SHA 错配及源码变化；真实 Cloud CI 成功回执、原生 Tester 测试命令范围与完整角色闭环仍待验收。
