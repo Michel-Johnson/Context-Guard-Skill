@@ -6,6 +6,9 @@ const I18N = {
   zh: {
     docTitle:"Context Guard · 工作台原型",
     archMap:"架构导图",
+    graphCurrent:"当前模块", graphRelated:"关联模块", graphLeaf:"叶子节点",
+    graphCount_one:"{n} 个内部节点", graphCount_other:"{n} 个内部节点",
+    translationLoading:"正在翻译…", translationFailed:"翻译失败，暂时显示原文", translationRetry:"重试翻译", translationMock:"Mock 模型翻译 · 尚未验证真实模型",
     switchRepo:"切换项目",
     dirLr:"左右", dirTb:"上下",
     dirTitle:"布局：点一下切换左右 / 上下",
@@ -30,6 +33,8 @@ const I18N = {
     settings:"设置",
     toolsLabel:"工具",
     betaLabel:"实验功能",
+    betaMap:"新版 Map（Beta）", betaMapTitle:"启用新版 Map 工作台；关闭可返回稳定版",
+    betaMapEditing:"请先完成或取消当前编辑，再切换 Beta。",
     betaMotion:"地图钻取动效",
     betaMotionTitle:"Beta：启用 0.5 秒地图层级钻取动效",
     themeLabel:"主题",
@@ -98,9 +103,10 @@ const I18N = {
     plusModule:"＋ 模块", plusChild:"＋ 子节点",
     addChildTitle:"新增模块或节点",
     addKindModule:"模块", addKindNode:"节点",
+    addModuleAtLevel:"＋ 添加模块", addModuleAtLevelTitle:"在当前层级添加模块",
     moduleName:"模块名称", childName:"子节点名称",
     memory:"记忆", ideas:"Idea", todos:"TODO", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
-    addMem:"添加记忆", addIdea:"添加 Idea", addTodo:"添加 TODO", addBug:"添加 Bug",
+    addMem:"添加记忆", addItem:"新增事项", addIdea:"添加 Idea", addTodo:"添加 TODO", addBug:"添加 Bug",
     todoPending:"待处理", todoProcessing:"处理中", todoDone:"已完成", todoScopeRequired:"需要授权", todoAuthorizeAndSend:"授权并发送", todoRetry:"重新发送",
     module:"模块", cancelledChip:"已取消",
     state_dirty:"未开发", state_untested:"已做未测", state_success:"测试通过", state_failed:"测试未过",
@@ -116,6 +122,9 @@ const I18N = {
   en: {
     docTitle:"Context Guard · workbench",
     archMap:"architecture map",
+    graphCurrent:"Current module", graphRelated:"Related module", graphLeaf:"Leaf node",
+    graphCount_one:"{n} internal node", graphCount_other:"{n} internal nodes",
+    translationLoading:"Translating…", translationFailed:"Translation failed; showing originals", translationRetry:"Retry translation", translationMock:"Mock model translation · Real model not verified",
     switchRepo:"Switch project",
     dirLr:"Left–right", dirTb:"Top–down",
     dirTitle:"Layout: tap to switch left–right / top–down",
@@ -140,6 +149,8 @@ const I18N = {
     settings:"Settings",
     toolsLabel:"Tools",
     betaLabel:"Experimental",
+    betaMap:"New Map (Beta)", betaMapTitle:"Enable the new Map workbench; turn off to return to stable",
+    betaMapEditing:"Finish or cancel the current edit before switching Beta.",
     betaMotion:"Map drill motion",
     betaMotionTitle:"Beta: enable the 0.5-second map drill motion",
     themeLabel:"Theme",
@@ -208,9 +219,10 @@ const I18N = {
     plusModule:"＋ Module", plusChild:"＋ Child",
     addChildTitle:"Add a module or node",
     addKindModule:"Module", addKindNode:"Node",
+    addModuleAtLevel:"＋ Add module", addModuleAtLevelTitle:"Add a module at the current level",
     moduleName:"Module name", childName:"Child name",
     memory:"Memory", ideas:"Idea", todos:"TODO", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
-    addMem:"Add memory", addIdea:"Add idea", addTodo:"Add TODO", addBug:"Add bug",
+    addMem:"Add memory", addItem:"Add item", addIdea:"Add idea", addTodo:"Add TODO", addBug:"Add bug",
     todoPending:"Pending", todoProcessing:"In progress", todoDone:"Completed", todoScopeRequired:"Authorization required", todoAuthorizeAndSend:"Authorize and send", todoRetry:"Retry",
     module:"Module", cancelledChip:"Cancelled",
     state_dirty:"Not started", state_untested:"Built, no tests", state_success:"Tests passed", state_failed:"Tests failed",
@@ -227,6 +239,41 @@ const I18N = {
 const LANG_KEY = "cg-workbench-ui-lang";
 const THEME_KEY = "cg-workbench-node-theme";
 const MAP_MOTION_BETA_KEY = "cg-workbench-beta-map-motion";
+const MAP_UI_BETA_KEY = "cg-workbench-map-beta-v1";
+let mapBetaEnabled = readStoredMapBeta();
+function readStoredMapBeta(){
+  try{return localStorage.getItem(MAP_UI_BETA_KEY)==='1';}catch{return false;}
+}
+function syncMapBetaChrome(){
+  document.body.classList.toggle('map-beta',mapBetaEnabled);
+  const button=document.getElementById('btn-beta-map');
+  button.setAttribute('aria-checked',String(mapBetaEnabled));
+  button.classList.toggle('on',mapBetaEnabled);
+  document.getElementById('workbench-tools').hidden=mapBetaEnabled;
+  document.getElementById('beta-map-settings').hidden=!mapBetaEnabled;
+  document.getElementById('lens-toggle').hidden=mapBetaEnabled;
+  const stable=document.getElementById('workbench-tools-menu');
+  const tools=document.getElementById('settings-tools');
+  document.getElementById(mapBetaEnabled?'beta-direction-slot':'workbench-tools-menu').append(document.getElementById('dir-toggle'));
+  const relations=document.getElementById(mapBetaEnabled?'beta-relation-slot':'workbench-tools-menu');
+  relations.append(document.getElementById('rel-toggle'),document.getElementById('rel-hint'));
+  for(const id of ['btn-auth','btn-bugs','btn-todos','btn-device-approvals']){
+    (mapBetaEnabled?tools:stable).append(document.getElementById(id));
+  }
+  document.querySelector('#btn-auth span').hidden=!mapBetaEnabled;
+}
+function setMapBeta(enabled){
+  if(relationDraft||composingId||workbenchSync?.composing||workbenchSync?.inputDraft){
+    workbenchSync?.setStatus(workbenchSync.status,t('betaMapEditing'));return false;
+  }
+  mapBetaEnabled=Boolean(enabled);
+  try{localStorage.setItem(MAP_UI_BETA_KEY,mapBetaEnabled?'1':'0');}catch{}
+  if(mapBetaEnabled&&lensMode)exitLensMode();
+  selectedRouteKey=null;clearRelationMode({clearDeepLink:false});
+  syncMapBetaChrome();refreshMapTranslationDisplay();renderAll();fitView();
+  document.getElementById('btn-beta-map').focus();
+  return true;
+}
 const THEME_IDS = ["1","44","48","4"];
 let uiLang = "zh";
 let mapMotionBetaEnabled = false;
@@ -275,6 +322,30 @@ function t(key){
   const pack = I18N[uiLang] || I18N.zh;
   return pack[key] || I18N.zh[key] || key;
 }
+// Display-only translations are scoped to a project and exact source text.
+// User edits, unknown nodes and projects without translations keep their originals.
+function nodeDisplayField(node, field){
+  const original=node?.[field] || '';
+  if(!mapBetaEnabled || !node || uiLang!=='en' || !['title','purpose'].includes(field))return original;
+  if(typeof mapTranslationClient!=='undefined' && mapTranslationClient)return mapDisplayText(original);
+  const catalog=window.__CG_MAP_I18N;
+  if(!catalog || catalog.projectTitle!==data.title || !Object.hasOwn(catalog.nodes||{},node.id))return original;
+  const entry=catalog.nodes[node.id];
+  if(!entry || !Object.hasOwn(entry,field))return original;
+  const value=entry[field];
+  return value?.source===original && typeof value.en==='string' && value.en.trim() && value.en.length<=2000 ? value.en : original;
+}
+function mapTranslationOptions(){return {language:uiLang,scope:JSON.stringify([workbenchSync?.config?.apiBase||'',workbenchSync?.viewId||'main',mapTranslationModelRevision])};}
+function mapDisplayText(text){
+  return mapBetaEnabled && typeof mapTranslationClient!=='undefined' && mapTranslationClient && uiLang==='en' ? mapTranslationClient.read(text,mapTranslationOptions()) : text;
+}
+function graphGroupCaption(group){
+  if(group.scope)return t('graphCurrent');
+  if(group.context)return t('graphRelated');
+  if(!group.count)return t('graphLeaf');
+  const category=new Intl.PluralRules(uiLang).select(group.count);
+  return t(`graphCount_${category}`).replace('{n}',new Intl.NumberFormat(uiLang).format(group.count));
+}
 function applyStaticI18n(){
   document.documentElement.lang = uiLang==="en" ? "en" : "zh-CN";
   document.title = t("docTitle");
@@ -289,6 +360,7 @@ function applyStaticI18n(){
   });
   syncThemePicks();
   syncMapMotionBetaButton();
+  syncMapBetaChrome();
   const titleEl = document.getElementById("repo-title");
   if(titleEl && catalog[repoId]){
     titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
@@ -363,6 +435,7 @@ let authMode = false;
 let composingId = null;
 let composingKind = "work";
 let composeParent = null;
+let relationDraft = null;
 let addPickId = null;
 function clearCompose(){
   workbenchSync?.setInputDraft(null); composingId = null; composingKind = "work"; composeParent = null; }
@@ -991,6 +1064,26 @@ function syncBootstrapFromTree(){
   }
 }
 let workbenchSync = null;
+let mapTranslationClient=null,mapTranslationModelRevision=0,mapTranslationTexts=[],mapTranslationRedraw=false;
+function refreshMapTranslationDisplay(){
+  if(mapTranslationRedraw)return;
+  mapTranslationRedraw=true;
+  queueMicrotask(()=>{
+    mapTranslationRedraw=false;
+    const notice=document.getElementById('map-translation-status'),state=mapTranslationClient?.status();
+    if(notice){notice.hidden=!mapBetaEnabled||uiLang!=='en'||!['loading','error'].includes(state)&&!window.__CG_TRANSLATION_MOCK;notice.querySelector('span').textContent=t(state==='loading'?'translationLoading':state==='error'?'translationFailed':'translationMock');notice.querySelector('button').hidden=state!=='error';notice.querySelector('button').textContent=t('translationRetry');}
+    if(!mapBetaEnabled)return;
+    // Do not replace a live editor, IME session or a card being dragged.
+    if(document.activeElement?.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||mapTransitioning||pointers?.size)return;
+    renderMap();renderNav();renderDetail();
+  });
+}
+function ensureMapTranslations(nodes,labels=[]){
+  if(!mapBetaEnabled||!mapTranslationClient)return;
+  const selected=getNode(selectedId),path=findPath(viewRootId)||[];
+  mapTranslationTexts=[...new Set([...nodes,...path,selected].filter(Boolean).flatMap(node=>[node.title,node.purpose]).concat(labels).filter(text=>typeof text==='string'&&text.trim()))];
+  mapTranslationClient.ensure(mapTranslationTexts,mapTranslationOptions());
+}
 let refreshDeviceApprovals = null;
 let applyingServerMap = false;
 let renderedAccessSession = null;
@@ -1509,6 +1602,15 @@ function closeSettings(){
   if(menu) menu.classList.remove("open");
   if(btn){ btn.classList.remove("on"); btn.setAttribute("aria-expanded","false"); }
 }
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape' || e.isComposing || e.defaultPrevented)return;
+  const menu=document.getElementById('settings-menu');
+  if(menu.classList.contains('open')){
+    e.preventDefault();e.stopImmediatePropagation();closeSettings();document.getElementById('btn-settings').focus();return;
+  }
+  const itemMenu=e.target?.closest?.('.item-add-menu[open]');
+  if(itemMenu){e.preventDefault();e.stopImmediatePropagation();itemMenu.open=false;itemMenu.querySelector('summary').focus();}
+},true);
 function switchRepo(id){
   if(id===repoId){ closeRepoMenu(); return; }
   persist();
@@ -1844,17 +1946,6 @@ function exitLensMode(keep=true){
   renderAll();
   fitView();
 }
-document.getElementById("btn-lens").onclick = ()=>{
-  closeSettings();
-  if(lensMode){ exitLensMode(); return; }
-  if(bugPathMode) exitBugPath(true);
-  if(relationMode){ relationMode = false; relAnchorId = null;
-    const rb = document.getElementById("btn-rel");
-    rb.classList.remove("on"); rb.setAttribute("aria-pressed","false");
-    document.body.classList.remove("rel-mode");
-  }
-  enterLensMode();
-};
 function startRepoSplit(){
   enterLensMode();
 }
@@ -2526,6 +2617,7 @@ function renderBugPanel(){
 
 function enterView(id, opts){
   if(mapTransitioning || id===viewRootId) return;
+  if(graphViewActive())opts={...opts,unpack:false};
   closeAddPick();
   deleteAskId = null;
   if(bugPathMode){
@@ -2589,6 +2681,7 @@ function runMapViewChain(stepIds, opts){
 
 function commitViewRoot(id, opts){
   viewRootId = id; selectedId = id;
+  if(graphViewActive()) { graphPresentation().readingRootId=id; saveGraphPresentation(); }
   const n = getNode(id);
   if((!opts || opts.unpack!==false) && n && id!==data.id) unpackInbox(n);
   renderAll();
@@ -2599,7 +2692,7 @@ function canSwitchRepo(){
   return !window.__CG_SERVER && Object.keys(catalog).length>1;
 }
 function crumbLabel(n){
-  return `${n.kind==="module"?"▣ ":""}${esc(n.title)}`;
+  return `${n.kind==="module"?"▣ ":""}${esc(nodeDisplayField(n,'title'))}`;
 }
 function bindContextSwitch(el){
   const open = ()=>{
@@ -2642,11 +2735,11 @@ function renderNav(){
       const extra = atRoot && switchable
         ? ` role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" title="${esc(t("switchRepo"))}"`
         : "";
-      return `<span class="${cls}" id="context-card"${extra}>${atRoot ? esc(n.title) : crumbLabel(n)}${caret}</span>`;
+      return `<span class="${cls}" id="context-card"${extra}>${atRoot ? esc(nodeDisplayField(n,'title')) : crumbLabel(n)}${caret}</span>`;
     }
     return `<a data-id="${n.id}">${crumbLabel(n)}</a><span class="sep">›</span>`;
   }).join("");
-  el.querySelectorAll("a[data-id]").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
+  el.querySelectorAll("a[data-id]").forEach(a=>a.onclick=()=>enterView(a.dataset.id,graphViewActive()?{unpack:false}:undefined));
   const card = document.getElementById("context-card");
   if(card && path.length===1 && switchable) bindContextSwitch(card);
   document.getElementById("tray-count").textContent = cancelledList().length;
@@ -2693,11 +2786,11 @@ document.addEventListener("keydown", e=>{
   e.preventDefault();
   closeTray(true);
 });
-document.getElementById("btn-link-repo").onclick = async ()=>{
-  await linkRepo();
-  closeSettings();
-};
 document.getElementById("first-use-go").onclick = ()=>enterLensMode();
+document.getElementById("btn-link-repo").onclick = async ()=>{
+  if(mapBetaEnabled)return;
+  await linkRepo();closeSettings();
+};
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
 document.getElementById("first-use-cut-back").onclick = ()=>{
   currentRepo().firstUseOpen = true;
@@ -2777,7 +2870,7 @@ document.getElementById("btn-rel").onclick = ()=>{
   fitView();
 };
 function toggleWorkPanel(kind){
-  document.getElementById("workbench-tools")?.removeAttribute("open");
+  closeSettings();
   const open = !document.body.classList.contains("bugs-open") || activeWorkPanelKind!==kind;
   if(!open && bugPathMode){ exitBugPath(true); openBugPanel(false); return; }
   if(bugPathMode && bugFocus && (bugFocus.kind||"bug")!==kind) exitBugPath(true);
@@ -2839,6 +2932,107 @@ let extents = {w:800, h:500};
 let layoutDir = "lr";
 let relationMode = false;
 let relAnchorId = null;
+let graphViewApi = null;
+let mapPresentationScope = '', mapPresentationState = null;
+let selectedRouteKey=null,selectedRouteScope='';
+function mapReadingActive(){return graphViewActive()&&graphPresentation().mode==='architecture';}
+function syncDetailChrome(){
+  document.body.classList.toggle('map-reading',mapReadingActive());
+  document.getElementById('detail-body').hidden=false;
+  document.getElementById('drawer-split').hidden=false;
+}
+function graphReadingProfile(){
+  const viewport=document.getElementById('viewport');
+  return mapReadingActive()?graphViewApi.readingViewport({width:viewport.clientWidth,height:viewport.clientHeight}):{portrait:false,columns:3,key:'landscape'};
+}
+function graphPresentation(){
+  const scope=JSON.stringify([workbenchSync?.config?.root || repoId,workbenchSync?.activeSession || '__preview__']);
+  if(scope!==mapPresentationScope || !mapPresentationState){
+    mapPresentationScope=scope;
+    const fallback=new URLSearchParams(location.search).get('mapView') || (mapBetaEnabled?'architecture':'tree');
+    let storage;try{storage=localStorage;}catch{storage={getItem:()=>null};}
+    mapPresentationState=graphViewApi.readPresentation(storage,'cg-map-presentation-v1:'+scope,fallback);
+    // Old SOP preferences remain recoverable; the UI now offers only tree/architecture.
+    if(mapPresentationState.mode==='sop'){mapPresentationState.mode='architecture';saveGraphPresentation();}
+  }
+  return mapPresentationState;
+}
+function graphViewActive(){
+  return mapBetaEnabled && !!graphViewApi && graphPresentation().mode!=='tree' && !lensMode && !bugPathMode && window.__CG_SERVER?.root!=='cloud:overview';
+}
+function restoreGraphReadingRoot(){
+  if(!graphViewActive()||!workbenchSync?.ready)return;
+  const state=graphPresentation();if(state._readingRestored)return;
+  Object.defineProperty(state,'_readingRestored',{value:true});
+  const node=getNode(state.readingRootId);
+  if(node&&!isCancelled(node)){viewRootId=node.id;selectedId=node.id;}
+}
+function saveGraphPresentation(){
+  try{localStorage.setItem('cg-map-presentation-v1:'+mapPresentationScope,JSON.stringify(mapPresentationState));}catch{}
+}
+function graphComposition(){
+  const authored=window.__CG_MAP_LAYOUT;
+  if(!authored || authored.projectTitle!==data.title || graphPresentation().mode!=='architecture')return null;
+  const width=document.getElementById('viewport').clientWidth;
+  const variant=width<620?'phone':width<950?'compact':'wide';
+  return graphViewApi.readComposition(authored.scopes?.[viewRootId]?.[variant]);
+}
+function graphPositionKey(){
+  const key=['reading-slice-v2',viewRootId,graphPresentation().mode,layoutDir,isPhoneLayout()];
+  const composition=graphComposition();if(composition)key.push(composition.id);
+  const profile=graphReadingProfile();if(profile.portrait)key.push('portrait-reading-v1',profile.columns);
+  return JSON.stringify(key);
+}
+function syncGraphControls(){
+  const mode=mapBetaEnabled && graphViewApi ? graphPresentation().mode : 'tree';
+  const toggle=document.getElementById('map-view-toggle'),architecture=mode!=='tree';
+  toggle.disabled=!graphViewApi;
+  toggle.dataset.view=architecture?'architecture':'tree';
+  toggle.classList.toggle('is-architecture',architecture);
+  toggle.setAttribute('aria-pressed',String(architecture));
+  toggle.setAttribute('aria-label','Map 视图：'+(architecture?'架构':'树'));
+  toggle.title=toggle.getAttribute('aria-label');
+  document.getElementById('rel-toggle')?.toggleAttribute('hidden',graphViewActive());
+  const levelAdd=document.getElementById('btn-map-add-module'),root=liveViewRoot();
+  levelAdd.hidden=!graphViewActive();
+  levelAdd.disabled=!canMutate() || !root || isCancelled(root) || isProposed(root);
+  const hint=document.getElementById('map-view-hint');hint.hidden=!graphViewActive();
+  hint.textContent=(mode==='sop'?'SOP 流程':'模块概览')+' · 单击呈现关系 · 再次单击进入模块 · 拖动调整排布';
+  document.body.classList.toggle('graph-map-view',graphViewActive());
+  syncDetailChrome();
+}
+function setMapView(mode){
+  if(!mapBetaEnabled||!graphViewApi)return;
+  if(bugPathMode)exitBugPath(true);
+  if(lensMode)exitLensMode();
+  if(relationDraft)cancelRelation();
+  selectedRouteKey=null;
+  clearRelationMode({clearDeepLink:true});
+  graphPresentation().mode=mode==='tree'?'tree':'architecture';saveGraphPresentation();
+  renderAll();fitView();
+  if(document.getElementById('settings-menu').classList.contains('open'))document.getElementById('map-view-toggle').focus();
+}
+document.getElementById('map-view-toggle').onclick=()=>setMapView(graphPresentation().mode==='tree'?'architecture':'tree');
+document.getElementById('btn-beta-map').onclick=()=>setMapBeta(!mapBetaEnabled);
+document.getElementById('btn-lens').onclick=()=>{
+  if(mapBetaEnabled)return;
+  closeSettings();
+  if(lensMode){exitLensMode();return;}
+  if(bugPathMode)exitBugPath(true);
+  clearRelationMode({clearDeepLink:true});enterLensMode();
+};
+document.getElementById('btn-map-add-module').onclick=()=>addModuleAtCurrentLevel();
+document.getElementById('btn-map-add-relation').onclick=()=>relationDraft?cancelRelation():startRelation();
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape' || e.isComposing || e.defaultPrevented)return;
+  if(relationDraft){e.preventDefault();e.stopImmediatePropagation();cancelRelation();}
+  else if(selectedRouteKey){e.preventDefault();e.stopImmediatePropagation();selectedRouteKey=null;renderMap();}
+},true);
+document.getElementById('btn-map-route-auto').onclick=()=>{
+  if(!graphViewActive() || !canMutate() || authMode || relationDraft || !selectedRouteKey)return;
+  const routes=graphPresentation().routes?.[graphPositionKey()];if(routes)delete routes[selectedRouteKey];
+  saveGraphPresentation();renderMap();
+};
 
 function nodeHtml(n, isViewRoot, ghost){
   const openBugs = bugsFor(n).length;
@@ -2857,17 +3051,17 @@ function nodeHtml(n, isViewRoot, ghost){
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
-    return pending+`<div class="m-head">${authMark}${nodeDotHtml(n, "module")}<span>${esc(n.title)}</span>
+    return pending+`<div class="m-head">${authMark}${nodeDotHtml(n, "module")}<span>${esc(nodeDisplayField(n,'title'))}</span>
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
-      (n.purpose? `<div class="m-blurb">${esc(n.purpose)}</div>`:"")+
+      (n.purpose? `<div class="m-blurb">${esc(nodeDisplayField(n,'purpose'))}</div>`:"")+
       add;
   }
   if(isProposed(n)){
-    return pending+`<i class="dot proposed"></i><span>${esc(n.title)}</span>`;
+    return pending+`<i class="dot proposed"></i><span>${esc(nodeDisplayField(n,'title'))}</span>`;
   }
-  return authMark+nodeDotHtml(n)+`<span>${esc(n.title)}</span>`+
+  return authMark+nodeDotHtml(n)+`<span>${esc(nodeDisplayField(n,'title'))}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
@@ -2876,6 +3070,9 @@ function nodeHtml(n, isViewRoot, ghost){
 
 function renderMap(){
   hideDotHint();
+  syncGraphControls();
+  syncRelationControls();
+  if(!graphViewActive()){selectedRouteKey=null;document.getElementById('btn-map-route-auto').hidden=true;}
   if(!(data.flows && data.flows.length) && currentRepo().blueprint && currentRepo().blueprint.flows){
     data.flows = clone(currentRepo().blueprint.flows);
   }
@@ -2912,10 +3109,48 @@ function renderMap(){
     div.style.visibility = "hidden";
     nodesEl.appendChild(div);
     els.set(n.id, div);
-    div.addEventListener("click", e=>onNodeClick(e, n));
+    div.addEventListener("click", e=>{if(div._graphDragged && !(e.target.closest && e.target.closest('.add-child,.add-pick'))){e.stopPropagation();return;}onNodeClick(e, n);});
     return div;
   }
+  if(graphViewActive()){
+    const graph=graphPresentation().mode==='architecture'
+      ? graphViewApi.projectArchitecture(data,data.flows||[],root)
+      : graphViewApi.projectGraph(root,data.flows||[]);
+    const state=graphPresentation(),profile=graphReadingProfile(),baseComposition=graphComposition(),key=graphPositionKey();
+    const composition=profile.portrait?graphViewApi.portraitComposition(graph,baseComposition,profile):baseComposition;
+    const routeScope=JSON.stringify([mapPresentationScope,key]);
+    if(selectedRouteScope!==routeScope || relationDraft || authMode)selectedRouteKey=null;
+    if(selectedRouteKey && !graph.edges.some(edge=>graphViewApi.routeKey(edge)===selectedRouteKey))selectedRouteKey=null;
+    selectedRouteScope=routeScope;
+    const graphWriteView=workbenchSync?.viewId||'local';
+    const canEditRoute=()=>graphViewActive() && canMutate() && !authMode && !mapTransitioning && !relationDraft && (workbenchSync?.viewId||'local')===graphWriteView && graphPresentation()===state && graphPositionKey()===key;
+    const autoRoute=document.getElementById('btn-map-route-auto');
+    autoRoute.hidden=!selectedRouteKey || !canEditRoute();
+    if(!autoRoute.hidden)document.getElementById('map-view-hint').textContent='拖动端点或折点调整走线 · 小点可添加折点 · Delete 删除折点 · Esc 退出';
+    extents=graphViewApi.renderGraph({graph,links:linksEl,labels:flowLabsEl,
+      mount:(node,ghost)=>{const el=mountEl(node,ghost);el.classList.remove('dimmed','rel-dim');return el;},
+      options:{labelText:typeof mapDisplayText==='function'?mapDisplayText:null,nodeName:node=>nodeDisplayField(node,'title'),groupCaption:graphGroupCaption,mode:state.mode,fitCards:profile.portrait,direction:profile.portrait||isPhoneLayout()?'tb':layoutDir,phone:profile.portrait?profile.columns===1:isPhoneLayout()&&(state.mode==='sop'||document.getElementById('viewport').clientWidth<620),compact:profile.portrait||isPhoneLayout(),columns:profile.portrait?profile.columns:document.getElementById('viewport').clientWidth<1150?2:3,composition,offsets:state.offsets[key]||{},routeEdits:state.routes?.[key]||{}},
+      selected:()=>selectedId!==viewRootId&&graph.nodes.some(node=>node.id===selectedId)?selectedId:null,scale:()=>view.k,
+      moved:(id,offset)=>{if(!state.offsets[key])state.offsets[key]={};Object.defineProperty(state.offsets[key],id,{value:offset,writable:true,configurable:true,enumerable:true});saveGraphPresentation();},
+      boundsChanged:bounds=>{extents=bounds;positionRelationComposer();},canEditRoute,routeSelected:()=>selectedRouteKey,
+      routeSelect:editKey=>{if(!canEditRoute())return;selectedRouteKey=editKey;autoRoute.hidden=false;document.getElementById('map-view-hint').textContent='拖动端点或折点调整走线 · 小点可添加折点 · Delete 删除折点 · Esc 退出';},
+      routeChanged:(editKey,edit)=>{
+        if(!canEditRoute())return;
+        if(!state.routes)state.routes=Object.create(null);if(!state.routes[key])state.routes[key]=Object.create(null);
+        Object.defineProperty(state.routes[key],editKey,{value:edit,writable:true,configurable:true,enumerable:true});saveGraphPresentation();
+      }
+    });
+    renderRelationComposer();
+    if(typeof ensureMapTranslations==='function'){
+      const sources=graph.edges.flatMap(edge=>edge.sources||[edge]);
+      const visibleRelations=graph.edges.filter(edge=>edge.from===selectedId||edge.to===selectedId).flatMap(edge=>edge.sources||[edge]);
+      const readingLabels=typeof graphViewApi.readingRelations==='function'?[...graphViewApi.readingRelations(graph,composition,state.routes?.[key]||{}).values()].map(edge=>edge.label):[];
+      ensureMapTranslations(graph.nodes.concat(visibleRelations.flatMap(flow=>[getNode(flow.from),getNode(flow.to)]).filter(Boolean)),sources.map(edge=>edge.label).concat(graph.edges.map(edge=>edge.label),readingLabels,Object.values(composition?.labels||{}),Object.values(composition?.reading?.labels||{})));
+    }
+    return;
+  }
   vwalk(root,(n)=>{ mountEl(n, false); });
+  if(typeof ensureMapTranslations==='function')ensureMapTranslations([...els.keys()].map(id=>getNode(id)),(data.flows||[]).map(flow=>flow.label));
   const size = new Map();
   els.forEach((el,id)=>size.set(id,{w:el.offsetWidth,h:el.offsetHeight}));
 
@@ -3306,10 +3541,22 @@ function onNodeClick(e, n){
   }
   if(e.target.closest && e.target.closest(".add-pick")) return;
   closeAddPick();
+  if(graphViewActive() && relationDraft){pickRelationNode(n);return;}
   if(bugPathMode){
     selectedId = n.id;
     renderAll();
     return;
+  }
+  if(graphViewActive() && !isProposed(n)){
+    if(selectedId===n.id && !isCancelled(n) && canEnter(n)){
+      enterView(n.id,{unpack:false});return;
+    }
+    selectedId=n.id;relAnchorId=n.id;
+    selectedRouteKey=null;
+    document.getElementById('btn-map-route-auto').hidden=true;
+    linksEl.querySelectorAll('.graph-route-control').forEach(control=>control.remove());
+    graphViewApi.focusGraph({nodes:nodesEl.querySelectorAll('.node'),links:linksEl,labels:flowLabsEl},n.id===viewRootId?null:n.id);
+    renderDetail();persist();return;
   }
   if(relationMode){
     relAnchorId = n.id;
@@ -3399,6 +3646,7 @@ function cancelProposal(n){
 }
 
 function startCompose(node, kind){
+  relationDraft=null;
   if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   if(!node) return;
   addPickId = null;
@@ -3418,6 +3666,13 @@ function addModule(from){
   if(!target || isCancelled(target)) return;
   startCompose(target, "module");
 }
+function addModuleAtCurrentLevel(){
+  if(!graphViewActive()) return;
+  if(!canMutate()){workbenchSync?.setStatus('readonly');return;}
+  const root=liveViewRoot();
+  if(!root || !inTree(root) || isCancelled(root) || isProposed(root)) return;
+  startCompose(root,'module');
+}
 function inTree(n){ return !!(n && pathOf(n)); }
 function commitChild(node, title){
   if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
@@ -3436,6 +3691,13 @@ function commitChild(node, title){
   const createdPath = findPath(child.id);
   if(createdPath) createdPath.forEach(a=>sessionAuth.add(a.id));
   promoteFatWork(parent);
+  if(graphViewActive()){
+    viewRootId=parent.id;
+    graphPresentation().readingRootId=parent.id;saveGraphPresentation();
+    selectedId=child.id;
+    renderAll();fitView();revealGraphNode(child.id);
+    return;
+  }
   if(kind==="module"){
     const shown = parent.id===viewRootId || visibleChildren(parent).some(c=>c.id===child.id);
     if(!shown) viewRootId = parent.id;
@@ -3455,6 +3717,110 @@ function commitChild(node, title){
   renderAll();
 }
 
+function relationScopeValid(draft){
+  return !!draft && !authMode && !mapTransitioning && graphViewActive() && canMutate() && draft.repo===repoId && draft.viewId===(workbenchSync?.viewId||'local') && draft.scope===viewRootId;
+}
+function startRelation(node){
+  if(authMode || mapTransitioning || !graphViewActive() || !canMutate())return;
+  clearCompose();closeAddPick();
+  selectedRouteKey=null;
+  relationDraft={repo:repoId,viewId:workbenchSync?.viewId||'local',scope:viewRootId,node:'',target:'',direction:'outgoing',label:'',error:''};
+  if(node && inTree(node) && !isCancelled(node) && !isProposed(node) && [...nodesEl.querySelectorAll('.node')].some(el=>el.dataset.id===node.id)){relationDraft.node=node.id;selectedId=node.id;}
+  renderAll();
+}
+function cancelRelation(){relationDraft=null;renderAll();document.getElementById('btn-map-add-relation')?.focus();}
+function pickRelationNode(node){
+  if(!relationScopeValid(relationDraft)){cancelRelation();return;}
+  if(!node || !inTree(node) || isCancelled(node) || isProposed(node))return;
+  relationDraft.error='';
+  if(!relationDraft.node){relationDraft.node=node.id;selectedId=node.id;}
+  else if(node.id===relationDraft.node){relationDraft.error='请选择另一个模块作为目标。';}
+  else relationDraft.target=node.id;
+  renderAll();
+  if(relationDraft?.target)document.querySelector('#graph-relation-overlay [name="label"]')?.focus();
+}
+function syncRelationControls(){
+  const unavailable=id=>{const node=getNode(id);return !node || !inTree(node) || isCancelled(node) || isProposed(node);};
+  if(relationDraft && (!relationScopeValid(relationDraft) || (relationDraft.node && unavailable(relationDraft.node)) || (relationDraft.target && unavailable(relationDraft.target))))relationDraft=null;
+  const button=document.getElementById('btn-map-add-relation');
+  button.hidden=!graphViewActive();button.disabled=authMode || mapTransitioning || !canMutate();button.setAttribute('aria-pressed',String(!!relationDraft));
+  const label=relationDraft?'取消连线':'建立关系';
+  button.setAttribute('aria-label',label);button.title=label;
+  document.body.classList.toggle('relation-picking',!!relationDraft);
+  if(relationDraft){const hint=document.getElementById('map-view-hint');hint.textContent=relationDraft.error || (relationDraft.target?'填写关系含义并保存 · Esc 取消':relationDraft.node?'点击目标模块 · Esc 取消':'点击来源模块，再点击目标模块 · Esc 取消');}
+  if(!relationDraft){const overlay=document.getElementById('graph-relation-overlay');overlay.hidden=true;overlay.replaceChildren();}
+}
+function bindRelationForm(relationForm){
+  const draft=relationDraft;
+  relationForm.addEventListener('input',()=>{if(draft===relationDraft && relationScopeValid(draft))draft.label=relationForm.elements.label.value;});
+  relationForm.addEventListener('keydown',e=>{
+    if(e.key==='Enter' && (e.isComposing || e.keyCode===229 || workbenchSync?.composing))e.preventDefault();
+    e.stopPropagation();
+    if(e.key==='Escape' && !e.isComposing && draft===relationDraft){e.preventDefault();cancelRelation();}
+  });
+  relationForm.addEventListener('submit',e=>{
+    e.preventDefault();e.stopPropagation();
+    if(draft!==relationDraft)return;
+    if(!relationScopeValid(draft)){cancelRelation();return;}
+    relationDraft.label=relationForm.elements.label.value;
+    const error=submitRelation(getNode(relationDraft.node),relationDraft);
+    if(error){relationDraft.error=error;relationForm.querySelector('[data-relation-error]').textContent=error;}
+  });
+  relationForm.querySelector('[data-act="reverse-relation"]').onclick=()=>{
+    if(draft!==relationDraft)return;
+    if(!relationScopeValid(draft)){cancelRelation();return;}
+    relationDraft.direction=relationDraft.direction==='outgoing'?'incoming':'outgoing';relationDraft.error='';renderRelationComposer();
+    document.querySelector('#graph-relation-overlay [name="label"]')?.focus();
+  };
+  relationForm.querySelector('[data-act="cancel-relation"]').onclick=()=>{if(draft===relationDraft)cancelRelation();};
+}
+function renderRelationComposer(){
+  syncRelationControls();
+  const overlay=document.getElementById('graph-relation-overlay');
+  if(!relationDraft)return;
+  nodesEl.querySelectorAll('.node').forEach(el=>{el.classList.toggle('relation-source',el.dataset.id===relationDraft.node);el.classList.toggle('relation-target',el.dataset.id===relationDraft.target);});
+  if(!relationDraft.target){overlay.hidden=true;overlay.replaceChildren();return;}
+  const source=getNode(relationDraft.node),target=getNode(relationDraft.target),incoming=relationDraft.direction==='incoming';
+  overlay.hidden=false;
+  overlay.innerHTML=`<svg aria-hidden="true"><defs><marker id="graph-preview-arrow" markerWidth="8" markerHeight="8" refX="6.4" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#387658" stroke-width="1.2"/></marker></defs><path class="graph-relation-preview" marker-end="url(#graph-preview-arrow)"/></svg>
+    <div class="graph-relation-composer"><form class="graph-relation-form" data-relation-form>
+    <p class="graph-relation-endpoints">${esc(incoming?target.title:source.title)} → ${esc(incoming?source.title:target.title)}</p>
+    <label>关系含义<input name="label" aria-label="关系含义" maxlength="160" placeholder="例如：调用接口、传递结果" value="${escAttr(relationDraft.label)}"></label>
+    <p role="alert" data-relation-error>${esc(relationDraft.error||'')}</p>
+    <div class="actions"><button type="submit" class="primary">保存关系</button><button type="button" data-act="reverse-relation">反转方向</button><button type="button" data-act="cancel-relation">取消</button></div></form></div>`;
+  bindRelationForm(overlay.querySelector('[data-relation-form]'));positionRelationComposer();
+}
+function positionRelationComposer(){
+  const overlay=document.getElementById('graph-relation-overlay');
+  if(!relationDraft?.target || !overlay || overlay.hidden)return;
+  const cards=[...nodesEl.querySelectorAll('.node')],a=cards.find(el=>el.dataset.id===relationDraft.node),b=cards.find(el=>el.dataset.id===relationDraft.target);
+  if(!a||!b){overlay.hidden=true;return;}
+  const viewport=document.getElementById('viewport').getBoundingClientRect();
+  const box=el=>{const rect=el.getBoundingClientRect();return {x:rect.left-viewport.left,y:rect.top-viewport.top,w:rect.width,h:rect.height};};
+  const curve=graphViewApi.graphCurve(box(a),box(b));
+  const panel=overlay.querySelector('.graph-relation-composer'),path=overlay.querySelector('.graph-relation-preview');
+  if(relationDraft.direction==='incoming'){const reversed=graphViewApi.graphCurve(box(b),box(a));path.setAttribute('d',reversed.d);}else path.setAttribute('d',curve.d);
+  panel.style.left=Math.max(12,Math.min(viewport.width-panel.offsetWidth-12,curve.label.x-panel.offsetWidth/2))+'px';
+  panel.style.top=Math.max(70,Math.min(viewport.height-panel.offsetHeight-12,curve.label.y+18))+'px';
+}
+function submitRelation(node, draft){
+  if(!draft || draft.repo!==repoId || draft.node!==node.id || draft.viewId!==(workbenchSync?.viewId||'local')) return '地图已切换，请重新添加关系。';
+  if(!canMutate() || !inTree(node) || isCancelled(node) || isProposed(node)) return '地图尚不可编辑，请等待同步完成。';
+  if(!['outgoing','incoming'].includes(draft.direction)) return '请选择关系方向。';
+  let flow;
+  try{
+    const fields={from:node.id,to:draft.target,label:draft.label,id:'F-'+crypto.randomUUID()};
+    if(draft.direction==='incoming') [fields.from,fields.to]=[fields.to,fields.from];
+    flow=graphViewApi.makeRelation(data,data.flows||[],fields);
+  }catch(error){
+    return ({RELATION_ENDPOINT:'目标已不可用，请重新选择模块或节点。',RELATION_INPUT:'关系说明最多 160 字。',RELATION_DUPLICATE:'这条关系已经存在。',RELATION_ID:'请重新提交关系。'})[error.message] || '关系未添加，请重试。';
+  }
+  (data.flows||=[]).push(flow);
+  relationDraft=null;
+  renderAll();
+  return '';
+}
+
 /* ================= 抽屉 ================= */
 const STATE_LABEL = ()=>({
   dirty:t("state_dirty"),
@@ -3463,17 +3829,21 @@ const STATE_LABEL = ()=>({
   failed:t("state_failed")
 });
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
-function bindEdit(el, commit, multiline){
+function bindEdit(el, commit, multiline, presentation){
   if(!el) return;
   if(window.__CG_SERVER && !workbenchSync?.ready){ el.contentEditable="false"; return; }
   el.contentEditable="true"; el.spellcheck=false;
+  let editing=false,pendingBlur=false;
   el.addEventListener("focus",()=>{
-    if(el.querySelector("a.text-link")) el.textContent = el.innerText || "";
+    editing=true;pendingBlur=false;
+    if(presentation)el.textContent=presentation.source();
+    else if(el.querySelector("a.text-link")) el.textContent = el.innerText || "";
   });
   let composing=false;
   function draft(){ return {nodeId:selectedId, field:el.dataset.ed, index:el.dataset.i, bug:el.dataset.bug, text:el.innerText||""}; }
   function save(blur=false){
     if(composing) return;
+    if(presentation && !editing)return;
     const v=multiline?(el.innerText||"").replace(/\u00a0/g," ").trim():textOf(el);
     if(!blur && !v){ workbenchSync?.setInputDraft(draft()); return; }
     window.__CG_INPUT_COMMIT=!blur;
@@ -3481,23 +3851,39 @@ function bindEdit(el, commit, multiline){
     workbenchSync?.setInputDraft(el.dataset.ed==="compose-title" && composingId ? draft() : null); persist();
     if(blur) workbenchSync?.flush();
   }
+  function finishEditing(){
+    save(true);pendingBlur=false;
+    if(presentation){editing=false;el.textContent=presentation.display();}
+  }
   el.addEventListener("compositionstart",()=>{ composing=true; if(workbenchSync) workbenchSync.composing=true; workbenchSync?.setInputDraft(draft()); });
-  el.addEventListener("compositionend",()=>{ composing=false; if(workbenchSync) workbenchSync.composing=false; save(); });
-  el.addEventListener("input",()=>{ workbenchSync?.setInputDraft(draft()); save(); });
+  el.addEventListener("compositionend",()=>{ composing=false; if(workbenchSync) workbenchSync.composing=false; if(pendingBlur)finishEditing();else save(); });
+  el.addEventListener("input",()=>{ if(presentation && !editing)return;workbenchSync?.setInputDraft(draft()); save(); });
   el.addEventListener("keydown",e=>{ if(!composing && !e.isComposing && ((e.key==="Enter"&&!multiline)||e.key==="Escape")){ e.preventDefault();el.blur(); } });
-  el.addEventListener("blur",()=>save(true));
+  el.addEventListener("blur",()=>{
+    if(composing){pendingBlur=true;return;}
+    finishEditing();
+  });
 }
 function bindSilent(el, fn){
   if(!el) return;
   el.onmousedown = e=>e.preventDefault();
   el.onclick = fn;
 }
+function itemAddMenuHtml(node){
+  if(!canMutate() || authMode || isCancelled(node) || isProposed(node))return '';
+  return `<details class="item-add-menu"><summary>${esc(t('addItem'))}</summary><div class="item-add-options">
+    <button type="button" data-act="add-idea">${esc(t('addIdea'))}</button>
+    <button type="button" data-act="add-todo">${esc(t('addTodo'))}</button>
+    <button type="button" data-act="add-bug">${esc(t('addBug'))}</button>
+  </div></details>`;
+}
 function renderDetail(){
+  syncDetailChrome();
   liveSelected();
   let path = pathOf(getNode(selectedId)) || findPath(selectedId);
-  const el = document.getElementById("detail");
+  const el = document.getElementById("detail-body");
   const coordinatorPanel = document.getElementById("coordinator-panel");
-  if(coordinatorPanel?.open && coordinatorPanel.parentElement===el) return;
+  if(coordinatorPanel?.open && coordinatorPanel.parentElement===document.getElementById("detail")) return;
   if(!path || !path.length){
     selectedId = liveViewRoot().id;
     path = findPath(selectedId) || [data];
@@ -3633,11 +4019,23 @@ function renderDetail(){
     cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:"",
     !cancelled && pendingKids? `<button data-act="accept-layer" class="primary">${t("acceptLayer")}</button>`:"",
     !cancelled && noauth? `<button data-act="grant" class="auth-primary">${t("grant")}</button>`:"",
-    !cancelled && relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">${t("enter")}</button>`:""
+    !cancelled && relationMode && !graphViewActive() && canEnter(node)? `<button type="button" data-act="enter" class="primary">${t("enter")}</button>`:""
   ].filter(Boolean).join("");
+  const readingGraph=graphViewActive()&&graphPresentation().mode==='architecture'
+    ? graphViewApi.projectArchitecture(data,data.flows||[],liveViewRoot()) : null;
+  const graphRelations=readingGraph
+    ? [...new Set(readingGraph.edges.filter(flow=>flow.from===node.id||flow.to===node.id).flatMap(flow=>flow.sources))]
+    : graphViewActive()?(data.flows||[]).filter(flow=>flow.from===node.id||flow.to===node.id):[];
+  if(typeof ensureMapTranslations==='function')ensureMapTranslations([node,...graphRelations.flatMap(flow=>[getNode(flow.from),getNode(flow.to)]).filter(Boolean)],graphRelations.map(flow=>flow.label).concat(typeof mapTranslationTexts==='undefined'?[]:mapTranslationTexts));
+  if(relationDraft && (relationDraft.repo!==repoId || (relationDraft.node && relationDraft.node!==node.id) || relationDraft.viewId!==(workbenchSync?.viewId||'local'))) relationDraft=null;
+  const relationsHtml=graphViewActive()?`<details class="fold" open><summary>关联关系</summary>${graphRelations.length?`<ul class="graph-relation-list">${graphRelations.map(flow=>{
+    const from=getNode(flow.from),to=getNode(flow.to);if(!from||!to)return '';
+    return `<li>${esc(nodeDisplayField(from,'title'))} → ${esc(nodeDisplayField(to,'title'))}${flow.label?`：${esc(mapDisplayText(flow.label))}`:''}</li>`;
+  }).join('')}</ul>`:'<p class="graph-relation-empty">暂无关系</p>'}
+  </details>`:'';
   el.innerHTML = `
-    <h2 class="detail-head"><span class="head-main"><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</span>${trashBtn}</h2>
-    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${linkifyText(node.purpose||"")}</p>`:""}
+    <h2 class="detail-head"><span class="head-main"><span class="ed" data-ed="title">${esc(nodeDisplayField(node,'title'))}</span>${chip}</span>${trashBtn}</h2>
+    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${linkifyText(nodeDisplayField(node,'purpose'))}</p>`:""}
     ${actionBtns? `<div class="actions">${actionBtns}</div>`:""}
     ${deleteAskId===node.id? `<div class="delete-ask">
         <p>${t("deleteAskKids").replace("{n}", String(attachedChildren(node).length))}</p>
@@ -3653,24 +4051,26 @@ function renderDetail(){
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
       </div>`:""}
     ${filesHtml}
+    ${relationsHtml}
     <details class="fold" data-fold="memory-doc" ${foldMemoryDoc?"open":""}>
       <summary>${node.id===data.id?"项目记忆文档":"节点记忆文档"}</summary>
       <textarea class="memory-document-editor" data-memory-document maxlength="12000" aria-label="${node.id===data.id?"项目记忆文档":"节点记忆文档"}">${esc(node.memoryDocument||"")}</textarea>
       <button type="button" data-act="save-memory-document">保存记忆</button>
     </details>
     ${legacyMemoryPreview(legacyMemories)}
-    <section class="sec-block" data-fold="idea">
-      <button type="button" class="sec-add" data-act="add-idea" title="${escAttr(t("addIdea"))}">${labels.ideas}${node.ideas.length?" "+node.ideas.length:""} ＋</button>
+    ${mapBetaEnabled?itemAddMenuHtml(node):''}
+    ${!mapBetaEnabled||node.ideas.length?`<section class="sec-block" data-fold="idea">
+      ${mapBetaEnabled?`<h3>${labels.ideas} ${node.ideas.length}</h3>`:`<button type="button" class="sec-add" data-act="add-idea" title="${escAttr(t('addIdea'))}">${labels.ideas}${node.ideas.length?' '+node.ideas.length:''} ＋</button>`}
       ${ideaHtml}
-    </section>
-    <section class="sec-block" data-fold="todo">
-      <button type="button" class="sec-add" data-act="add-todo" title="${escAttr(t("addTodo"))}">${labels.todos}${nodeTodos.length?" "+nodeTodos.length:""} ＋</button>
+    </section>`:''}
+    ${!mapBetaEnabled||nodeTodos.length?`<section class="sec-block" data-fold="todo">
+      ${mapBetaEnabled?`<h3>${labels.todos} ${nodeTodos.length}</h3>`:`<button type="button" class="sec-add" data-act="add-todo" title="${escAttr(t('addTodo'))}">${labels.todos}${nodeTodos.length?' '+nodeTodos.length:''} ＋</button>`}
       ${todoHtml}
-    </section>
-    <section class="sec-block" data-fold="bug">
-      <button type="button" class="sec-add" data-act="add-bug" title="${escAttr(t("addBug"))}">${labels.bugs}${openBugs.length?" "+openBugs.length:""} ＋</button>
+    </section>`:''}
+    ${!mapBetaEnabled||openBugs.length?`<section class="sec-block" data-fold="bug">
+      ${mapBetaEnabled?`<h3>${labels.bugs} ${openBugs.length}</h3>`:`<button type="button" class="sec-add" data-act="add-bug" title="${escAttr(t('addBug'))}">${labels.bugs}${openBugs.length?' '+openBugs.length:''} ＋</button>`}
       ${bugHtml}
-    </section>
+    </section>`:''}
     ${node.dormant.length? `<details class="fold" data-fold="dormant" ${foldDormant?"open":""}>
       <summary>${labels.dormant} ${node.dormant.length}</summary>
       <ul class="dormant-list">
@@ -3768,7 +4168,7 @@ function renderDetail(){
         if(!v || v===node.title) return;
         node.title = v; renderAll(); return;
       }
-      if(kind==="purpose"){ node.purpose = v; renderAll(); return; }
+      if(kind==="purpose"){ if(v===node.purpose)return; node.purpose = v; renderAll(); return; }
       if(kind==="idea"){
         const i = +ed.dataset.i;
         if(!v){ node.ideas.splice(i,1); renderAll(); return; }
@@ -3814,7 +4214,7 @@ function renderDetail(){
       if(kind==="compose-title"){
         ed.dataset.value = v;
       }
-    }, multiline);
+    }, multiline, ['title','purpose'].includes(kind) ? {source:()=>node[kind]||'',display:()=>nodeDisplayField(node,kind)} : null);
   });
 
   const composeEl = q("[data-ed='compose-title']");
@@ -3828,8 +4228,11 @@ function renderDetail(){
   if(q('[data-act="compose-cancel"]')) q('[data-act="compose-cancel"]').onclick = ()=>{ clearCompose(); renderAll(); };
   if(composeEl){
     composeEl.addEventListener("keydown", e=>{
-      if(e.key==="Enter"){ e.preventDefault(); e.stopPropagation(); doCommit(); }
-      if(e.key==="Escape"){ e.preventDefault(); clearCompose(); renderAll(); }
+      if(e.key==="Enter"){
+        e.preventDefault();e.stopImmediatePropagation();
+        if(!e.isComposing && e.keyCode!==229 && !workbenchSync?.composing) doCommit();
+      }
+      if(e.key==="Escape"){ e.preventDefault();e.stopImmediatePropagation();clearCompose();renderAll(); }
     }, true);
     composeEl.focus();
   }
@@ -3882,13 +4285,12 @@ async function reviewWorkItem(nodeId,kind,itemId,decision){
 let view = {x:36, y:24, k:1};
 const MAP_MOTION_MS = 500;
 const MAP_RETURN_RATIO = .72;
+let wheelReturnTimer=null,drillReturnAt=null;
 let mapTransitioning = false;
 let mapTransitionFrame = null;
 let mapTransitionSnapshot = null;
 let mapTransitionAnchorRect = null;
 let mapTransitionAnchorId = null;
-let wheelReturnTimer = null;
-let drillReturnAt = null;
 let mapResizePending = false;
 function prefersReducedMapMotion(){
   try{ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
@@ -3985,11 +4387,11 @@ function finishMapTransition(){
   worldEl.style.removeProperty("--map-link-opacity");
   nodesEl.querySelectorAll(".map-transition-anchor").forEach(el=>el.classList.remove("map-transition-anchor"));
   mapTransitioning = false;
+  armDrillReturn();
   if(mapResizePending){
     mapResizePending = false;
-    fitView();
+    onChromeResize();
   }
-  armDrillReturn();
   window.dispatchEvent(new CustomEvent("cg:map-transition-end", {detail:{viewRootId}}));
 }
 function mapMotionEase(t){
@@ -4070,22 +4472,6 @@ function realignRevealingMap(){
   applyView();
   correctAlignedView(anchor, mapTransitionAnchorRect);
 }
-function armDrillReturn(){
-  clearTimeout(wheelReturnTimer);
-  const path = findPath(viewRootId) || [];
-  drillReturnAt = path.length>1 ? Math.max(.2, view.k*MAP_RETURN_RATIO) : null;
-}
-function returnToParent(){
-  if(mapTransitioning) return;
-  const path = findPath(viewRootId) || [];
-  if(path.length<2) return;
-  enterView(path[path.length-2].id, {direction:"up", unpack:false});
-}
-function scheduleZoomReturn(){
-  if(drillReturnAt===null || view.k>drillReturnAt || mapTransitioning) return;
-  clearTimeout(wheelReturnTimer);
-  wheelReturnTimer = setTimeout(returnToParent, 140);
-}
 function hideEdgeSlivers(){
   const vp = document.getElementById("viewport");
   const header = document.querySelector("header.top");
@@ -4103,6 +4489,22 @@ function hideEdgeSlivers(){
 function applyView(){
   worldEl.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`;
   hideEdgeSlivers();
+  positionRelationComposer();
+}
+function armDrillReturn(){
+  clearTimeout(wheelReturnTimer);
+  const path=findPath(viewRootId)||[];
+  drillReturnAt=!mapBetaEnabled&&path.length>1?Math.max(.2,view.k*MAP_RETURN_RATIO):null;
+}
+function returnToParent(){
+  if(mapBetaEnabled||mapTransitioning)return;
+  const path=findPath(viewRootId)||[];
+  if(path.length<2)return;
+  enterView(path[path.length-2].id,{direction:'up',unpack:false});
+}
+function scheduleZoomReturn(){
+  if(mapBetaEnabled||drillReturnAt===null||view.k>drillReturnAt||mapTransitioning)return;
+  clearTimeout(wheelReturnTimer);wheelReturnTimer=setTimeout(returnToParent,140);
 }
 if(worldEl && window.MutationObserver){
   new MutationObserver(() => hideEdgeSlivers()).observe(worldEl, { attributes:true, attributeFilter:["style"] });
@@ -4329,11 +4731,13 @@ function fittedView(){
   const availW = window.innerWidth - right - 72;
   const availH = window.innerHeight - chromeTop() - bottom - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
-  const fittedK = Math.max(k, .35);
+  // An architecture slice may scroll/pan instead of shrinking every label.
+  const readableGraph=graphViewActive() && graphPresentation().mode==='architecture';
+  const fittedK = Math.max(k, readableGraph ? .85 : .35);
   return {
     k:fittedK,
-    x:36 + Math.max(0, (availW - extents.w*fittedK)/2),
-    y:24 + Math.max(0, (availH - extents.h*fittedK)/2)
+    x:36 + Math.max(0, (availW - extents.w*fittedK)/2) - (Number.isFinite(extents.minX)?extents.minX:0)*fittedK,
+    y:24 + Math.max(0, (availH - extents.h*fittedK)/2) - (Number.isFinite(extents.minY)?extents.minY:0)*fittedK
   };
 }
 function fitView(){
@@ -4344,6 +4748,16 @@ function fitView(){
   view = fittedView();
   applyView();
   armDrillReturn();
+}
+function revealGraphNode(id){
+  const card=[...nodesEl.querySelectorAll('.node')].find(el=>el.dataset.id===id);
+  if(!card)return;
+  const bounds=document.getElementById('viewport').getBoundingClientRect(),rect=card.getBoundingClientRect();
+  if(![bounds.left,bounds.top,bounds.width,bounds.height,rect.left,rect.top,rect.width,rect.height].every(Number.isFinite) || bounds.width<=0 || bounds.height<=0 || rect.width<=0 || rect.height<=0)return;
+  const margin=24;
+  if(rect.left>=bounds.left+margin && rect.top>=bounds.top+margin && rect.left+rect.width<=bounds.left+bounds.width-margin && rect.top+rect.height<=bounds.top+bounds.height-margin)return;
+  view={...view,x:view.x+bounds.left+bounds.width/2-rect.left-rect.width/2,y:view.y+bounds.top+bounds.height/2-rect.top-rect.height/2};
+  applyView();
 }
 function onChromeResize(){
   syncPhoneClass();
@@ -4360,6 +4774,10 @@ function onChromeResize(){
   syncSplitChrome();
   syncChrome();
   if(mapTransitioning){ mapResizePending = true; return; }
+  if(mapReadingActive()){
+    const profile=graphReadingProfile().key+':'+graphComposition()?.id;
+    if(profile!==onChromeResize._reading){onChromeResize._reading=profile;renderAll();}
+  }
   fitView();
 }
 onChromeResize._phone = isPhoneLayout();
@@ -4375,7 +4793,7 @@ let panning=false, sx=0, sy=0;
 const pointers = new Map();
 let pinch = null;
 function panIgnore(el){
-  return mapTransitioning || !!(el && (el.closest("#drawer-split") || el.closest(".node") || el.closest(".lens-bar") || el.closest(".shelf-card") || el.closest(".shelf-label")));
+  return mapTransitioning || !!(el && (el.closest("#btn-map-add-module") || el.closest(".map-actions") || el.closest(".graph-relation-composer") || el.closest(".graph-route-hit,.graph-route-control") || el.closest("#drawer-split") || el.closest(".node") || el.closest(".lens-bar") || el.closest(".shelf-card") || el.closest(".shelf-label")));
 }
 function endPointer(e){
   pointers.delete(e.pointerId);
@@ -4393,6 +4811,8 @@ function endPointer(e){
 }
 vp.addEventListener("pointerdown", e=>{
   hideDotHint();
+  vp._graphPanned=false;
+  vp._graphPanStart={x:e.clientX,y:e.clientY};
   if(!e.target.closest(".add-child") && !e.target.closest(".add-pick")) closeAddPick();
   if(document.body.classList.contains("drawer-resizing")) return;
   if(panIgnore(e.target)) return;
@@ -4434,9 +4854,15 @@ vp.addEventListener("pointermove", e=>{
     return;
   }
   if(!panning || document.body.classList.contains("drawer-resizing")) return;
+  if(vp._graphPanStart && Math.hypot(e.clientX-vp._graphPanStart.x,e.clientY-vp._graphPanStart.y)>4)vp._graphPanned=true;
   view.x=e.clientX-sx; view.y=e.clientY-sy; applyView();
 });
 vp.addEventListener("pointerup", endPointer);
+vp.addEventListener('click',e=>{
+  if(!graphViewActive() || relationDraft || authMode || mapTransitioning || vp._graphPanned || !e.target.matches('#viewport,#world,#nodes,#flow-labs'))return;
+  selectedId=viewRootId;relAnchorId=null;selectedRouteKey=null;
+  renderMap();renderDetail();persist();
+});
 vp.addEventListener("pointercancel", endPointer);
 window.addEventListener("mouseup", ()=>{ if(pointers.size===0){ panning=false; vp.classList.remove("grabbing"); } });
 vp.addEventListener("wheel", e=>{
@@ -4451,16 +4877,17 @@ vp.addEventListener("wheel", e=>{
   view.y = cy - (cy-view.y)*(nk/view.k);
   view.k = nk;
   applyView();
-  if(e.deltaY<0 && drillReturnAt!==null && view.k>drillReturnAt+.08) clearTimeout(wheelReturnTimer);
-  if(e.deltaY>0) scheduleZoomReturn();
+  if(e.deltaY<0&&drillReturnAt!==null&&view.k>drillReturnAt+.08)clearTimeout(wheelReturnTimer);
+  if(e.deltaY>0)scheduleZoomReturn();
 },{passive:false});
 
 function syncLinkRepoBtn(){
-  const b = document.getElementById("btn-link-repo");
-  if(!b) return;
-  b.hidden = !canFsAccess();
+  const button=document.getElementById('btn-link-repo');
+  button.hidden=mapBetaEnabled||!canFsAccess();
+  button.style.display=button.hidden?'none':'';
 }
 function renderAll(){
+  restoreGraphReadingRoot();
   if(window.__CG_INPUT_COMMIT){ renderMap(); persist(); return; }
   liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail();
   syncLinkRepoBtn();
@@ -4545,6 +4972,7 @@ async function installCoordinatorPanel(sync){
     try{
       const value=await sync.call('/api/coordinator/model',undefined,'GET','main');
       if(!value||typeof value.version!=='string'||!Array.isArray(value.options)||!value.options.length||!value.options.some(option=>option.id===value.selectedId))throw new Error('模型配置暂时不可用');
+      if(modelSettings?.version!==value.version){mapTranslationModelRevision++;refreshMapTranslationDisplay();}
       modelSettings=value;
       const current=value.options.find(option=>option.id===value.selectedId);modelToggle.title='模型配置 · '+current.label;
     }finally{modelLoading=false;renderModelOptions();}
@@ -4715,6 +5143,7 @@ async function installCoordinatorPanel(sync){
       clearTimeout(timer);history.hidden=true;historyToggle.setAttribute('aria-expanded','false');inspector.classList.remove('coordinator-open');document.body.append(panel);renderDetail();
     }
     if(launcher)launcher.setAttribute('aria-expanded',String(open));
+    syncDetailChrome();
   };
   panel.setOpen=setPanelOpen;
   heading.addEventListener('click',()=>setPanelOpen(false));
@@ -5318,18 +5747,21 @@ function installDeviceApprovals(sync){
     }catch(error){refreshFailed=true;for(const button of list.querySelectorAll('button'))button.disabled=true;document.getElementById('device-approval-count').textContent='?';trigger.title=errorLabel(error);if(panel.open)status.textContent=errorLabel(error);}
     finally{running=false;if(fullReadNeeded&&panel.open&&!stopped&&!deciding)void refresh();}
   };
-  trigger.onclick=()=>{closeTray();document.getElementById('workbench-tools').open=false;status.textContent='';panel.showModal();trigger.setAttribute('aria-expanded','true');document.getElementById('device-approvals-close').focus();void refresh();};
+  trigger.onclick=()=>{closeTray();closeSettings();status.textContent='';panel.showModal();trigger.setAttribute('aria-expanded','true');document.getElementById('device-approvals-close').focus();void refresh();};
   document.getElementById('device-approvals-close').onclick=()=>panel.close();
   document.getElementById('device-approvals-refresh').onclick=()=>void refresh();
-  panel.addEventListener('close',()=>{trigger.setAttribute('aria-expanded','false');document.querySelector('#workbench-tools > summary').focus();});
+  panel.addEventListener('close',()=>{trigger.setAttribute('aria-expanded','false');document.querySelector(mapBetaEnabled?'#btn-settings':'#workbench-tools > summary').focus();});
   panel.addEventListener('click',event=>{if(event.target!==panel)return;const rect=panel.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)panel.close();});
   window.addEventListener('pagehide',()=>{stopped=true;});
   window.addEventListener('pageshow',()=>{stopped=false;void refresh();});
-  document.getElementById('workbench-tools').addEventListener('toggle',()=>{if(document.getElementById('workbench-tools').open)void refresh();});
+  document.getElementById('btn-settings').addEventListener('click',()=>{if(document.getElementById('settings-menu').classList.contains('open'))void refresh();});
+  document.getElementById('workbench-tools').addEventListener('toggle',()=>{if(!mapBetaEnabled&&document.getElementById('workbench-tools').open)void refresh();});
   refreshDeviceApprovals=refresh;
   void refresh();
 }
 async function boot(){
+  try{graphViewApi=await import('./map-graph-view.mjs');}
+  catch(error){console.error('Map relationship view unavailable',error);}
   const stored = readStoredUiLang();
   if(stored) uiLang = stored;
   mapMotionBetaEnabled = readStoredMapMotionBeta();
@@ -5356,6 +5788,17 @@ async function boot(){
     refreshDeviceApprovals:()=>refreshDeviceApprovals?.()
   });
   const connected=await workbenchSync.start();
+  if(connected && workbenchSync.config?.interfaceCapabilities?.mapTranslations){
+    try{
+      const {createMapTranslations}=await import('./map-translations.mjs');
+      mapTranslationClient=createMapTranslations({
+        request:(input,options)=>workbenchSync.call('/api/map/translations',input,'POST',JSON.parse(options.scope)[1]),
+        onUpdate:refreshMapTranslationDisplay,
+      });
+      document.getElementById('map-translation-status').querySelector('button').onclick=()=>mapTranslationClient.retry(mapTranslationTexts,mapTranslationOptions());
+      document.addEventListener('focusout',()=>{if(mapTranslationClient)setTimeout(refreshMapTranslationDisplay,0);});
+    }catch{ /* Map remains readable if the optional translation module is unavailable. */ }
+  }
   installDeviceApprovals(workbenchSync);
   if(workbenchSync.config){
     const {installCursorChat}=await import('./cursor-chat.mjs');
