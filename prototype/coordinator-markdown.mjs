@@ -1,5 +1,11 @@
 import { lexer } from './vendor/marked.mjs';
 
+export function bindingProposalText(proposal) {
+  return '建议绑定到：\n' + proposal.pathText +
+    (typeof proposal.reason === 'string' && proposal.reason.trim() ? '\n理由：' + proposal.reason.trim() : '') +
+    '\n可回复“同意绑定”或“暂不绑定”，也可点下方按钮。';
+}
+
 // Ready-style reveal: wait for a complete Markdown block before painting it.
 // The returned offset follows a paragraph, heading, list item, or fence boundary.
 export function nextRevealSegmentEnd(source, shown, done = false) {

@@ -94,6 +94,7 @@ test("CI selector and governance changes force the complete CI", () => {
     "docs/ci.md",
     "bin/build-runtime.mjs",
     "package-lock.json",
+    "tests/cursor-ci-runner-docker.mjs",
     "scripts/cloud/server.mjs",
     "scripts/sync/client.mjs",
   ]) {

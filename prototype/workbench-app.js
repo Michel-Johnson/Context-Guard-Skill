@@ -4914,12 +4914,13 @@ async function installCoordinatorPanel(sync){
   if(!sync.config?.interfaceCapabilities?.coordinator){if(launcher)launcher.hidden=true;return;}
   let createCoordinatorWorkingBlot;
   try{({createCoordinatorWorkingBlot}=await import('./coordinator-working-blot.mjs'));}catch{}
-  let conversationFragments,markdownFragment,nextRevealSegmentEnd,legacyQuestionList;
-  try{({conversationFragments,markdownFragment,nextRevealSegmentEnd,legacyQuestionList}=await import('./coordinator-markdown.mjs'));}
+  let conversationFragments,markdownFragment,nextRevealSegmentEnd,legacyQuestionList,bindingProposalText;
+  try{({conversationFragments,markdownFragment,nextRevealSegmentEnd,legacyQuestionList,bindingProposalText}=await import('./coordinator-markdown.mjs'));}
   catch{
     markdownFragment=(text,doc=document)=>{const body=doc.createDocumentFragment(),p=doc.createElement('p');p.textContent=text;body.append(p);return body;};
     nextRevealSegmentEnd=(text,start,done)=>done?text.length:start;
     legacyQuestionList=()=>null;
+    bindingProposalText=proposal=>'建议绑定到：\n'+proposal.pathText+(proposal.reason?'\n理由：'+proposal.reason:'')+'\n可回复“同意绑定”或“暂不绑定”，也可点下方按钮。';
     conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text&&!item.text.startsWith('[服务器工作流事件，不是新的用户授权]\n')){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};
   }
   const panel=document.createElement('section');
@@ -5458,7 +5459,7 @@ async function installCoordinatorPanel(sync){
       if(proposal.kind!=='binding-proposal'||!proposal.pending)continue;
       const card=document.createElement('section'),description=document.createElement('p');
       description.style.whiteSpace='pre-wrap';
-      description.textContent='建议绑定到：\n'+proposal.pathText+'\n可回复“同意绑定”或“暂不绑定”，也可点下方按钮。';
+      description.textContent=bindingProposalText(proposal);
       card.append(description);
       for(const [decision,label]of [['approved','确认绑定'],['rejected','暂不绑定']]){
         const button=document.createElement('button');button.type='button';button.textContent=label;
