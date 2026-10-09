@@ -78,6 +78,75 @@ for (const role of ['executor', 'ci']) {
   });
 }
 
+test('Cursor close keeps its unrefed owning worker alive until the actual exit is confirmed', async () => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-own-close-')));
+  const entry = path.join(directory, 'close-owner.mjs');
+  const moduleUrl = new URL('../scripts/workbench/cursor-runtime.mjs', import.meta.url).href;
+  // The isolated owner has no test runner, polling timer or HTTP server keeping
+  // its event loop alive. Its own child acknowledges readiness before closing.
+  await fs.writeFile(entry, `import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { CursorRuntime } from ${JSON.stringify(moduleUrl)};
+const runtime = new CursorRuntime(${JSON.stringify(path.join(directory, 'runtime'))});
+const worker = spawn(process.execPath, ['-e', "process.on('disconnect', () => setTimeout(() => process.exit(0), 100)); process.send({ ready: true });"],
+  { detached: true, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+const stopped = once(worker, 'exit');
+const [ready] = await once(worker, 'message');
+if (ready.ready !== true) throw new Error('Own worker was not ready');
+worker.unref();
+let disconnected = false;
+runtime.ciWorkers.set('own-worker', { worker, stopped, bridge: { close() { disconnected = true; worker.disconnect(); } } });
+await runtime.close();
+const [exitCode, signal] = await stopped;
+console.log(JSON.stringify({ disconnected, connected: worker.connected, exitCode, signal, observedExit: worker.exitCode }));
+`, { flag: 'wx', mode: 0o600 });
+  const result = await promisify(execFile)(process.execPath, [entry], { cwd: directory, windowsHide: true, timeout: 10000, maxBuffer: 65536 });
+  assert.deepEqual(JSON.parse(result.stdout), { disconnected: true, connected: false, exitCode: 0, signal: null, observedExit: 0 });
+});
+
+test('CI shutdown during spawn cannot be undone by a late worker unref or a new delivery', async () => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-close-spawn-')));
+  const root = path.join(directory, 'tester'); await fs.mkdir(root);
+  const execute = promisify(execFile), git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+  await git('init', '-b', 'main'); await fs.writeFile(path.join(root, 'source.txt'), 'unchanged\n'); await git('add', 'source.txt');
+  await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'shutdown fixture');
+  const sourceSha = await git('rev-parse', 'HEAD'), tester = randomUUID(), executor = randomUUID();
+  const entry = path.join(directory, 'close-during-spawn.mjs');
+  const moduleUrl = new URL('../scripts/workbench/cursor-runtime.mjs', import.meta.url).href;
+  const input = { id: 'shutdown-assignment', sessionId: tester, root, message: 'Test assigned commit', execution: {
+    session: { id: executor, generation: 1 }, taskId: 'original-task', sourceSha,
+    ciTodoRef: 'assigned-todo', references: { 'assigned-todo': 'todo-v1' },
+  } };
+  // Select the exact interleaving after ownership registration but before the
+  // real spawn event. Do not replace spawn, the IPC bridge or the exit Promise.
+  await fs.writeFile(entry, `import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import { CursorRuntime } from ${JSON.stringify(moduleUrl)};
+const runtime = new CursorRuntime(${JSON.stringify(path.join(directory, 'runtime'))});
+await runtime.configure(${JSON.stringify(executor)}, { command: process.execPath, root: ${JSON.stringify(directory)}, name: 'Executor' });
+await runtime.configure(${JSON.stringify(tester)}, { command: process.execPath, root: ${JSON.stringify(root)}, name: 'Tester', role: 'ci',
+  executorSessionId: ${JSON.stringify(executor)}, ciCommands: ['fixed-test'] });
+const register = runtime.ciWorkers.set.bind(runtime.ciWorkers);
+let shutdown, own;
+runtime.ciWorkers.set = (key, value) => { register(key, value); own = value.worker; shutdown = runtime.close(); return runtime.ciWorkers; };
+const input = ${JSON.stringify(input)};
+await runtime.deliver(input);
+await shutdown;
+assert.equal(own.exitCode, 0);
+assert.equal(own.connected, false);
+const file = runtime.jobFile(input.sessionId, input.id);
+const job = JSON.parse(await fs.readFile(file, 'utf8'));
+assert.equal(job.state, 'failed'); assert.equal(job.childPid, undefined);
+await assert.rejects(runtime.deliver({ ...input, id: 'late-ci-delivery' }), { code: 'RUNTIME_CLOSING' });
+await assert.rejects(fs.stat(runtime.jobFile(input.sessionId, 'late-ci-delivery')), { code: 'ENOENT' });
+assert.equal(runtime.ciWorkers.size, 0);
+console.log(JSON.stringify({ ownExit: own.exitCode, connected: own.connected, state: job.state, lateDeliveryRejected: true }));
+`, { flag: 'wx', mode: 0o600 });
+  const result = await execute(process.execPath, [entry], { cwd: directory, windowsHide: true, timeout: 10000, maxBuffer: 65536 });
+  assert.deepEqual(JSON.parse(result.stdout), { ownExit: 0, connected: false, state: 'failed', lateDeliveryRejected: true });
+  assert.equal(await fs.readFile(path.join(root, 'source.txt'), 'utf8'), 'unchanged\n');
+});
+
 test('owning CI Node worker uses private original-task IPC but cannot prompt before native isolation', async t => {
   const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-ci-preflight-')));
   const root = path.join(directory, 'tester'); await fs.mkdir(root);

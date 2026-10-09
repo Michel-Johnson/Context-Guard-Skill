@@ -72,6 +72,8 @@ CLI 与网页直接发消息共用 `native.prompt` 检查和投递编号；管�
 
 当前仅接通执行前的原授权检查。私有原生 profile、工具边界与不可覆盖证明尚未完成时，worker 明确返回 `CI_NATIVE_ISOLATION_REQUIRED`，不调用模型；既有空 CI 原生连接保持原 ID 和原 transport，不冷加载或替换。普通 Executor 不增加该门禁。
 
+关闭本机 CI host 时，先恢复自有 worker 的进程引用，再断开私有 IPC，并等待已登记的真实退出回报。退出 Promise 本身不保活；关闭与 spawn 并发时，晚到 spawn 不再次取消该引用。关闭后拒绝新 CI 投递，不创建替代 worker；Executor 的既有分离运行行为不变。
+
 Cursor 的公开 CI 入口在宿主证明及原事务校验接通前拒绝 `ci.result`，不接受模型、请求字段或 header 的“已验证”标记。`ci:<Tester>:host:` 为宿主保留的证明命名空间，模型不能写入；Claude 原 CI 通道不变。上述阶段保护不是原生独立测试已可交付的声明。
 
 原生 CLI 在返回 Session ID 前需要发现 MCP。CI 专用发现入口因此先提供同一四工具的固定元数据，不读取任务、不执行测试、不保存证据；不是新会话或业务状态机。已有活动入口仍沿用同一 HTTP 与工具契约。

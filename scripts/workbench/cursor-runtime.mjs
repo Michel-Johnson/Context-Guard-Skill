@@ -56,7 +56,7 @@ export class CursorRuntime {
   constructor(directory, { acpFactory = config => new CursorAcp(config), executorCreation, ciClientFactory } = {}) {
     this.directory = directory; this.acpFactory = acpFactory; this.pendingNative = new Map(); this.ownedTurns = new Map();
     this.executorCreation = executorCreation;
-    this.ciClientFactory = ciClientFactory; this.ciWorkers = new Map();
+    this.ciClientFactory = ciClientFactory; this.ciWorkers = new Map(); this.ciClosing = false;
   }
   sessionFile(sessionId) {
     if (!uuid.test(sessionId || '')) fail('INVALID_SESSION', 'Use a Context Guard Session UUID');
@@ -299,6 +299,7 @@ export class CursorRuntime {
       }
       if (session.active) fail('RUNTIME_BUSY', 'Cursor already has an accepted delivery');
       if (session.config.role === 'ci') {
+        if (this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
         if (input.nativeRequest || !await this.acceptsCiExecutor(session.config, input.execution?.session?.id) || !/^[a-f0-9]{40}$/.test(input.execution?.sourceSha || '')) fail('CI_ASSIGNMENT_MISMATCH', 'Tester requires a verified Executor handoff');
         if (await git(session.config.root, 'status', '--porcelain')) fail('CI_SOURCE_CHANGED', 'Preserve dirty Tester files before changing the assigned SHA');
         await git(session.config.root, 'checkout', '--detach', input.execution.sourceSha);
@@ -321,6 +322,7 @@ export class CursorRuntime {
     const job = await readJSON(jobFile);
     if (job.state !== 'starting') return;
     const session = await readJSON(this.sessionFile(sessionId)), ci = session.config.role === 'ci';
+    if (ci && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
     const openCiClient = workerPid => {
       if (typeof this.ciClientFactory !== 'function') fail('CI_CONNECTION_UNAVAILABLE', 'Original CI host authorization is unavailable');
       return this.ciClientFactory({ sessionId, nativeSessionId: session.nativeSessionId, root: session.config.root,
@@ -353,11 +355,14 @@ export class CursorRuntime {
       worker.kill(); await spawned.catch(() => {}); throw cause;
     }
     await spawned;
-    worker.unref();
+    if (!ci || !this.ciClosing) worker.unref();
   }
   async close() {
+    this.ciClosing = true;
     const workers = [...this.ciWorkers.values()];
-    for (const { bridge } of workers) bridge.close();
+    // wake() detaches this owning worker. Once IPC is disconnected, an exit
+    // Promise alone cannot keep the host alive to confirm shutdown (Node 18).
+    for (const { worker, bridge } of workers) { worker.ref(); bridge.close(); }
     const transports = [...new Set([...this.pendingNative.values(), ...[...this.ownedTurns.values()].map(turn => turn.acp)])];
     this.pendingNative.clear();
     await Promise.all(transports.map(acp => acp.close()));
