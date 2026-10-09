@@ -16,6 +16,7 @@ import { pythonCommand } from '../.github/scripts/python-command.mjs';
 import { fileURLToPath } from 'node:url';
 import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
 import { registeredExecutorCreation } from '../scripts/workbench/server.mjs';
+import { bindCursorCiClient } from '../scripts/workbench/cursor-ci-channel.mjs';
 
 for (const role of ['executor', 'ci']) {
   test(`Cursor ${role} worker keeps tool grants separate from the other role`, async t => {
@@ -37,12 +38,13 @@ for (const role of ['executor', 'ci']) {
       { toolCall: { toolCallId: 'question', kind: 'other' }, options },
       { options },
     ];
-    const decisions = [];
+    const decisions = []; let prompts = 0;
     // Only the native transport is substituted; the actual worker installs and
     // invokes its permission callback. No vendor or filesystem sandbox claim.
     const native = { initialized: false, sessionId, child: { pid: process.pid },
       async connect() { this.initialized = true; return { sessionId }; },
       async prompt() {
+        prompts++;
         for (const request of requests) decisions.push(await this.requestPermission({ sessionId, ...request }));
         return { stopReason: 'end_turn' };
       }, async close() {},
@@ -62,11 +64,57 @@ for (const role of ['executor', 'ci']) {
     while (!['finished', 'failed', 'interrupted'].includes((await readJSON(jobFile)).state)) {
       assert.ok(Date.now() < deadline, 'worker must finish the permission turn'); await pause(10);
     }
-    assert.equal((await readJSON(jobFile)).state, 'finished');
+    const outcome = await readJSON(jobFile);
+    if (role === 'ci') {
+      assert.equal(outcome.state, 'failed'); assert.equal(outcome.error, 'CI_CONNECTION_UNAVAILABLE');
+      assert.equal(prompts, 0, 'an unprofiled Tester cannot prompt without original host authorization');
+      // The real worker has installed its CI-only callback on the held native
+      // transport. Probe that callback, not a paid vendor/model invocation.
+      for (const request of requests) decisions.push(await native.requestPermission({ sessionId, ...request }));
+      assert.equal(runtime.pendingNative.get(sessionId), native, 'preserve the original empty native transport');
+    } else assert.equal(outcome.state, 'finished');
     assert.deepEqual(decisions, Array(requests.length).fill(role === 'ci' ? undefined : 'once'));
     assert.equal(await fs.readFile(path.join(root, 'source.txt'), 'utf8'), 'unchanged\n');
   });
 }
+
+test('owning CI Node worker uses private original-task IPC but cannot prompt before native isolation', async t => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-ci-preflight-')));
+  const root = path.join(directory, 'tester'); await fs.mkdir(root);
+  const execute = promisify(execFile), git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+  await git('init', '-b', 'main'); await fs.writeFile(path.join(root, 'source.txt'), 'unchanged\n'); await git('add', 'source.txt');
+  await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'exact source');
+  const sourceSha = await git('rev-parse', 'HEAD'), tester = randomUUID(), executor = randomUUID(), calls = [];
+  const secret = `SYNTHETIC_HOST_ONLY_${randomUUID()}`;
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), { ciClientFactory: async identity => {
+    calls.push(identity);
+    const client = { credential: secret, context: () => runtime.ciContext(tester), exchange: async () => { throw new Error('No exchange requested'); } };
+    return bindCursorCiClient({ client, ...identity, testerSessionId: tester,
+      readBinding: async () => ({ epoch: 'own-backend', bindingVersion: 'binding-v1', worktreeId: 'tester-tree', generation: 1,
+        sessionId: tester, nativeSessionId: tester, root }) });
+  } });
+  t.after(() => runtime.close());
+  await runtime.configure(executor, { command: process.execPath, root: directory, name: 'Executor' });
+  await runtime.configure(tester, { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor, ciCommands: ['fixed-test'] });
+  const execution = { session: { id: executor, generation: 1 }, taskId: 'original-task', sourceSha,
+    ciTodoRef: 'assigned-todo', references: { 'assigned-todo': 'todo-v1' } };
+  await runtime.deliver({ id: 'own-ci-delivery', sessionId: tester, root, message: 'Test assigned commit', execution });
+  const file = runtime.jobFile(tester, 'own-ci-delivery'), deadline = Date.now() + 10000;
+  while (!['finished', 'failed', 'interrupted'].includes((await readJSON(file)).state)) {
+    assert.ok(Date.now() < deadline, 'own CI worker must report its preflight outcome'); await pause(10);
+  }
+  const job = await readJSON(file);
+  assert.equal(job.state, 'failed'); assert.equal(job.error, 'CI_NATIVE_ISOLATION_REQUIRED');
+  assert.equal(job.childPid, undefined, 'no unisolated Cursor CLI is spawned');
+  assert.equal(calls.length, 1); assert.equal(calls[0].workerPid, job.workerPid);
+  assert.notEqual(calls[0].workerPid, process.pid, 'this exercises the actual separate Node IPC path');
+  assert.equal(calls[0].deliveryId, job.id); assert.equal(calls[0].fingerprint, job.fingerprint);
+  assert.equal(calls[0].sessionId, tester); assert.equal(calls[0].nativeSessionId, tester);
+  assert.equal((await fs.readFile(file, 'utf8')).includes(secret), false);
+  assert.equal((await fs.readFile(file + '.jsonl', 'utf8')).includes(secret), false);
+  assert.equal((await fs.readFile(runtime.sessionFile(tester), 'utf8')).includes(secret), false);
+  assert.equal(await fs.readFile(path.join(root, 'source.txt'), 'utf8'), 'unchanged\n');
+});
 
 test('Cursor Tester retains its independent role and checks the exact Executor handoff without granting direct prompts', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-ci-role-'));

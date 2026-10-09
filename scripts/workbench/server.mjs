@@ -7,6 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ClaudeRuntime } from './claude-runtime.mjs';
 import { CursorRuntime } from './cursor-runtime.mjs';
+import { OriginalCursorCiClient } from './cursor-ci-mcp.mjs';
+import { bindCursorCiClient } from './cursor-ci-channel.mjs';
 import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from '../shared/io.mjs';
@@ -29,7 +31,7 @@ import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { ProtocolMap, verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
 import { messageHandler, sendMessage } from './protocol-client.mjs';
-import { fail as protocolFail, validateMessage } from '../shared/protocol.mjs';
+import { fail as protocolFail, validateMessage, canonical } from '../shared/protocol.mjs';
 import { MapError, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../shared/map-model.mjs';
 import { buildContextTree, contextDocument, contextSlice, publicContextTree } from '../shared/context-tree.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -199,7 +201,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   project = await ensureProjectBinding(project);
   const executorCreation = sessionId => registeredExecutorCreation([claudeRuntime, cursorRuntime], sessionId, access.binding(sessionId));
   const claudeRuntime = new ClaudeRuntime(path.join(project.sharedDir, 'claude-runtime'), { executorCreation });
-  const cursorRuntime = new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime'), { executorCreation });
+  const cursorRuntime = new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime'), { executorCreation, ciClientFactory: openCursorCiClient });
   const ciRuntimeFor = async sessionId => {
     // Protocol/legacy Sessions need not be native UUIDs. They cannot name a
     // configured native Tester, but must retain their ordinary execution API.
@@ -790,6 +792,33 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (!actor) throw new MapError('UNAUTHORIZED', 'Missing or expired capability', 401);
     return actor;
   }
+  async function openCursorCiClient({ sessionId, nativeSessionId, root: ciRoot, deliveryId, fingerprint, workerPid }) {
+    const binding = access.binding(sessionId);
+    const entry = [...agentTokens].find(([, actor]) => actor.sessionId === sessionId && actor.worktreeId === binding?.worktreeId);
+    if (!entry) protocolFail('FORBIDDEN', 'The original CI Session capability is unavailable');
+    const [credential, actor] = entry; // Fix once; never select a replacement on rebind/re-registration.
+    const readBinding = async () => {
+      const current = access.binding(sessionId);
+      const localIdentity = canonical({ worktreeId: current?.worktreeId, root: current?.worktreeRoot, role: current?.role });
+      const state = await readJSON(cursorRuntime.sessionFile(sessionId));
+      const job = await readJSON(cursorRuntime.jobFile(sessionId, deliveryId));
+      if (agentTokens.get(credential) !== actor || !current || current.worktreeId !== actor.worktreeId ||
+          current.worktreeRoot !== ciRoot || state.config?.role !== 'ci' || state.config.root !== ciRoot ||
+          state.nativeSessionId !== nativeSessionId || job.id !== deliveryId || job.fingerprint !== fingerprint || job.workerPid !== workerPid) {
+        protocolFail('FORBIDDEN', 'The owning CI worker or binding changed');
+      }
+      const registered = await protocolStore.registeredBinding(backendPrincipal, sessionId);
+      if (!registered || registered.worktreeId !== current.worktreeId) protocolFail('FORBIDDEN', 'Original CI registration changed');
+      const confirmed = access.binding(sessionId);
+      if (agentTokens.get(credential) !== actor || canonical({ worktreeId: confirmed?.worktreeId,
+        root: confirmed?.worktreeRoot, role: confirmed?.role }) !== localIdentity) protocolFail('FORBIDDEN', 'CI binding changed during authorization');
+      return { epoch: instance, bindingVersion: hash(canonical({ protocol: registered.version, role: current.role,
+        access: access.accessRecord(sessionId), fingerprint })), worktreeId: current.worktreeId, generation: registered.generation,
+        sessionId, nativeSessionId, root: ciRoot };
+    };
+    return bindCursorCiClient({ client: new OriginalCursorCiClient({ origin: base, credential }), readBinding,
+      testerSessionId: sessionId, nativeSessionId, deliveryId, workerPid, root: ciRoot });
+  }
   async function preparedSessionBinding(input) {
     const sessionId = typeof input?.sessionId === 'string' ? input.sessionId.trim() : '';
     if (!sessionId) throw new MapError('SESSION_REQUIRED', 'A real lifecycle Session ID is required', 400);
@@ -1067,6 +1096,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (!['object.read', 'object.put', 'ci.result'].includes(message.type) || message.type === 'object.put' &&
               (message.payload.kind !== 'evidence' || !ownEvidence) || message.type === 'object.read' && !ownEvidence && !assignedReference || message.type === 'ci.result' &&
               (message.payload.taskId !== context.taskId || message.payload.sourceSha !== context.sourceSha)) protocolFail('FORBIDDEN', 'CI message exceeds its assigned test scope');
+          if (ciRuntime === cursorRuntime && (message.type === 'ci.result' || message.type === 'object.put' &&
+              message.payload.ref.startsWith(`ci:${actor.sessionId}:host:`))) {
+            protocolFail('FORBIDDEN', 'Verified Cursor CI host proof is required; model claims cannot authorize results');
+          }
           const connection = await projectDevice();
           if (!connection) protocolFail('UNAVAILABLE', 'Cloud connection is unavailable');
           return send(res, 200, { id: message.id, ok: true, data: await ciChannel(actor.sessionId, connection).send(message) });

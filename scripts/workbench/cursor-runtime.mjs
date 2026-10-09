@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { CursorAcp } from './cursor-acp.mjs';
+import { connectCursorCiWorkerClient, serveCursorCiWorker } from './cursor-ci-channel.mjs';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { canonical, validateMessage } from '../shared/protocol.mjs';
 
@@ -52,9 +53,10 @@ export function cursorEnvironment(credentials = {}, parent = process.env) {
 // Reuse the workbench's delivery IDs, not a second queue or scheduler. A native
 // conversation ID is persisted separately from the Context Guard Session ID.
 export class CursorRuntime {
-  constructor(directory, { acpFactory = config => new CursorAcp(config), executorCreation } = {}) {
+  constructor(directory, { acpFactory = config => new CursorAcp(config), executorCreation, ciClientFactory } = {}) {
     this.directory = directory; this.acpFactory = acpFactory; this.pendingNative = new Map(); this.ownedTurns = new Map();
     this.executorCreation = executorCreation;
+    this.ciClientFactory = ciClientFactory; this.ciWorkers = new Map();
   }
   sessionFile(sessionId) {
     if (!uuid.test(sessionId || '')) fail('INVALID_SESSION', 'Use a Context Guard Session UUID');
@@ -316,30 +318,55 @@ export class CursorRuntime {
     await this.deliver(input); return true;
   }
   async wake(sessionId, jobFile) {
-    if ((await readJSON(jobFile)).state !== 'starting') return;
+    const job = await readJSON(jobFile);
+    if (job.state !== 'starting') return;
+    const session = await readJSON(this.sessionFile(sessionId)), ci = session.config.role === 'ci';
+    const openCiClient = workerPid => {
+      if (typeof this.ciClientFactory !== 'function') fail('CI_CONNECTION_UNAVAILABLE', 'Original CI host authorization is unavailable');
+      return this.ciClientFactory({ sessionId, nativeSessionId: session.nativeSessionId, root: session.config.root,
+        deliveryId: job.id, fingerprint: job.fingerprint, workerPid });
+    };
     const acp = this.pendingNative.get(sessionId);
     if (acp) {
-      this.pendingNative.delete(sessionId);
-      const work = withFileLock(jobFile + '.worker.lock', () => runWorker(this.sessionFile(sessionId), jobFile, acp));
+      // Unprofiled, empty CI transports cannot be upgraded by cold-loading or
+      // replacing them. Preserve the exact transport while CI setup is gated.
+      if (!ci) this.pendingNative.delete(sessionId);
+      const work = withFileLock(jobFile + '.worker.lock', () => runWorker(this.sessionFile(sessionId), jobFile, acp,
+        ci ? () => openCiClient(process.pid) : undefined));
       this.ownedTurns.set(jobFile, { acp, work });
       void work.catch(() => {}).finally(() => this.ownedTurns.delete(jobFile));
       return;
     }
     const worker = spawn(process.execPath, [ownFile, '--worker', this.sessionFile(sessionId), jobFile], {
-      detached: true, windowsHide: true, stdio: 'ignore',
+      detached: true, windowsHide: true, stdio: ci ? ['ignore', 'ignore', 'ignore', 'ipc'] : 'ignore',
+      ...(ci ? { env: cursorEnvironment() } : {}),
     });
-    await new Promise((resolve, reject) => { worker.once('spawn', resolve); worker.once('error', reject); });
+    const spawned = new Promise((resolve, reject) => { worker.once('spawn', resolve); worker.once('error', reject); });
+    try {
+      if (ci) {
+        const bridge = serveCursorCiWorker({ worker, openClient: openCiClient });
+        const stopped = new Promise(resolve => worker.once('exit', resolve));
+        this.ciWorkers.set(jobFile, { worker, bridge, stopped });
+        worker.once('exit', () => { bridge.close(); this.ciWorkers.delete(jobFile); });
+      }
+    } catch (cause) {
+      worker.kill(); await spawned.catch(() => {}); throw cause;
+    }
+    await spawned;
     worker.unref();
   }
   async close() {
-    const transports = [...this.pendingNative.values(), ...[...this.ownedTurns.values()].map(turn => turn.acp)];
+    const workers = [...this.ciWorkers.values()];
+    for (const { bridge } of workers) bridge.close();
+    const transports = [...new Set([...this.pendingNative.values(), ...[...this.ownedTurns.values()].map(turn => turn.acp)])];
     this.pendingNative.clear();
     await Promise.all(transports.map(acp => acp.close()));
     await Promise.allSettled([...this.ownedTurns.values()].map(turn => turn.work));
+    await Promise.all(workers.map(({ stopped }) => stopped));
   }
 }
 
-async function runWorker(file, jobFile, heldAcp) {
+async function runWorker(file, jobFile, heldAcp, openCiClient) {
   const session = await readJSON(file), config = session.config, job = await readJSON(jobFile);
   if (job.state !== 'starting') return;
   const update = async fields => { Object.assign(job, fields, { updatedAt: new Date().toISOString() }); await atomicWrite(jobFile, encode(job)); };
@@ -350,7 +377,8 @@ async function runWorker(file, jobFile, heldAcp) {
       if (current.active === jobFile) await atomicWrite(file, encode({ ...current, active: null, updatedAt: job.updatedAt }));
     });
   };
-  let acp = heldAcp, log, ready = false, bytes = 0, text = '', stopping = false;
+  let acp = heldAcp, log, ready = false, bytes = 0, text = '', stopping = false, ciClient;
+  const preserveHeldCi = config.role === 'ci' && !!heldAcp;
   const stop = () => { stopping = true; void acp?.close(); };
   process.once('SIGTERM', stop); process.once('SIGINT', stop);
   await update({ workerPid: process.pid, state: 'connecting' });
@@ -369,7 +397,16 @@ async function runWorker(file, jobFile, heldAcp) {
         if (event.update?.sessionUpdate === 'agent_message_chunk' && event.update.content?.type === 'text') text += event.update.content.text;
       };
     if (acp) { acp.requestPermission = requestPermission; acp.onUpdate = onUpdate; }
-    else acp = new CursorAcp({ command: config.command, cwd: config.root, args: config.model ? ['--model', config.model] : [],
+    if (config.role === 'ci') {
+      ciClient = openCiClient ? await openCiClient() : connectCursorCiWorkerClient();
+      ciClient.signal.addEventListener('abort', () => { if (ready) stop(); }, { once: true });
+      await ciClient.context(); // Original task/role checked before a paid/native prompt.
+      // Discovery/runner primitives are verified, but the production private
+      // profile and immutable proof gate are not connected yet. Never wake an
+      // unisolated native Tester just because host IPC authorization succeeded.
+      fail('CI_NATIVE_ISOLATION_REQUIRED', 'The assigned native CI isolation must be verified before prompting');
+    }
+    if (!acp) acp = new CursorAcp({ command: config.command, cwd: config.root, args: config.model ? ['--model', config.model] : [],
       env: cursorEnvironment(config.environmentFile ? await readJSON(config.environmentFile) : {}), requestPermission, onUpdate });
     const native = acp.initialized ? { sessionId: acp.sessionId } : await acp.connect({ sessionId: session.nativeSessionId || undefined });
     if (session.nativeSessionId && native.sessionId !== session.nativeSessionId) fail('NATIVE_SESSION_CONFLICT', 'Native transport does not match the saved conversation');
@@ -387,11 +424,13 @@ async function runWorker(file, jobFile, heldAcp) {
     await finish({ state: result.stopReason === 'end_turn' ? 'finished' : 'interrupted',
       result: { stopReason: result.stopReason, text }, error: result.stopReason === 'end_turn' ? null : 'CURSOR_TURN_STOPPED' });
   } catch (cause) {
-    await acp?.close();
+    if (!preserveHeldCi) await acp?.close();
     await finish({ state: job.state === 'running' ? 'interrupted' : 'failed', ...(text ? { result: { stopReason: null, text } } : {}), error: String(cause.code || 'CURSOR_FAILED').slice(0, 100) });
   } finally {
     process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
-    await acp?.close(); await log?.close();
+    ciClient?.close();
+    if (!preserveHeldCi) await acp?.close();
+    await log?.close();
   }
 }
 

@@ -13,6 +13,14 @@
 
 ## CURSOR-WORKBENCH-01 · 分阶段接入（进行中）
 
+- 私有 CI 通讯新增正式七目标，原实现实际 0/7、退出 1；公共 Cursor CI 结果缺宿主证明的反例实际 503、应 403，退出 1。原 CI 凭据保留后端，固定 context/exchange、原 task/native/delivery/PID/绑定 epoch 与初始期限；Cursor 公共结果与模型对 host 保留区写入均拒绝，Claude 原行为不变。
+- 首轮模块运行五项通过后等待子进程 close 未结束，仅停止本任务测试进程，实际退出 1/取消 1，不写整轮通过。独立诊断观察到 Node24父端主动IPC断开时已有真实 exit0、两流结束且已断开，但无 ChildProcess close；夹具改用三项真实终态，不修改业务断言。随后准确七项 7/7、退出 0；新增竞态与超限回归的最终统计另行记录。
+- 原 CI worker 已接执行前私有 callback/Node IPC；原授权检查后仍因原生隔离未完成明确拒绝付费 prompt，并保留既有空 native。原权限夹具首轮14/15通过、退出1，旧预期允许未接通的CI直接完成；修为明确失败/零prompt并检查实际worker安装的拒绝回调，Executor行为和五项权限断言保留。当前真实Node worker的PID/投递/无CLI子进程/无凭据落盘已有正式回归；原 profile/Runner/不可覆写证据/原CI回执和三路径仍未验收。
+- [ ] 本次 private IPC/公开 proof 门禁的冻结独立复核、完整回归与当前 Required；后端实际配对原任务、生产 private profile 和安装后的原生任务不得以合成授权通过替代。
+- 首批冻结独立模块46/46、公共HTTP1/1，均退出0、哈希前后相同；完整npm test684项/682通过/0失败/2既有跳过，实际退出0、84040.675541ms，安全39/安装30/smoke通过。随后独立复核指出provider末次异步读取后仍可能使用旧本地绑定的静态P2候选，增加读取前固定tuple与返回前重新核对原actor/工作树/角色；不能把上述旧全量拼作此窄修订的结果。该provider实际配对组合仍未正向集成验收；当前CI硬停不证明未来真实激活安全。
+- [x] 绑定窄修订后集中模块46/46、退出0、2662.812625ms；独立公共HTTP1/1、退出0、1034.747458ms，并静态复核末次异步读取后的原actor与绑定tuple核对。server摘要前后同为1b37912c7e281a0994a2a67e92d980b09e1169f5fb72a90f1423904a8c3d83eb；不推广为实际provider竞态或原生测试通过。
+- 最终同冻结源码完整npm test684项/682通过/0失败/2既有跳过/0取消，实际退出0、85025.738458ms，安全39/安装30/ci-smoke通过。此前同源码另一完整日志已有684项零失败及smoke终态，但观察句柄的退出码未完整取回，保留并不据其宣称退出成功。当前提交Required及原任务/安装/三路径验收另行核验。
+
 - 官方原生正反控制已补强：复用既有 native ID，两次只 load、不新建会话。允许时实际读取随机校验值并产出 Shell/Write 两个精确字节标记；禁止时日志核对三项准确 rawInput 尝试，随机值未披露、两个标记未产生，正控制文件未变。四项用户配置前后摘要清单已保存。临时实验实际退出 0，独立只读复核摘要、随机值与宿主文件状态相符；仅验证 Read/Shell/Write，不推广 Task、额外 MCP 或产品任务授权。
 - 独立源码复核纠正 global 命令归因：官方 CLI 的 global 来自服务端目录，个人配置命令另标 user/claude-user；看到 global 元数据不是读取个人配置的证据，也不授予执行权限。Task 仍有独立执行器，不声明 subagents 能力及 ask 模式均未证明硬门禁，原生 Task/Hook 与额外 MCP 专项尚未验收。
 - 原生私有 Hook 反控制实际退出 1：同一既有 native ID 仅 load，Read 准确 rawInput、preToolUse deny 和随机值未披露均观察到；随后 Task 只有模型自述 Tool not available，没有真实 Task 调用或 subagentStart。归为触发未观察，不能证明 Task 拒绝成功，也不能判定 Hook 绕过。失败日志和本任务私有配置完整保留，已恢复本任务原配置；未替换用户 Hook。

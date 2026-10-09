@@ -1596,6 +1596,7 @@ test('Cursor Tester public HTTP keeps exact source, role and evidence scope inde
     const object = { v: 2, id: 'ci-evidence', type: 'object.put', payload: { kind: 'evidence', ref: `ci:${testerId}:test`, baseVersion: '', content: { output: 'isolated fixture' } } };
     assert.equal((await call('/api/v2/ci', tester.data.token, { ...object, payload: { ...object.payload, ref: `ci:${executorId}:test` } })).status, 403);
     assert.equal((await call('/api/v2/ci', tester.data.token, { ...object, payload: { ...object.payload, kind: 'plan' } })).status, 403);
+    assert.equal((await call('/api/v2/ci', tester.data.token, { ...object, payload: { ...object.payload, ref: `ci:${testerId}:host:proof` } })).status, 403);
     const read = { v: 2, id: 'ci-read', type: 'object.read', payload: { ref: 'assigned-checks', version: 'checks-version' } };
     for (const payload of [{ ref: 'other-task-checks', version: 'checks-version' }, { ref: 'assigned-checks', version: 'old-version' },
       { ref: `ci:${executorId}:test`, version: 'evidence-version' }, { ref: '__proto__', version: 'checks-version' }]) {
@@ -1606,8 +1607,11 @@ test('Cursor Tester public HTTP keeps exact source, role and evidence scope inde
       const allowed = await call('/api/v2/ci', tester.data.token, { ...read, payload });
       assert.equal(allowed.status, 503); assert.equal(allowed.data.error.code, 'UNAVAILABLE', 'scope authorization does not invent a Cloud object');
     }
+    const unverified = await call('/api/v2/ci', tester.data.token, { ...result, id: 'unverified-cursor-result' });
+    assert.equal(unverified.status, 403, 'native end_turn and model evidence do not prove Cursor CI');
+    assert.equal(unverified.data.error.code, 'FORBIDDEN');
     const noCloud = await call('/api/v2/ci', tester.data.token, result);
-    assert.equal(noCloud.status, 503); assert.equal(noCloud.data.error.code, 'UNAVAILABLE', 'valid local scope is not a synthetic Cloud CI success');
+    assert.equal(noCloud.status, 403); assert.equal(noCloud.data.error.code, 'FORBIDDEN', 'missing host proof is rejected before Cloud access or receipt replay');
     await fs.writeFile(path.join(ciRoot, 'README.md'), 'modified after assignment\n');
     assert.equal((await call('/api/v2/ci', tester.data.token, result)).data.error.code, 'CI_SOURCE_CHANGED');
   } finally { await running.close(); }
