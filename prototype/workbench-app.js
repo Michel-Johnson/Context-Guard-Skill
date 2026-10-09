@@ -1603,7 +1603,7 @@ function closeSettings(){
   if(btn){ btn.classList.remove("on"); btn.setAttribute("aria-expanded","false"); }
 }
 document.addEventListener('keydown',e=>{
-  if(e.key!=='Escape' || e.isComposing || e.defaultPrevented)return;
+  if(!mapBetaEnabled || e.key!=='Escape' || e.isComposing || e.defaultPrevented)return;
   const menu=document.getElementById('settings-menu');
   if(menu.classList.contains('open')){
     e.preventDefault();e.stopImmediatePropagation();closeSettings();document.getElementById('btn-settings').focus();return;
@@ -2871,6 +2871,7 @@ document.getElementById("btn-rel").onclick = ()=>{
 };
 function toggleWorkPanel(kind){
   closeSettings();
+  document.getElementById("workbench-tools")?.removeAttribute("open");
   const open = !document.body.classList.contains("bugs-open") || activeWorkPanelKind!==kind;
   if(!open && bugPathMode){ exitBugPath(true); openBugPanel(false); return; }
   if(bugPathMode && bugFocus && (bugFocus.kind||"bug")!==kind) exitBugPath(true);
@@ -3019,12 +3020,18 @@ document.getElementById('btn-lens').onclick=()=>{
   closeSettings();
   if(lensMode){exitLensMode();return;}
   if(bugPathMode)exitBugPath(true);
-  clearRelationMode({clearDeepLink:true});enterLensMode();
+  if(relationMode){
+    relationMode=false;relAnchorId=null;
+    const rb=document.getElementById('btn-rel');
+    rb.classList.remove('on');rb.setAttribute('aria-pressed','false');
+    document.body.classList.remove('rel-mode');
+  }
+  enterLensMode();
 };
 document.getElementById('btn-map-add-module').onclick=()=>addModuleAtCurrentLevel();
 document.getElementById('btn-map-add-relation').onclick=()=>relationDraft?cancelRelation():startRelation();
 document.addEventListener('keydown',e=>{
-  if(e.key!=='Escape' || e.isComposing || e.defaultPrevented)return;
+  if(!mapBetaEnabled || e.key!=='Escape' || e.isComposing || e.defaultPrevented)return;
   if(relationDraft){e.preventDefault();e.stopImmediatePropagation();cancelRelation();}
   else if(selectedRouteKey){e.preventDefault();e.stopImmediatePropagation();selectedRouteKey=null;renderMap();}
 },true);
@@ -5747,7 +5754,7 @@ function installDeviceApprovals(sync){
     }catch(error){refreshFailed=true;for(const button of list.querySelectorAll('button'))button.disabled=true;document.getElementById('device-approval-count').textContent='?';trigger.title=errorLabel(error);if(panel.open)status.textContent=errorLabel(error);}
     finally{running=false;if(fullReadNeeded&&panel.open&&!stopped&&!deciding)void refresh();}
   };
-  trigger.onclick=()=>{closeTray();closeSettings();status.textContent='';panel.showModal();trigger.setAttribute('aria-expanded','true');document.getElementById('device-approvals-close').focus();void refresh();};
+  trigger.onclick=()=>{closeTray();closeSettings();document.getElementById('workbench-tools').open=false;status.textContent='';panel.showModal();trigger.setAttribute('aria-expanded','true');document.getElementById('device-approvals-close').focus();void refresh();};
   document.getElementById('device-approvals-close').onclick=()=>panel.close();
   document.getElementById('device-approvals-refresh').onclick=()=>void refresh();
   panel.addEventListener('close',()=>{trigger.setAttribute('aria-expanded','false');document.querySelector(mapBetaEnabled?'#btn-settings':'#workbench-tools > summary').focus();});
