@@ -1587,7 +1587,8 @@ test('Cursor Tester public HTTP keeps exact source, role and evidence scope inde
     runtime.wake = async () => {}; // Durable local API scope only; no external Cursor model is invoked.
     const execution = { session: executor.data.protocolBinding.session, taskId: 'assigned-task', sourceSha: sha, ciTodoRef: 'assigned-checks', references: { 'assigned-checks': 'checks-version', 'assigned-unit': 'unit-version' } };
     await runtime.deliver({ id: 'ci-assignment', sessionId: testerId, root: ciRoot, message: 'Test assigned commit', execution });
-    assert.deepEqual((await call('/api/v2/execution', tester.data.token)).data.active, { ...execution, mode: 'ci', commands: ['node --test'] });
+    assert.deepEqual((await call('/api/v2/execution', tester.data.token)).data.active, { ...execution, mode: 'ci', commands: ['node --test'],
+      tester: { sessionId: testerId, nativeSessionId: testerId, deliveryId: 'ci-assignment', workerPid: null } });
     const result = { v: 2, id: 'ci-result', type: 'ci.result', payload: { taskId: execution.taskId, sourceSha: sha, verdict: 'passed', checks: [{ testId: 'fixture-test', todoId: 'fixture-todo', status: 'passed', evidenceRef: `ci:${testerId}:test` }] } };
     for (const token of [executor.data.token, running.humanToken]) assert.equal((await call('/api/v2/ci', token, result)).status, 403);
     assert.equal((await call('/api/v2/ci', tester.data.token, { ...result, session: { id: randomUUID(), generation: 1 } })).status, 403);

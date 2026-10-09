@@ -95,7 +95,8 @@ test('Cursor Tester retains its independent role and checks the exact Executor h
   await assert.rejects(runtime.deliver({ ...input, execution: undefined }), { code: 'CI_ASSIGNMENT_MISMATCH' });
   await assert.rejects(runtime.deliver({ ...input, execution: { ...input.execution, session: { id: randomUUID(), generation: 1 } } }), { code: 'CI_ASSIGNMENT_MISMATCH' });
   await runtime.deliver(input);
-  assert.deepEqual(await runtime.ciContext(tester, { verifySource: true }), { ...input.execution, mode: 'ci', commands: ['node --test'] });
+  assert.deepEqual(await runtime.ciContext(tester, { verifySource: true }), { ...input.execution, mode: 'ci', commands: ['node --test'],
+    tester: { sessionId: tester, nativeSessionId: tester, deliveryId: input.id, workerPid: null } });
   await fs.writeFile(path.join(ciRoot, 'calculation.txt'), 'unverified change\n');
   await assert.rejects(runtime.ciContext(tester, { verifySource: true }), { code: 'CI_SOURCE_CHANGED' });
   assert.equal(await runtime.ciContext(executor), null, 'Executor cannot acquire CI scope by asking for it');

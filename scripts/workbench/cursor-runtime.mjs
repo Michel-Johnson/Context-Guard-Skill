@@ -114,7 +114,8 @@ export class CursorRuntime {
     const job = state.active && await readJSON(state.active, null);
     if (!job?.execution || ['finished', 'failed', 'interrupted'].includes(job.state) || !await this.acceptsCiExecutor(state.config, job.execution.session.id)) fail('CI_NOT_ACTIVE', 'No assigned Tester task is active');
     if (verifySource && (await git(state.config.root, 'rev-parse', 'HEAD') !== job.execution.sourceSha || await git(state.config.root, 'status', '--porcelain'))) fail('CI_SOURCE_CHANGED', 'Tester result requires the unchanged assigned code SHA');
-    return { ...job.execution, mode: 'ci', commands: state.config.ciCommands };
+    return { ...job.execution, mode: 'ci', commands: state.config.ciCommands,
+      tester: { sessionId, nativeSessionId: state.nativeSessionId, deliveryId: job.id, workerPid: job.workerPid || null } };
   }
   async resolveSessionId(nativeSessionId, root) {
     const worktreeRoot = await fs.realpath(root), matches = [];
