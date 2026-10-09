@@ -78,3 +78,15 @@ test('stable zoom-return helper retains its previous parent navigation but Beta 
     setTimeout:fn=>{jobs.set(1,fn);return 1;},clearTimeout:id=>jobs.delete(id),enterView:(id,options)=>navigated.push({id,unpack:options.unpack})});vm.runInContext(source.slice(start,end),ctx);ctx.armDrillReturn();assert.equal(ctx.drillReturnAt,.72);ctx.view.k=.2;ctx.scheduleZoomReturn();assert.equal(jobs.size,1);jobs.get(1)();assert.deepEqual(navigated,[{id:'root',unpack:false}]);
   ctx.mapBetaEnabled=true;ctx.armDrillReturn();assert.equal(ctx.drillReturnAt,null);assert.equal(jobs.size,0);ctx.scheduleZoomReturn();ctx.returnToParent();assert.equal(jobs.size,0);assert.equal(navigated.length,1,'Beta cannot execute even a legacy parent-return callback');
 });
+
+test('opening the actual device approval dialog closes the stable tools so it can be reopened after dismissal',async()=>{
+  const source=await appSource(),start=source.indexOf('function installDeviceApprovals(sync){'),line=source.slice(start).split('\n').find(row=>row.trim().startsWith('trigger.onclick='));
+  assert.ok(line);
+  for(const enabled of [false,true]){
+    const toolbar={open:true},trigger={setAttribute:(name,value)=>{trigger[name]=value;}},panel={showModal(){this.open=true;}},status={textContent:'old'},close={focus(){this.focused=true;}},closed=[];
+    const ctx=vm.createContext({mapBetaEnabled:enabled,trigger,panel,status,document:{getElementById:id=>id==='workbench-tools'?toolbar:close},closeTray:()=>closed.push('tray'),closeSettings:()=>closed.push('settings'),refresh:()=>{},persist:()=>assert.fail('opening a dialog cannot mutate Map')});
+    vm.runInContext(line,ctx);trigger.onclick();
+    assert.equal(toolbar.open,false,'the next tools click must expand rather than hide the trigger');
+    assert.equal(panel.open,true);assert.equal(close.focused,true);assert.equal(trigger['aria-expanded'],'true');assert.deepEqual(closed,['tray','settings']);
+  }
+});
