@@ -2789,7 +2789,7 @@ document.addEventListener("keydown", e=>{
 document.getElementById("first-use-go").onclick = ()=>enterLensMode();
 document.getElementById("btn-link-repo").onclick = async ()=>{
   if(mapBetaEnabled)return;
-  closeSettings();await linkRepo();
+  await linkRepo();closeSettings();
 };
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
 document.getElementById("first-use-cut-back").onclick = ()=>{

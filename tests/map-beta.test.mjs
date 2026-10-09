@@ -100,8 +100,8 @@ test('actual Bug and TODO panel toggles close the stable disclosure without chan
   }
 });
 
-test('stable repository linking closes its settings before the native picker rather than leaving an interactive menu under it',async()=>{
+test('stable repository linking preserves its original picker-then-close order and Beta cannot invoke it',async()=>{
   const source=await appSource(),code=extract(source,'document.getElementById("btn-link-repo").onclick','document.getElementById("first-use-empty")'),button={},calls=[];
   const ctx=vm.createContext({mapBetaEnabled:false,document:{getElementById:()=>button},closeSettings:()=>calls.push('settings'),linkRepo:async()=>calls.push('picker')});
-  vm.runInContext(code,ctx);await button.onclick();assert.deepEqual(calls,['settings','picker']);ctx.mapBetaEnabled=true;calls.length=0;await button.onclick();assert.deepEqual(calls,[],'Beta never invokes the obsolete linking flow');
+  vm.runInContext(code,ctx);await button.onclick();assert.deepEqual(calls,['picker','settings']);ctx.mapBetaEnabled=true;calls.length=0;await button.onclick();assert.deepEqual(calls,[],'Beta never invokes the obsolete linking flow');
 });
