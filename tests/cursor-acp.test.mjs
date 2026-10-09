@@ -49,6 +49,49 @@ function client(t, options = {}) {
   return instance;
 }
 
+// Mirrors the provider's documented pre-authentication boundary. Authentication
+// is still enforced by session/new and session/load, not by this test client.
+const authPeer = `
+const rl = require('node:readline').createInterface({ input: process.stdin });
+let loggedIn = false;
+const credential = process.env.CURSOR_API_KEY || process.env.CURSOR_AUTH_TOKEN;
+const preauthenticated = typeof credential === 'string' && !!credential.trim();
+const send = message => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');
+rl.on('line', line => {
+  const request = JSON.parse(line);
+  if (request.method === 'initialize') send({ id: request.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true } } });
+  else if (request.method === 'authenticate') {
+    if (preauthenticated) send({ id: request.id, error: { code: -32000, message: 'Unnecessary browser login' } });
+    else { loggedIn = true; send({ id: request.id, result: {} }); }
+  } else if (['session/new', 'session/load'].includes(request.method)) {
+    if (!(loggedIn || credential === 'fixture-valid')) send({ id: request.id, error: { code: -32000, message: 'Private provider authentication failure' } });
+    else send({ id: request.id, result: { sessionId: request.params.sessionId || 'fixture-authenticated-session' } });
+  }
+});
+`;
+
+for (const key of ['CURSOR_API_KEY', 'CURSOR_AUTH_TOKEN']) {
+  for (const resume of [false, true]) {
+    test(`ACP uses provider pre-authentication via ${key} for ${resume ? 'load' : 'new'}`, async t => {
+      const acp = client(t, { args: ['-e', authPeer, '--'], env: { [key]: 'fixture-valid' } });
+      const sessionId = 'fixture-authenticated-session';
+      assert.equal((await acp.connect(resume ? { sessionId } : {})).sessionId, sessionId);
+    });
+  }
+  test(`ACP does not treat invalid ${key} as a successful connection`, async t => {
+    const acp = client(t, { args: ['-e', authPeer, '--'], env: { [key]: 'fixture-invalid' } });
+    await assert.rejects(acp.connect(), cause => cause.code === 'CURSOR_RPC_ERROR' && !cause.message.includes('Private'));
+    assert.notEqual(acp.initialized, true);
+  });
+}
+
+for (const credential of ['', '   ']) {
+  test(`ACP retains browser authentication for ${credential ? 'whitespace' : 'empty'} credentials`, async t => {
+    const acp = client(t, { args: ['-e', authPeer, '--'], env: { CURSOR_API_KEY: credential } });
+    assert.equal((await acp.connect()).sessionId, 'fixture-authenticated-session');
+  });
+}
+
 test('ACP authenticates, streams Unicode and follows up in the same native Session', async t => {
   const chunks = [];
   const acp = client(t, { onUpdate: update => chunks.push(update.update.content.text), requestPermission: () => 'allow' });

@@ -32,7 +32,11 @@ Plan、结果、问题与测试失败都回到原 Coordinator 任务。用户不
 
 使用官方 `agent acp`，通过标准输入输出传输 JSON-RPC 2.0。模型循环、文件工具和对话历史由 Cursor 管理，不另造 Agent harness。
 
-流程为 initialize、authenticate、session/load（既有会话）或 session/new（明确创建）、session/prompt。session/update 提供本轮输出；session/cancel 取消本轮。
+流程为 initialize、认证、session/load（既有会话）或 session/new（明确创建）、session/prompt。session/update 提供本轮输出；session/cancel 取消本轮。
+
+官方 CLI 已通过子进程环境中的非空 `CURSOR_API_KEY` 或 `CURSOR_AUTH_TOKEN` 预认证时，不重复调用会打开浏览器的 `authenticate(cursor_login)`；没有凭据时保留该登录步骤。客户端不校验或宣称密钥有效，实际会话和模型请求仍由 Cursor 拒绝无效身份；不回退创建会话，不增加工具权限。依据：[官方 ACP 认证说明](https://cursor.com/docs/cli/acp#authentication)。
+
+工作台显式提供私有凭据时，仅在该 CLI 子进程设 `AGENT_CLI_CREDENTIAL_STORE=memory`，由厂商管理本次认证，避免自动化读写用户钥匙串。不复制或持久化厂商访问令牌；没有显式凭据时保留原登录存储方式，不接受父进程任意凭据存储配置。该选项依据已核验官方 CLI 2026.10.01 的实现及隔离原生实验，不推断所有旧版兼容。
 
 新建的空 ACP 会话在首次输出前可能只有元数据，不能从新进程加载。工作台保留原生连接至首个真实任务结束；之后加载同一原生 ID，不注入初始化模型消息，不操作厂商私有数据库。空会话在后端退出后失去连接时明确失败，不静默新建替代会话。
 

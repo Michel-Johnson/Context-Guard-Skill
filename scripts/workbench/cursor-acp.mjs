@@ -22,6 +22,12 @@ export class CursorAcp {
     this.onUpdate = onUpdate;
     this.requestPermission = requestPermission;
     this.requestInteraction = requestInteraction;
+    // Official CLI accepts these credentials at startup. Calling cursor_login
+    // again would initiate browser login in an isolated, otherwise empty profile.
+    // This only selects the wire flow; the provider still authenticates requests.
+    const nativeEnv = env ?? process.env;
+    this.preAuthenticated = ['CURSOR_API_KEY', 'CURSOR_AUTH_TOKEN'].some(name =>
+      typeof nativeEnv[name] === 'string' && nativeEnv[name].trim().length > 0);
     this.pending = new Map();
     this.nextId = 1;
     this.updates = Promise.resolve();
@@ -123,7 +129,7 @@ export class CursorAcp {
       clientInfo: { name: 'context-guard', version: '0.8.3' } });
     if (init?.protocolVersion !== 1) throw error('CURSOR_PROTOCOL_VERSION', 'Unsupported Cursor ACP protocol version');
     if (sessionId && (!validId(sessionId) || init.agentCapabilities?.loadSession !== true)) throw error('CURSOR_RESUME_UNSUPPORTED', 'Cursor cannot load the requested Session');
-    await this.request('authenticate', { methodId: 'cursor_login' });
+    if (!this.preAuthenticated) await this.request('authenticate', { methodId: 'cursor_login' });
     if (sessionId) this.sessionId = sessionId; // load may emit transcript updates before its response.
     const result = await this.request(sessionId ? 'session/load' : 'session/new', { cwd: this.cwd, mcpServers: [], ...(sessionId ? { sessionId } : {}) });
     if (!sessionId && !validId(result?.sessionId)) throw error('CURSOR_INVALID_SESSION', 'Cursor did not return a native Session ID');

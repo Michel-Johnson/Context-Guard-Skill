@@ -104,9 +104,19 @@ test('Cursor Tester retains its independent role and checks the exact Executor h
 
 test('Cursor environment includes scoped credentials but excludes unrelated parent secrets', () => {
   const env = cursorEnvironment({ CURSOR_API_KEY: 'fixture-key' }, { HOME: '/fixture', PATH: '/bin', CURSOR_API_KEY: 'parent-key', OPENAI_API_KEY: 'unrelated', ANTHROPIC_AUTH_TOKEN: 'unrelated' });
-  assert.deepEqual(env, { HOME: '/fixture', PATH: '/bin', CURSOR_API_KEY: 'fixture-key' });
+  assert.deepEqual(env, { HOME: '/fixture', PATH: '/bin', CURSOR_API_KEY: 'fixture-key', AGENT_CLI_CREDENTIAL_STORE: 'memory' });
   assert.throws(() => cursorEnvironment({ OPENAI_API_KEY: 'unrelated' }), { code: 'INVALID_ENVIRONMENT' });
   assert.throws(() => cursorEnvironment({ CURSOR_API_KEY: 42 }), { code: 'INVALID_ENVIRONMENT' });
+});
+
+test('Cursor explicit provider credentials use native memory storage without changing ordinary login', () => {
+  const parent = { HOME: '/fixture', PATH: '/bin', AGENT_CLI_CREDENTIAL_STORE: 'file', CURSOR_API_KEY: 'unrelated-parent' };
+  for (const key of ['CURSOR_API_KEY', 'CURSOR_AUTH_TOKEN']) {
+    assert.deepEqual(cursorEnvironment({ [key]: 'fixture-credential' }, parent), {
+      HOME: '/fixture', PATH: '/bin', [key]: 'fixture-credential', AGENT_CLI_CREDENTIAL_STORE: 'memory' });
+  }
+  assert.deepEqual(cursorEnvironment({}, parent), { HOME: '/fixture', PATH: '/bin' });
+  assert.deepEqual(cursorEnvironment({ CURSOR_API_KEY: '  ' }, parent), { HOME: '/fixture', PATH: '/bin', CURSOR_API_KEY: '  ' });
 });
 
 test('Cursor delivery pins its workspace/native identity and preserves duplicate receipts on restart', async () => {

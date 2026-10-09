@@ -41,7 +41,12 @@ export function cursorEnvironment(credentials = {}, parent = process.env) {
       Object.entries(credentials).some(([key, value]) => !providerKeys.has(key) || typeof value !== 'string')) fail('INVALID_ENVIRONMENT', 'Cursor credentials must use the private provider allowlist');
   const allowed = new Set(['HOME', 'PATH', 'LANG', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'SYSTEMROOT', 'COMSPEC', 'PATHEXT',
     'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'CONTEXT_GUARD_NAMED_STATE_DIR']);
-  return { ...Object.fromEntries(Object.entries(parent).filter(([key, value]) => allowed.has(key.toUpperCase()) && typeof value === 'string')), ...credentials };
+  // An explicitly supplied provider credential is per-process. The official
+  // CLI's memory store avoids reading/writing the user's keychain in automation.
+  // Ordinary interactive-login configurations keep their native storage path.
+  const explicitAuth = Object.values(credentials).some(value => value.trim().length > 0);
+  return { ...Object.fromEntries(Object.entries(parent).filter(([key, value]) => allowed.has(key.toUpperCase()) && typeof value === 'string')),
+    ...credentials, ...(explicitAuth ? { AGENT_CLI_CREDENTIAL_STORE: 'memory' } : {}) };
 }
 
 // Reuse the workbench's delivery IDs, not a second queue or scheduler. A native
