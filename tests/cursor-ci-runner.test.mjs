@@ -12,7 +12,7 @@ import { canonical } from '../scripts/shared/protocol.mjs';
 import { assertCursorCiHostEvidence, createCursorCiHostProof, cursorCiNodeTapPassed } from '../scripts/workbench/cursor-ci-proof.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
-import { startCursorCiMcp } from '../scripts/workbench/cursor-ci-mcp.mjs';
+import { startCursorCiMcp, startCursorCiDiscovery } from '../scripts/workbench/cursor-ci-mcp.mjs';
 
 const imageId = 'sha256:' + 'd'.repeat(64), containerId = 'a'.repeat(64);
 async function fixture(t, { tap = false, setup, directoryScope = false } = {}) {
@@ -387,6 +387,92 @@ test('MCP test and verified result use private host publication while ordinary m
   const accepted = await rpc('tools/call', { name: 'context_guard_exchange', arguments: args });
   assert.equal(accepted.result.structuredContent.stage, 'awaiting-merge'); assert.equal(ordinary.length, 0);
   assert.deepEqual(f.sent.find(value => value.type === 'ci.result'), message);
+});
+
+test('original discovery activates the host proof bundle and restores a lost terminal ACK without rerunning', async t => {
+  // Real Discovery HTTP, source/Runner/publisher and Core transaction. Docker
+  // observations and approval are synthetic, never a real native CI verdict.
+  const f = await proofFixture(t), ordinary = [], contextReads = [];
+  let clock = 1000;
+  const bridge = await startCursorCiDiscovery({ now: () => clock, ttlMs: 1000 }); t.after(() => bridge.close());
+  const original = { endpoint: bridge.endpoint, credential: bridge.credential };
+  const rpc = async (method, params, id = 'rpc') => {
+    const response = await fetch(bridge.endpoint, { method: 'POST', headers: {
+      'Content-Type': 'application/json', Authorization: `Bearer ${bridge.credential}` },
+    body: JSON.stringify({ jsonrpc: '2.0', ...(id ? { id } : {}), method, ...(params ? { params } : {}) }) });
+    assert.ok([200, 202].includes(response.status)); return response.status === 202 ? null : response.json();
+  };
+  await rpc('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'synthetic-native', version: '1' } });
+  await rpc('notifications/initialized', undefined, null);
+  assert.deepEqual((await rpc('tools/list')).result.tools.map(tool => tool.name),
+    ['context_guard_context', 'context_guard_source', 'context_guard_test', 'context_guard_exchange']);
+  const dormant = await rpc('tools/call', { name: 'context_guard_context', arguments: {} });
+  assert.equal(JSON.parse(dormant.result.content[0].text).error.code, 'CI_NOT_ACTIVE');
+  assert.equal(f.state.calls.length, 0); assert.equal(f.sent.length, 0);
+  clock = 1300; // Activation retains the startup deadline, not another full TTL.
+  await bridge.activate({ client: { context: async ({ ciResult = false } = {}) => {
+    contextReads.push(ciResult);
+    const task = await f.store.transaction(state => state.tasks[f.taskKey], { readOnly: true });
+    if (f.state.revoked || !ciResult && task.stage !== 'testing') {
+      throw Object.assign(new Error('synthetic provider stage denied'), { code: 'CI_AUTHORIZATION_REJECTED' });
+    }
+    return { mode: 'ci', ...structuredClone(f.context) };
+  }, exchange: async message => { ordinary.push(message); throw new Error('no ordinary write fallback'); } },
+  testerSessionId: f.context.tester.sessionId, nativeSessionId: f.context.tester.nativeSessionId,
+  source: f.source, tests: ['check'], ...f.proof });
+  assert.equal(bridge.endpoint, original.endpoint); assert.equal(bridge.credential, original.credential);
+  const context = (await rpc('tools/call', { name: 'context_guard_context', arguments: {} })).result.structuredContent;
+  assert.equal(context.taskId, f.context.taskId); assert.equal(context.sourceSha, f.context.sourceSha);
+  assert.deepEqual(context.testIds, ['check']); assert.deepEqual(context.sourceFiles, ['check.mjs']);
+  const observed = (await rpc('tools/call', { name: 'context_guard_test', arguments: { id: 'request', testId: 'check' } })).result.structuredContent;
+  assert.equal(observed.status, 'passed'); assert.ok(observed.evidenceVersion);
+  const message = f.proposal(observed), { v, session, ...args } = message;
+  f.state.lostAck = 'ci.result';
+  const uncertain = await rpc('tools/call', { name: 'context_guard_exchange', arguments: args });
+  assert.equal(JSON.parse(uncertain.result.content[0].text).error.code, 'CI_CONNECTION_UNAVAILABLE');
+  assert.equal((await f.store.transaction(state => state.tasks[f.taskKey], { readOnly: true })).stage, 'awaiting-merge');
+  const recoveryOffset = contextReads.length;
+  const replay = await rpc('tools/call', { name: 'context_guard_exchange', arguments: args });
+  assert.equal(replay.result.structuredContent.stage, 'awaiting-merge');
+  assert.equal(replay.result.structuredContent.verdict, 'passed');
+  assert.ok(contextReads.length > recoveryOffset); assert.equal(contextReads.slice(recoveryOffset).every(Boolean), true);
+  assert.deepEqual(f.sent.filter(value => value.type === 'ci.result'), [message, message]);
+  assert.equal(f.state.calls.filter(args => args[0] === 'start').length, 1);
+  assert.equal(ordinary.length, 0);
+  const state = await f.store.transaction(value => value, { readOnly: true });
+  assert.equal(Object.values(state.queues).flatMap(queue => queue.items).filter(item => item.message.type === 'ci.result').length, 1);
+  const changed = await rpc('tools/call', { name: 'context_guard_exchange', arguments: { ...args, id: 'replacement-result' } });
+  assert.equal(JSON.parse(changed.result.content[0].text).error.code, 'CI_RESULT_ALREADY_PENDING');
+  const changedBody = await rpc('tools/call', { name: 'context_guard_exchange', arguments: {
+    ...args, payload: { ...args.payload, verdict: 'incomplete' } } });
+  assert.equal(JSON.parse(changedBody.result.content[0].text).error.code, 'ID_REUSED');
+  assert.equal(f.sent.filter(value => value.type === 'ci.result').length, 2);
+  await assert.rejects(bridge.activate({}), { code: 'CI_ALREADY_ACTIVATED' });
+  clock = 2000;
+  await assert.rejects(bridge.call('context_guard_exchange', args), { code: 'CI_CAPABILITY_EXPIRED' });
+  assert.equal(f.state.calls.filter(args => args[0] === 'start').length, 1);
+  assert.equal(ordinary.length, 0);
+});
+
+test('original discovery revocation permanently refuses even the accepted host result receipt', async t => {
+  const f = await proofFixture(t), ordinary = [];
+  const bridge = await startCursorCiDiscovery(); t.after(() => bridge.close());
+  await bridge.activate({ client: { context: async () => {
+    if (f.state.revoked) throw Object.assign(new Error('revoked synthetic provider'), { code: 'CI_AUTHORIZATION_REJECTED' });
+    return { mode: 'ci', ...structuredClone(f.context) };
+  }, exchange: async message => { ordinary.push(message); throw new Error('no ordinary write fallback'); } },
+  testerSessionId: f.context.tester.sessionId, nativeSessionId: f.context.tester.nativeSessionId,
+  source: f.source, tests: ['check'], ...f.proof });
+  const observed = await bridge.call('context_guard_test', { id: 'request', testId: 'check' });
+  const message = f.proposal(observed), { v, session, ...args } = message;
+  assert.equal((await bridge.call('context_guard_exchange', args)).stage, 'awaiting-merge');
+  f.state.revoked = true;
+  await assert.rejects(bridge.call('context_guard_exchange', args), { code: 'CI_AUTHORIZATION_REJECTED' });
+  f.state.revoked = false;
+  await assert.rejects(bridge.call('context_guard_exchange', args), { code: 'CI_CAPABILITY_EXPIRED' });
+  assert.equal(f.sent.filter(value => value.type === 'ci.result').length, 1);
+  assert.equal(f.state.calls.filter(args => args[0] === 'start').length, 1);
+  assert.equal(ordinary.length, 0);
 });
 
 function recoveredRunner(f) {

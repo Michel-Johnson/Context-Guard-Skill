@@ -110,6 +110,10 @@ Cursor 的公开 CI 入口在宿主证明及原事务校验接通前拒绝 `ci.r
 
 宿主取得原生 ID、原投递及实际 owning worker PID 后，只能激活一次。激活复用原任务鉴权及完整固定身份；失败、不确定、关闭或到期后永久拒绝，不允许借相同入口更换任务或延长初始期限。激活过程中仍无业务权限，关闭会撤销晚到结果。
 
+原 Discovery 激活入口接收宿主私有 `runTest`、`verifyResult`、`submitVerifiedResult` 三个回调。出现任一自有字段时，三者都须为自有函数字段；继承回调、缺失、undefined、非法类型或额外配置拒绝，并烧毁原能力。宿主必须整体传入同一原 HostProof 的回调；类型检查本身不能证明可信观察或一致作用域。
+
+未提供这组回调时，Discovery 激活只开放固定上下文、批准源码与受限 `object.read`；测试、证据写入和结果回报都报 `CI_HOST_PROOF_REQUIRED`，不回退普通 `client.exchange` 写通道。完整回调不改变原 endpoint、凭据、协议、身份或最初期限；终态失 ACK 仍走原编号、正文和宿主期望，不重新激活或重跑测试。
+
 发现与活动状态共用原 endpoint、能力与初始化协议；元数据发现不构成开发批准。当前正式 HTTP 与原生机制已验证该入口，`CursorRuntime` 的生产 worker/profile 接线及原 CI 证明回报仍待完成。
 
 工具只提供当前 CI 上下文、批准源码读取、固定 testId 执行和原 CI 消息回报。模型不能选择 argv、工作树、环境、镜像或任务身份。既有用户配置和 Hook 不替换。
@@ -161,6 +165,8 @@ Cloud 在原 Core authorize 中核当前 Task 与已发批准，新写入把范�
 测试工具先将宿主观察以稳定编号写入保留的 host evidence，确认原 Core 的引用/版本后才交给模型。模型回报只能引用这些已确认观察；宿主不改写模型的原 `ci.result` 编号、载荷或结论。提交意图及终态回执先持久保存，失 ACK 只重放原编号，不能重启测试或模型。
 
 MCP 用私有 `submitVerifiedResult` callback 发布经核验的结果，不增加公开工具或绕过普通模型结果拒绝。正式测试已覆盖产品 MCP HTTP、Runner 与 Core 事务组合；Docker、任务批准为合成依赖，不代表原生角色闭环。
+
+原 Discovery 到同一 HostProof 的组合回归也核对终态已接受但 ACK 丢失、原编号恢复、单次 Runner 执行、改提案、撤权和初始期限到期。Docker 与批准仍为合成前提；该接线不证明原生工具隔离，Runtime 业务硬停保留，直到原生 worker 的完整准备、执行与停止经过验证。
 
 私有提交还携带宿主保存的证据引用、准确版本与内容摘要。接收 callback 必须在原 Core 的同一事务 authorize 中核验这些期望，确保 reducer 读取的 latest 就是该观察；不能用提交前网络回读替代。模块内测试使用 `assertCursorCiHostEvidence`，Cloud 自有接收器使用 `authorizeCursorCiHostEvidence`，不反向导入本地工作台源码。
 

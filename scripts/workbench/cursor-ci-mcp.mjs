@@ -233,12 +233,19 @@ export async function startCursorCiDiscovery({ ttlMs = 1800000, now = Date.now }
   const startedAt = now();
   if (!Number.isSafeInteger(startedAt)) fail('CI_CONFIG_INVALID');
   const expiresAt = startedAt + ttlMs;
-  let closed = false, attempted = false, turn;
+  let closed = false, attempted = false, turn, hostProof = false;
   const expire = () => { closed = true; clearTimeout(expiry); turn?.revoke(); };
   const expiry = setTimeout(expire, ttlMs); expiry.unref?.();
   const alive = () => { if (closed || now() >= expiresAt) { expire(); fail('CI_CAPABILITY_EXPIRED'); } };
   const fresh = async ciResult => { alive(); if (turn) await turn.fresh(ciResult); alive(); };
-  const call = async (name, args) => { alive(); if (!turn) fail('CI_NOT_ACTIVE'); return turn.call(name, args); };
+  const call = async (name, args) => {
+    alive(); if (!turn) fail('CI_NOT_ACTIVE');
+    // Read-only activation must not fall through to the ordinary model write
+    // channel merely because the owning host has not connected its publisher.
+    if (!hostProof && (name === 'context_guard_test' ||
+        name === 'context_guard_exchange' && ['object.put', 'ci.result'].includes(args?.type))) fail('CI_HOST_PROOF_REQUIRED');
+    return turn.call(name, args);
+  };
   let transport;
   try { transport = await createCiHttp({ fresh, call, onClose: expire }); }
   catch (cause) { expire(); throw cause; }
@@ -247,12 +254,15 @@ export async function startCursorCiDiscovery({ ttlMs = 1800000, now = Date.now }
     if (attempted) fail('CI_ALREADY_ACTIVATED');
     attempted = true;
     try {
-      if (!noExtra(options, ['client', 'testerSessionId', 'nativeSessionId', 'source', 'tests', 'runTest', 'verifyResult'])) fail('CI_CONFIG_INVALID');
+      const callbacks = ['runTest', 'verifyResult', 'submitVerifiedResult'];
+      if (!noExtra(options, ['client', 'testerSessionId', 'nativeSessionId', 'source', 'tests', ...callbacks])) fail('CI_CONFIG_INVALID');
+      const hasCallbacks = callbacks.some(key => Object.hasOwn(options, key));
+      if (hasCallbacks && !callbacks.every(key => Object.hasOwn(options, key) && typeof options[key] === 'function')) fail('CI_CONFIG_INVALID');
       const remaining = expiresAt - now();
       if (remaining < 100) fail('CI_CAPABILITY_EXPIRED');
       const active = await createCiTurn({ ...options, ttlMs: remaining, now });
       if (closed || now() >= expiresAt) { active.revoke(); fail('CI_CAPABILITY_EXPIRED'); }
-      turn = active;
+      turn = active; hostProof = hasCallbacks;
     } catch (cause) { expire(); throw cause; }
   } };
 }

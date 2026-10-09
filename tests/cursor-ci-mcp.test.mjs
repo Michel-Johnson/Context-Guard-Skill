@@ -71,10 +71,59 @@ test('dormant MCP discovers the fixed tools without granting task reads, tests o
   assert.equal(f.state.exchanges.length, 0);
 });
 
+test('discovery activated without host proof remains read-only and never falls back to ordinary writes', async t => {
+  const f = await discoveryFixture(t); await f.bridge.activate(f.activation);
+  assert.equal((await f.call('context_guard_context')).body.result.structuredContent.taskId, scope().taskId);
+  const read = { id: 'original-read', type: 'object.read', payload: { ref: 'plan-one', version: 'plan-v2' } };
+  assert.equal((await f.call('context_guard_exchange', read)).body.result.structuredContent.received, read.id);
+  const put = { id: 'no-host-proof', type: 'object.put', payload: { ref: `ci:${testerSessionId}:evidence`,
+    baseVersion: '', kind: 'evidence', content: { observation: 'not host observed' } } };
+  const deniedPut = await f.call('context_guard_exchange', put);
+  assert.equal(deniedPut.body.result.isError, true, 'missing host proof must not return an ordinary write receipt');
+  assert.equal(toolError(deniedPut), 'CI_HOST_PROOF_REQUIRED');
+  assert.equal(toolError(await f.call('context_guard_exchange', resultMessage())), 'CI_HOST_PROOF_REQUIRED');
+  assert.equal(toolError(await f.call('context_guard_test', { id: 'request', testId: 'fixed-test' })), 'CI_HOST_PROOF_REQUIRED');
+  assert.deepEqual(f.state.exchanges, [{ v: 2, ...read, session: scope().session }], 'only the original fixed read reaches the client');
+});
+
+test('discovery rejects incomplete or invalid private host callback bundles and burns the original capability', async t => {
+  const complete = { runTest: async () => {}, verifyResult: async () => {}, submitVerifiedResult: async () => {} };
+  for (const name of Object.keys(complete)) for (const invalid of ['missing', undefined, null, 'model-supplied', {}]) {
+    await t.test(`${name}: ${typeof invalid === 'object' && invalid !== null ? 'object' : String(invalid)}`, async t => {
+      const f = await discoveryFixture(t), callbacks = { ...complete };
+      if (invalid === 'missing') delete callbacks[name]; else callbacks[name] = invalid;
+      const original = { endpoint: f.bridge.endpoint, credential: f.bridge.credential };
+      await assert.rejects(f.bridge.activate({ ...f.activation, ...callbacks }), { code: 'CI_CONFIG_INVALID' });
+      await assert.rejects(f.bridge.activate({ ...f.activation, ...complete }), { code: 'CI_CAPABILITY_EXPIRED' });
+      await assert.rejects(f.bridge.call('context_guard_context', {}), { code: 'CI_CAPABILITY_EXPIRED' });
+      assert.equal(f.bridge.endpoint, original.endpoint); assert.equal(f.bridge.credential, original.credential);
+      assert.equal(f.state.exchanges.length, 0);
+    });
+  }
+  for (const name of Object.keys(complete)) {
+    await t.test(`${name}: inherited callback`, async t => {
+      const f = await discoveryFixture(t);
+      const options = Object.assign(Object.create({ [name]: complete[name] }), f.activation, complete);
+      delete options[name];
+      assert.equal(Object.hasOwn(options, name), false);
+      assert.equal(typeof options[name], 'function', 'prototype provides the callback lost by an object spread');
+      const original = { endpoint: f.bridge.endpoint, credential: f.bridge.credential };
+      await assert.rejects(f.bridge.activate(options), { code: 'CI_CONFIG_INVALID' });
+      await assert.rejects(f.bridge.activate({ ...f.activation, ...complete }), { code: 'CI_CAPABILITY_EXPIRED' });
+      await assert.rejects(f.bridge.call('context_guard_context', {}), { code: 'CI_CAPABILITY_EXPIRED' });
+      assert.equal(f.bridge.endpoint, original.endpoint); assert.equal(f.bridge.credential, original.credential);
+      assert.equal(f.state.exchanges.length, 0);
+    });
+  }
+});
+
 test('dormant MCP activates one original native turn without changing endpoint or protocol', async t => {
   let signal;
   const f = await discoveryFixture(t), original = { endpoint: f.bridge.endpoint, credential: f.bridge.credential };
-  await f.bridge.activate({ ...f.activation, runTest: async (_, bound) => { signal = bound.signal; return { observation: 'synthetic-runner' }; } });
+  const forbidResult = async () => { throw Object.assign(new Error('test-only synthetic host'), { code: 'CI_TEST_PROOF_REQUIRED' }); };
+  await f.bridge.activate({ ...f.activation,
+    runTest: async (_, bound) => { signal = bound.signal; return { observation: 'synthetic-runner' }; },
+    verifyResult: forbidResult, submitVerifiedResult: forbidResult });
   assert.equal(f.bridge.endpoint, original.endpoint); assert.equal(f.bridge.credential, original.credential);
   const context = (await f.call('context_guard_context')).body.result.structuredContent;
   assert.equal(context.taskId, scope().taskId); assert.equal(context.session.id, executorSessionId);
