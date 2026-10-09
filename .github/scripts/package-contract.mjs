@@ -24,14 +24,9 @@ export const installedFiles = [
   "scripts/workbench/context.mjs",
   "scripts/shared/context-tree.mjs",
   "scripts/shared/coordinator-path.mjs",
-<<<<<<< HEAD
   "scripts/shared/coordinator-reply.mjs",
-  "references/design/design-context-v1.0.0.md",
-  "references/design/design-session-record-v1.0.0.md",
-=======
   "skill-reference/design/design-context-v1.0.0.md",
   "skill-reference/formats/session-record.md",
->>>>>>> origin/main
   "scripts/workbench/memory-merge.mjs",
   "scripts/shared/memory-schema.mjs",
   "THIRD_PARTY_NOTICES.md",
