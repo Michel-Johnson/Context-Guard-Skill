@@ -1,7 +1,8 @@
 import { lexer } from './vendor/marked.mjs';
 
 export function bindingProposalText(proposal) {
-  return '建议绑定到：\n' + proposal.pathText +
+  const type = ({ todo: '待办', bug: 'Bug', idea: '想法' })[proposal.itemKind];
+  return (type ? type + (proposal.title ? '：' + proposal.title : '') + '\n' : '') + '建议绑定到：\n' + proposal.pathText +
     (typeof proposal.reason === 'string' && proposal.reason.trim() ? '\n理由：' + proposal.reason.trim() : '') +
     '\n可回复“同意绑定”或“暂不绑定”，也可点下方按钮。';
 }
