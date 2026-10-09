@@ -15,6 +15,7 @@
 | 本地会话记录 | [design-session-record-v1.0.0.md](design-session-record-v1.0.0.md) | 开发笔记的保存位置、现有格式与归档示例；不上传 Cloud |
 | 接口 | [design-interface-v1.2.1.md](design-interface-v1.2.1.md) | Agent、Human、Host、Cloud 的能力与调用边界 |
 | Agent | [design-agent-v1.0.1.md](design-agent-v1.0.1.md) | 角色职责、协作边界和运行提示入口 |
+| Coordinator 需求讨论 | [design-coordinator-dialogue-v0.1.0.md](design-coordinator-dialogue-v0.1.0.md) | 自然对话、人工确认唯一主节点、祖先记忆和两端流程验收 |
 | 底层文件结构 | [design-memory-filesystem-v1.0.1.md](design-memory-filesystem-v1.0.1.md) | Main / Session 目录、索引、事项文件与生成规则 |
 | 记忆撰写 | [design-memory-definition-v0.2.0.md](design-memory-definition-v0.2.0.md) | 仅规定项目与节点 memory.md 的内容、格式和维护 |
 | 服务器记忆 | [design-memory-server-v1.1.0.md](design-memory-server-v1.1.0.md) | 服务器数据权威、权限、同步和发布规则 |

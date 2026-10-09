@@ -1,6 +1,6 @@
 {
   "name": "@michelj/context-guard-core",
-  "version": "2.2.1",
+  "version": "2.3.1",
   "type": "module",
   "description": "Context Guard 共享 Map、协议与运行基础",
   "repository": "github:Michel-Johnson/Context-Guard-Skill",
