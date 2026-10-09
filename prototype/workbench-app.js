@@ -5457,6 +5457,7 @@ async function installCoordinatorPanel(sync){
     for(const proposal of state.approvals||[]){
       if(proposal.kind!=='binding-proposal'||!proposal.pending)continue;
       const card=document.createElement('section'),description=document.createElement('p');
+      description.style.whiteSpace='pre-wrap';
       description.textContent='建议绑定到：\n'+proposal.pathText+'\n可回复“同意绑定”或“暂不绑定”，也可点下方按钮。';
       card.append(description);
       for(const [decision,label]of [['approved','确认绑定'],['rejected','暂不绑定']]){
