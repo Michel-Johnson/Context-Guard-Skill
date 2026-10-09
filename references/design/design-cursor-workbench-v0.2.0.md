@@ -54,6 +54,10 @@ CLI 与网页直接发消息共用 `native.prompt` 检查和投递编号；管�
 
 默认拒绝工具授权。操作者显式设置 `permissionPolicy:allow-once` 且 `permissionsApproved:true` 后，仅选择厂商提供的 allow_once 选项。Tester 还须限制到其测试范围，不能复用 Executor 的全工具授权。
 
+当前本地 Tester 不继承上述 Executor 授权：包括磁盘保留的旧 `allow-once` 配置，宿主工具请求均拒绝。ACP 工具描述不能证明完整命令、工作目录和路径范围，不从标题或提示词推导权限。这只取消宿主的宽泛授权，不是厂商文件系统沙箱；Cursor 自带的已授权工具仍需真实验证。受限测试执行通道尚未完成，因此不宣称本地 Tester 已能完成真实任务；独立 CI 回报仍须真实测试证据，不能用拒绝请求或本轮结束代替。
+
+本地 CI 对象读取只接受当前派发 `references` 中固定的引用/版本及 Tester 自己的 evidence 命名空间。知道同一 Executor Session 的其他任务引用，不授予读取权限。Cloud 接收端的当前任务事务限制仍须另行验证，不能用本地检查替代服务器鉴权。
+
 厂商 Plan 或问题不能被静默批准。未连接的交互明确取消，不伪造 Coordinator 回答；交互桥接后仍与需求批准和 Plan 审核分开。
 
 已有 Hook 不替换。只终止自己创建的进程，不清理用户文件。子进程 stderr 不进入 API 错误；私有执行输出不进入 Git。

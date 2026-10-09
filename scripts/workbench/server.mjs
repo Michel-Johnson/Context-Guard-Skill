@@ -1062,8 +1062,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const context = await ciRuntime.ciContext(actor.sessionId, { verifySource: input.type === 'ci.result' });
           if (!context || input.session && JSON.stringify(input.session) !== JSON.stringify(context.session)) protocolFail('FORBIDDEN', 'CI message targets a different developer Session');
           const message = validateMessage({ ...input, session: context.session });
+          const ownEvidence = message.payload.ref?.startsWith(`ci:${actor.sessionId}:`);
+          const assignedReference = Object.hasOwn(context.references || {}, message.payload.ref) && context.references[message.payload.ref] === message.payload.version;
           if (!['object.read', 'object.put', 'ci.result'].includes(message.type) || message.type === 'object.put' &&
-              (message.payload.kind !== 'evidence' || !message.payload.ref.startsWith(`ci:${actor.sessionId}:`)) || message.type === 'ci.result' &&
+              (message.payload.kind !== 'evidence' || !ownEvidence) || message.type === 'object.read' && !ownEvidence && !assignedReference || message.type === 'ci.result' &&
               (message.payload.taskId !== context.taskId || message.payload.sourceSha !== context.sourceSha)) protocolFail('FORBIDDEN', 'CI message exceeds its assigned test scope');
           const connection = await projectDevice();
           if (!connection) protocolFail('UNAVAILABLE', 'Cloud connection is unavailable');

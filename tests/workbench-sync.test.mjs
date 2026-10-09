@@ -1585,7 +1585,7 @@ test('Cursor Tester public HTTP keeps exact source, role and evidence scope inde
     assert.deepEqual((await call('/api/v2/execution', tester.data.token)).data, { active: null, ci: true });
     const project = await resolveProject(f.root), runtime = new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime'));
     runtime.wake = async () => {}; // Durable local API scope only; no external Cursor model is invoked.
-    const execution = { session: executor.data.protocolBinding.session, taskId: 'assigned-task', sourceSha: sha, ciTodoRef: 'assigned-checks', references: {} };
+    const execution = { session: executor.data.protocolBinding.session, taskId: 'assigned-task', sourceSha: sha, ciTodoRef: 'assigned-checks', references: { 'assigned-checks': 'checks-version', 'assigned-unit': 'unit-version' } };
     await runtime.deliver({ id: 'ci-assignment', sessionId: testerId, root: ciRoot, message: 'Test assigned commit', execution });
     assert.deepEqual((await call('/api/v2/execution', tester.data.token)).data.active, { ...execution, mode: 'ci', commands: ['node --test'] });
     const result = { v: 2, id: 'ci-result', type: 'ci.result', payload: { taskId: execution.taskId, sourceSha: sha, verdict: 'passed', checks: [{ testId: 'fixture-test', todoId: 'fixture-todo', status: 'passed', evidenceRef: `ci:${testerId}:test` }] } };
@@ -1595,6 +1595,16 @@ test('Cursor Tester public HTTP keeps exact source, role and evidence scope inde
     const object = { v: 2, id: 'ci-evidence', type: 'object.put', payload: { kind: 'evidence', ref: `ci:${testerId}:test`, baseVersion: '', content: { output: 'isolated fixture' } } };
     assert.equal((await call('/api/v2/ci', tester.data.token, { ...object, payload: { ...object.payload, ref: `ci:${executorId}:test` } })).status, 403);
     assert.equal((await call('/api/v2/ci', tester.data.token, { ...object, payload: { ...object.payload, kind: 'plan' } })).status, 403);
+    const read = { v: 2, id: 'ci-read', type: 'object.read', payload: { ref: 'assigned-checks', version: 'checks-version' } };
+    for (const payload of [{ ref: 'other-task-checks', version: 'checks-version' }, { ref: 'assigned-checks', version: 'old-version' },
+      { ref: `ci:${executorId}:test`, version: 'evidence-version' }, { ref: '__proto__', version: 'checks-version' }]) {
+      const rejected = await call('/api/v2/ci', tester.data.token, { ...read, payload });
+      assert.equal(rejected.status, 403, JSON.stringify(rejected.data)); assert.equal(rejected.data.error.code, 'FORBIDDEN');
+    }
+    for (const payload of [read.payload, { ref: 'assigned-unit', version: 'unit-version' }, { ref: `ci:${testerId}:test`, version: 'evidence-version' }]) {
+      const allowed = await call('/api/v2/ci', tester.data.token, { ...read, payload });
+      assert.equal(allowed.status, 503); assert.equal(allowed.data.error.code, 'UNAVAILABLE', 'scope authorization does not invent a Cloud object');
+    }
     const noCloud = await call('/api/v2/ci', tester.data.token, result);
     assert.equal(noCloud.status, 503); assert.equal(noCloud.data.error.code, 'UNAVAILABLE', 'valid local scope is not a synthetic Cloud CI success');
     await fs.writeFile(path.join(ciRoot, 'README.md'), 'modified after assignment\n');

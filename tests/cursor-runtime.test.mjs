@@ -17,6 +17,57 @@ import { fileURLToPath } from 'node:url';
 import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
 import { registeredExecutorCreation } from '../scripts/workbench/server.mjs';
 
+for (const role of ['executor', 'ci']) {
+  test(`Cursor ${role} worker keeps tool grants separate from the other role`, async t => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-worker-permission-'));
+    const root = path.join(directory, 'source'); await fs.mkdir(root);
+    const execute = promisify(execFile);
+    const git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+    await git('init', '-b', 'main');
+    await fs.writeFile(path.join(root, '.gitignore'), '.codex/\n');
+    await fs.writeFile(path.join(root, 'source.txt'), 'unchanged\n');
+    await git('add', '.gitignore', 'source.txt');
+    await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'permission fixture');
+    const sourceSha = await git('rev-parse', 'HEAD'), executorSessionId = randomUUID(), sessionId = randomUUID();
+    const options = [{ optionId: 'always', kind: 'allow_always' }, { optionId: 'once', kind: 'allow_once' }, { optionId: 'deny', kind: 'reject_once' }];
+    const requests = [
+      { toolCall: { toolCallId: 'write', kind: 'edit', content: [{ type: 'diff', path: path.join(root, 'source.txt'), oldText: 'unchanged\n', newText: 'changed\n' }] }, options },
+      { toolCall: { toolCallId: 'shell', kind: 'execute', title: 'node --test', rawInput: { command: 'node --test' } }, options },
+      { toolCall: { toolCallId: 'outside', kind: 'read', locations: [{ path: path.join(directory, 'outside.txt') }] }, options },
+      { toolCall: { toolCallId: 'question', kind: 'other' }, options },
+      { options },
+    ];
+    const decisions = [];
+    // Only the native transport is substituted; the actual worker installs and
+    // invokes its permission callback. No vendor or filesystem sandbox claim.
+    const native = { initialized: false, sessionId, child: { pid: process.pid },
+      async connect() { this.initialized = true; return { sessionId }; },
+      async prompt() {
+        for (const request of requests) decisions.push(await this.requestPermission({ sessionId, ...request }));
+        return { stopReason: 'end_turn' };
+      }, async close() {},
+    };
+    const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: () => native });
+    t.after(() => runtime.close()); // Preserve isolated files under the user's no-deletion instruction.
+    if (role === 'ci') await runtime.configure(executorSessionId, { command: process.execPath, root: directory, name: 'Executor' });
+    await runtime.provision({ operationId: 'permission-task', sessionId, config: {
+      command: process.execPath, root, name: 'Permission fixture', role,
+      permissionPolicy: 'allow-once', permissionsApproved: true,
+      ...(role === 'ci' ? { executorSessionId, ciCommands: ['node --test'] } : {}),
+    } });
+    await runtime.deliver({ id: 'permission-turn', sessionId, root, message: 'Inspect assigned code',
+      ...(role === 'ci' ? { execution: { session: { id: executorSessionId, generation: 1 }, taskId: 'permission-task', sourceSha } } : {}),
+    });
+    const jobFile = runtime.jobFile(sessionId, 'permission-turn'), deadline = Date.now() + 5000;
+    while (!['finished', 'failed', 'interrupted'].includes((await readJSON(jobFile)).state)) {
+      assert.ok(Date.now() < deadline, 'worker must finish the permission turn'); await pause(10);
+    }
+    assert.equal((await readJSON(jobFile)).state, 'finished');
+    assert.deepEqual(decisions, Array(requests.length).fill(role === 'ci' ? undefined : 'once'));
+    assert.equal(await fs.readFile(path.join(root, 'source.txt'), 'utf8'), 'unchanged\n');
+  });
+}
+
 test('Cursor Tester retains its independent role and checks the exact Executor handoff without granting direct prompts', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-ci-role-'));
   const execute = promisify(execFile), root = path.join(directory, 'executor'), ciRoot = path.join(directory, 'tester');

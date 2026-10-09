@@ -351,7 +351,9 @@ async function runWorker(file, jobFile, heldAcp) {
   try {
     log = await fs.open(jobFile + '.jsonl', 'a', 0o600);
     if (stopping) fail('CURSOR_INTERRUPTED', 'Cursor worker was stopped');
-    const requestPermission = params => config.permissionPolicy === 'allow-once' && config.permissionsApproved === true
+    // ACP descriptions do not prove bounded test commands/paths. Never lend
+    // the Executor's broad grant to a Tester, including retained old settings.
+    const requestPermission = params => config.role !== 'ci' && config.permissionPolicy === 'allow-once' && config.permissionsApproved === true
         ? params.options?.find(option => option.kind === 'allow_once')?.optionId : undefined,
       onUpdate = async event => {
         if (!ready) return; // session/load replays history, not new turn output.
