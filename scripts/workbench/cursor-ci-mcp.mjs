@@ -80,7 +80,7 @@ const tools = [
 
 // One capability per native CI turn. Business truth/receipts remain in the
 // original protocol; this server has no task queue or model loop.
-export async function startCursorCiMcp({ client, testerSessionId, nativeSessionId, source, tests = [], runTest,
+async function createCiTurn({ client, testerSessionId, nativeSessionId, source, tests = [], runTest,
   verifyResult, ttlMs = 1800000, now = Date.now } = {}) {
   if (!client || typeof client.context !== 'function' || typeof client.exchange !== 'function' || !uuid.test(testerSessionId || '') ||
       typeof nativeSessionId !== 'string' || !nativeSessionId || nativeSessionId.length > 256 ||
@@ -91,10 +91,9 @@ export async function startCursorCiMcp({ client, testerSessionId, nativeSessionI
       scope.tester?.workerPid !== process.pid ||
       typeof scope.tester?.deliveryId !== 'string' || !scope.tester.deliveryId || scope.tester.deliveryId.length > 256) fail('CI_NATIVE_MISMATCH');
   if (source && source.manifest?.sourceSha !== scope.sourceSha) fail('CI_SOURCE_CHANGED');
-  const credential = `cgci_${randomBytes(32).toString('base64url')}`;
-  const key = Buffer.from(credential), abort = new AbortController();
+  const abort = new AbortController();
   const expiry = setTimeout(() => abort.abort(), ttlMs); expiry.unref?.();
-  let initialized = false, protocolVersion = null, endpoint, closed = false;
+  let closed = false;
   const fresh = async (ciResult = false) => { try {
     if (closed || abort.signal.aborted || now() >= expiresAt) fail('CI_CAPABILITY_EXPIRED');
     const current = await client.context({ ciResult });
@@ -144,6 +143,15 @@ export async function startCursorCiMcp({ client, testerSessionId, nativeSessionI
     await fresh(); // Revocation/drift during a call cannot become a success.
     return result;
   };
+  return { fresh, call, revoke() { closed = true; clearTimeout(expiry); abort.abort(); } };
+}
+
+// Both ordinary active turns and pre-session discovery use this exact wire
+// contract. Discovery has no original task credential or business grant.
+async function createCiHttp({ fresh, call, onClose }) {
+  const credential = `cgci_${randomBytes(32).toString('base64url')}`;
+  const key = Buffer.from(credential);
+  let initialized = false, protocolVersion = null, endpoint, closing;
   const server = http.createServer(async (req, res) => {
     let input;
     const send = (status, body) => {
@@ -198,8 +206,48 @@ export async function startCursorCiMcp({ client, testerSessionId, nativeSessionI
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   endpoint = `http://127.0.0.1:${server.address().port}/ci`;
-  return { endpoint, credential, call, async close() {
-    if (closed) return; closed = true; clearTimeout(expiry); abort.abort();
-    await new Promise(resolve => { server.close(resolve); server.closeAllConnections?.(); });
+  return { endpoint, credential, call, close() {
+    if (closing) return closing;
+    onClose();
+    closing = new Promise(resolve => { server.close(resolve); server.closeAllConnections?.(); });
+    return closing;
+  } };
+}
+
+export async function startCursorCiMcp(options) {
+  const turn = await createCiTurn(options);
+  try { return await createCiHttp({ fresh: turn.fresh, call: turn.call, onClose: () => turn.revoke() }); }
+  catch (cause) { turn.revoke(); throw cause; }
+}
+
+// The official native client discovers MCP before it returns its Session ID.
+// Activate once, only after the original delivery/native/owning PID is known.
+// An uncertain or failed activation is not permission to replace that turn.
+export async function startCursorCiDiscovery({ ttlMs = 1800000, now = Date.now } = {}) {
+  if (!Number.isSafeInteger(ttlMs) || ttlMs < 100 || ttlMs > 1800000 || typeof now !== 'function') fail('CI_CONFIG_INVALID');
+  const startedAt = now();
+  if (!Number.isSafeInteger(startedAt)) fail('CI_CONFIG_INVALID');
+  const expiresAt = startedAt + ttlMs;
+  let closed = false, attempted = false, turn;
+  const expire = () => { closed = true; clearTimeout(expiry); turn?.revoke(); };
+  const expiry = setTimeout(expire, ttlMs); expiry.unref?.();
+  const alive = () => { if (closed || now() >= expiresAt) { expire(); fail('CI_CAPABILITY_EXPIRED'); } };
+  const fresh = async ciResult => { alive(); if (turn) await turn.fresh(ciResult); alive(); };
+  const call = async (name, args) => { alive(); if (!turn) fail('CI_NOT_ACTIVE'); return turn.call(name, args); };
+  let transport;
+  try { transport = await createCiHttp({ fresh, call, onClose: expire }); }
+  catch (cause) { expire(); throw cause; }
+  return { ...transport, async activate(options) {
+    alive();
+    if (attempted) fail('CI_ALREADY_ACTIVATED');
+    attempted = true;
+    try {
+      if (!noExtra(options, ['client', 'testerSessionId', 'nativeSessionId', 'source', 'tests', 'runTest', 'verifyResult'])) fail('CI_CONFIG_INVALID');
+      const remaining = expiresAt - now();
+      if (remaining < 100) fail('CI_CAPABILITY_EXPIRED');
+      const active = await createCiTurn({ ...options, ttlMs: remaining, now });
+      if (closed || now() >= expiresAt) { active.revoke(); fail('CI_CAPABILITY_EXPIRED'); }
+      turn = active;
+    } catch (cause) { expire(); throw cause; }
   } };
 }

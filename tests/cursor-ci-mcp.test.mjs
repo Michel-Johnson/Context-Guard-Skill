@@ -7,6 +7,7 @@ import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { OriginalCursorCiClient, startCursorCiMcp } from '../scripts/workbench/cursor-ci-mcp.mjs';
+import * as ciTools from '../scripts/workbench/cursor-ci-mcp.mjs';
 import { exportCursorCiSource } from '../scripts/workbench/cursor-ci-source.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
@@ -41,6 +42,86 @@ async function fixture(t, options = {}) {
 const toolError = response => JSON.parse(response.body.result.content[0].text).error.code;
 const resultMessage = () => ({ id: 'ci-result-stable', type: 'ci.result', payload: { taskId: 'task-one', sourceSha: 'c'.repeat(40),
   verdict: 'passed', checks: [{ testId: 'fixed-test', todoId: 'one', status: 'passed', evidenceRef: `ci:${testerSessionId}:evidence` }] } });
+
+async function discoveryFixture(t, options = {}) {
+  assert.equal(typeof ciTools.startCursorCiDiscovery, 'function', 'Native startup needs task-free metadata discovery');
+  const bridge = await ciTools.startCursorCiDiscovery(options);
+  t.after(() => bridge.close());
+  const request = async (method, params, headers = {}) => {
+    const message = { jsonrpc: '2.0', ...(method === 'notifications/initialized' ? {} : { id: 'discovery-request' }), method, ...(params ? { params } : {}) };
+    const response = await fetch(bridge.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bridge.credential}`, ...headers }, body: JSON.stringify(message) });
+    const text = await response.text(); return { status: response.status, body: text ? JSON.parse(text) : null };
+  };
+  assert.equal((await request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'synthetic-native-discovery', version: '1' } })).status, 200);
+  assert.equal((await request('notifications/initialized')).status, 202);
+  const state = { context: scope(), exchanges: [] };
+  const activation = { ...config, client: { context: async () => structuredClone(state.context), exchange: async message => { state.exchanges.push(message); return { received: message.id }; } } };
+  return { bridge, state, activation, request, call: (name, args = {}) => request('tools/call', { name, arguments: args }) };
+}
+
+test('dormant MCP discovers the fixed tools without granting task reads, tests or writes', async t => {
+  const f = await discoveryFixture(t);
+  assert.equal((await f.request('tools/list', undefined, { Authorization: 'Bearer wrong' })).status, 401);
+  assert.equal((await f.request('tools/list', undefined, { Origin: 'https://unrelated.invalid' })).status, 403);
+  const listed = (await f.request('tools/list')).body.result;
+  assert.deepEqual(listed.tools.map(item => item.name), ['context_guard_context', 'context_guard_source', 'context_guard_test', 'context_guard_exchange']);
+  for (const name of listed.tools.map(item => item.name)) assert.equal(toolError(await f.call(name)), 'CI_NOT_ACTIVE');
+  assert.equal(JSON.stringify(listed).includes('task-one'), false);
+  assert.equal(JSON.stringify(listed).includes(f.bridge.credential), false);
+  assert.equal(f.state.exchanges.length, 0);
+});
+
+test('dormant MCP activates one original native turn without changing endpoint or protocol', async t => {
+  let signal;
+  const f = await discoveryFixture(t), original = { endpoint: f.bridge.endpoint, credential: f.bridge.credential };
+  await f.bridge.activate({ ...f.activation, runTest: async (_, bound) => { signal = bound.signal; return { observation: 'synthetic-runner' }; } });
+  assert.equal(f.bridge.endpoint, original.endpoint); assert.equal(f.bridge.credential, original.credential);
+  const context = (await f.call('context_guard_context')).body.result.structuredContent;
+  assert.equal(context.taskId, scope().taskId); assert.equal(context.session.id, executorSessionId);
+  assert.deepEqual(context.testIds, ['fixed-test']);
+  assert.equal((await f.call('context_guard_test', { id: 'original-run', testId: 'fixed-test' })).body.result.structuredContent.observation, 'synthetic-runner');
+  await assert.rejects(f.bridge.activate(f.activation), { code: 'CI_ALREADY_ACTIVATED' });
+  f.state.context.tester.deliveryId = 'foreign-delivery';
+  assert.equal((await f.call('context_guard_context')).body.error.message, 'CI_TASK_CHANGED');
+  assert.equal(signal.aborted, true);
+  f.state.context = scope();
+  assert.equal((await f.call('context_guard_context')).body.error.message, 'CI_CAPABILITY_EXPIRED');
+  assert.equal(f.state.exchanges.length, 0);
+});
+
+test('closing dormant MCP during activation cannot leak a late business grant or reactivate', async t => {
+  const f = await discoveryFixture(t);
+  let entered, release;
+  const started = new Promise(resolve => { entered = resolve; }), waiting = new Promise(resolve => { release = resolve; });
+  const activation = f.bridge.activate({ ...f.activation, client: { ...f.activation.client, context: async () => { entered(); await waiting; return scope(); } } });
+  await started;
+  const rejection = assert.rejects(activation, { code: 'CI_CAPABILITY_EXPIRED' });
+  assert.equal(toolError(await f.call('context_guard_context')), 'CI_NOT_ACTIVE');
+  await assert.rejects(f.bridge.activate(f.activation), { code: 'CI_ALREADY_ACTIVATED' });
+  await f.bridge.close(); release(); await rejection;
+  await assert.rejects(f.bridge.call('context_guard_context', {}), { code: 'CI_CAPABILITY_EXPIRED' });
+  await assert.rejects(f.bridge.activate(f.activation), { code: 'CI_CAPABILITY_EXPIRED' });
+});
+
+test('dormant MCP failed identity activation burns the capability instead of retrying with a replacement', async t => {
+  const f = await discoveryFixture(t);
+  f.state.context.tester.workerPid = process.pid + 1;
+  await assert.rejects(f.bridge.activate(f.activation), { code: 'CI_NATIVE_MISMATCH' });
+  f.state.context = scope();
+  await assert.rejects(f.bridge.activate(f.activation), { code: 'CI_CAPABILITY_EXPIRED' });
+  assert.equal((await f.call('context_guard_context')).body.error.message, 'CI_CAPABILITY_EXPIRED');
+  assert.equal(f.state.exchanges.length, 0);
+});
+
+test('dormant MCP cannot renew its startup deadline or choose a new activation clock', async t => {
+  let clock = 1000;
+  const f = await discoveryFixture(t, { now: () => clock, ttlMs: 100 });
+  clock = 1100;
+  await assert.rejects(f.bridge.activate(f.activation), { code: 'CI_CAPABILITY_EXPIRED' });
+  const g = await discoveryFixture(t);
+  await assert.rejects(g.bridge.activate({ ...g.activation, ttlMs: 1800000 }), { code: 'CI_CONFIG_INVALID' });
+  await assert.rejects(g.bridge.activate(g.activation), { code: 'CI_CAPABILITY_EXPIRED' });
+});
 
 test('local MCP requires its capability, exact endpoint and initialized protocol', async t => {
   const f = await fixture(t);
