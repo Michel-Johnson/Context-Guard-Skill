@@ -90,3 +90,18 @@ test('opening the actual device approval dialog closes the stable tools so it ca
     assert.equal(panel.open,true);assert.equal(close.focused,true);assert.equal(trigger['aria-expanded'],'true');assert.deepEqual(closed,['tray','settings']);
   }
 });
+
+test('actual Bug and TODO panel toggles close the stable disclosure without changing Map or stealing subsequent clicks',async()=>{
+  const source=await appSource(),code=extract(source,'function toggleWorkPanel(kind){','function renderTray(){');
+  for(const enabled of [false,true])for(const kind of ['bug','todo']){
+    const toolbar={open:true,removeAttribute(name){if(name==='open')this.open=false;}},calls=[];
+    const ctx=vm.createContext({mapBetaEnabled:enabled,document:{getElementById:()=>toolbar,body:{classList:{contains:()=>false}}},bugPathMode:false,activeWorkPanelKind:'bug',closeSettings:()=>calls.push('settings'),openBugPanel:(open,type)=>calls.push([open,type]),renderBugPanel:()=>{},fitView:()=>{},persist:()=>assert.fail('panel selection is presentation only')});
+    vm.runInContext(code,ctx);ctx.toggleWorkPanel(kind);assert.equal(toolbar.open,false,'next disclosure click must reopen its tools');assert.deepEqual(calls,['settings',[true,kind]]);
+  }
+});
+
+test('stable repository linking closes its settings before the native picker rather than leaving an interactive menu under it',async()=>{
+  const source=await appSource(),code=extract(source,'document.getElementById("btn-link-repo").onclick','document.getElementById("first-use-empty")'),button={},calls=[];
+  const ctx=vm.createContext({mapBetaEnabled:false,document:{getElementById:()=>button},closeSettings:()=>calls.push('settings'),linkRepo:async()=>calls.push('picker')});
+  vm.runInContext(code,ctx);await button.onclick();assert.deepEqual(calls,['settings','picker']);ctx.mapBetaEnabled=true;calls.length=0;await button.onclick();assert.deepEqual(calls,[],'Beta never invokes the obsolete linking flow');
+});

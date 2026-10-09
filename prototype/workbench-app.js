@@ -2789,7 +2789,7 @@ document.addEventListener("keydown", e=>{
 document.getElementById("first-use-go").onclick = ()=>enterLensMode();
 document.getElementById("btn-link-repo").onclick = async ()=>{
   if(mapBetaEnabled)return;
-  await linkRepo();closeSettings();
+  closeSettings();await linkRepo();
 };
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
 document.getElementById("first-use-cut-back").onclick = ()=>{
@@ -2871,6 +2871,7 @@ document.getElementById("btn-rel").onclick = ()=>{
 };
 function toggleWorkPanel(kind){
   closeSettings();
+  document.getElementById("workbench-tools")?.removeAttribute("open");
   const open = !document.body.classList.contains("bugs-open") || activeWorkPanelKind!==kind;
   if(!open && bugPathMode){ exitBugPath(true); openBugPanel(false); return; }
   if(bugPathMode && bugFocus && (bugFocus.kind||"bug")!==kind) exitBugPath(true);
