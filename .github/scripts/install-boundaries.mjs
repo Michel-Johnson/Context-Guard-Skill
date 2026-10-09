@@ -117,7 +117,9 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
       for (const client of clients) {
         if (expected.includes(client)) {
           for (const file of installedFiles) assert.ok(fs.existsSync(path.join(skill(client), file)), `${client}/${file}`);
-          assert.ok(!fs.existsSync(path.join(skill(client), "Developer.md")));
+          for (const legacy of ["Developer.md", "Coordinator.md", "Executor.md", "Tester.md", "roles.md"]) {
+            assert.ok(!fs.existsSync(path.join(skill(client), legacy)), `Fresh install must not create ${legacy}`);
+          }
           assertNoPythonCache(skill(client));
           assert.ok(fs.existsSync(config(client)), `${client} hooks missing`);
         } else assert.ok(!fs.existsSync(home(client)), `Must not install unrelated ${client}`);
@@ -130,7 +132,7 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
     const legacy = path.join(env.HOME, "legacy-claude");
     invoke(["install"], true, { ...env, CLAUDE_CONFIG_DIR: directory, CLAUDE_HOME: legacy });
     assert.ok(fs.existsSync(path.join(directory, "settings.json")));
-    for (const role of ["Coordinator.md", "Executor.md", "Tester.md", "roles.md", "references/design/design-memory-definition-v0.2.0.md"]) {
+    for (const role of ["roles/Coordinator.md", "roles/Executor.md", "roles/Tester.md", "roles/README.md", "skill-reference/design/design-memory-definition-v0.2.0.md"]) {
       assert.equal(fs.readFileSync(path.join(directory, "skills", "context-guard", role), "utf8"), fs.readFileSync(path.join(packageDirectory, role), "utf8"));
     }
     assert.ok(!fs.existsSync(legacy));
@@ -155,7 +157,11 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
       write(config(client), settings);
       write(path.join(env.HOME, "project", ".codex", "context", "preferences.json"), { record_language: "zh" });
       write(path.join(env.HOME, "project", ".codex", "context", "user-messages.md"), "keep user memory");
-      write(path.join(skill(client), "Developer.md"), "stale compatibility file");
+      const legacyRoles = {
+        "roles.md": "README.md", "Coordinator.md": "Coordinator.md",
+        "Executor.md": "Executor.md", "Tester.md": "Tester.md", "Developer.md": "Executor.md"
+      };
+      for (const legacy of Object.keys(legacyRoles)) write(path.join(skill(client), legacy), "stale compatibility file");
       const memory = snapshot(path.join(env.HOME, "project"));
       for (let attempt = 0; attempt < 2; attempt++) {
         invoke();
@@ -171,8 +177,12 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
         if (client !== "cursor") assert.equal(groups.find(group => group.hooks.some(h => h.command === thirdParty.command)).matcher, "user-matcher");
         assert.deepEqual(snapshot(path.join(env.HOME, "project")), memory);
         for (const file of installedFiles) assert.ok(fs.existsSync(path.join(skill(client), file)));
-        assert.equal(fs.readFileSync(path.join(skill(client), "Developer.md"), "utf8"),
-          fs.readFileSync(path.join(skill(client), "Executor.md"), "utf8"));
+        for (const [legacy, role] of Object.entries(legacyRoles)) {
+          const prompt = fs.readFileSync(path.join(skill(client), "roles", role), "utf8")
+            .replaceAll("](../skill-reference/", "](skill-reference/")
+            .replace(/\]\((Coordinator|Executor|Tester)\.md\)/g, "](roles/$1.md)");
+          assert.equal(fs.readFileSync(path.join(skill(client), legacy), "utf8"), prompt);
+        }
         assertNoPythonCache(skill(client));
       }
       const backups = fs.readdirSync(home(client)).filter(file => file.startsWith(configName(client) + ".bak-"));

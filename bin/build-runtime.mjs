@@ -20,7 +20,7 @@ export async function buildRuntime() {
       for (const name of await fs.readdir(target)) await check(path.posix.join(file, name));
     } else if (!stat.isFile()) throw new Error('Source must contain ordinary files');
   }
-  for (const file of ['scripts', 'scripts/shared', 'prototype', 'references', 'roles.md', 'Coordinator.md', 'Executor.md', 'Tester.md']) {
+  for (const file of ['scripts', 'scripts/shared', 'prototype', 'skill-reference', 'roles', 'roles/README.md', 'roles/Coordinator.md', 'roles/Executor.md', 'roles/Tester.md']) {
     // scripts 包含本地运行时，仅检查其入口；其余完整检查。
     if (file === 'scripts') { if (!(await fs.lstat(path.join(root, file))).isDirectory() || (await fs.lstat(path.join(root, file))).isSymbolicLink()) throw new Error('Invalid source root'); }
     else await check(file);

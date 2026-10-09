@@ -1,4 +1,4 @@
-# 服务器托管的开发记忆
+# Cloud Map：连接、同步与发布
 
 文档版本：v1.1.0。
 
@@ -8,7 +8,7 @@
 
 底层文件格式为 [`fs-v2.1`](design-memory-filesystem-v1.0.1.md)；发布须满足下文的完成证明与 Git 合并条件。
 
-**范围：Cloud 中的结构化 Map、权限和发布，不包括本地会话笔记。** 文件结构见 [文件结构规范](design-memory-filesystem-v1.0.1.md)，本地笔记见 [会话记录模板](design-session-record-v1.0.0.md)。默认用 `map read --context` 定位，再按需读取；旧 FIND / snapshot 仅用于迁移或恢复。配置 `CONTEXT_GUARD_MEMORY_CONFIG` 后，Cloud 在同一 HTTPS 来源提供这些 API；上线与验收仍以实际证据为准。
+**范围：Cloud 中的结构化 Map、权限和发布，不包括本地会话笔记。** 文件结构见 [文件结构规范](design-memory-filesystem-v1.0.1.md)，本地笔记见 [会话记录模板](../formats/session-record.md)。默认用 `map read --context` 定位，再按需读取；旧 FIND / snapshot 仅用于迁移或恢复。配置 `CONTEXT_GUARD_MEMORY_CONFIG` 后，Cloud 在同一 HTTPS 来源提供这些 API；上线与验收仍以实际证据为准。
 
 ## 文件系统 v2 的读取边界
 
@@ -17,7 +17,7 @@ Cloud Main 和每个 Session Map 各自拥有独立的文件系统 v2 投影；�
 
 `runtime-state.json` 是事务兼容状态文件。`legacy-records/` 用于迁移与回滚。二者都不是 Agent 的常规读取入口；`bugs-index.json`、`tasks-index.json`、`jump-index.json` 和 `owns-index.json` 等文件，不得用于新的接口分析。在 `CI_todo.md` 中的运行时排除项完成之前，调用方必须显式遵守这一边界，不能假定 API 响应已经不含旧记录。
 
-## 运行接口
+## 服务配置
 
 将 `CONTEXT_GUARD_MEMORY_CONFIG` 指向一个不纳入源码版本控制的私有 JSON 配置文件。配置包含绝对路径 `dataDir`、`adminToken` 和 `projects`。`scripts/cloud/server.mjs` 随后通过同一个进程、同一个 HTTPS 来源同时提供 Cloud 和记忆服务。独立入口 `scripts/cloud/memory.mjs` 仍可用于仅监听本机回环地址的测试，并拒绝非回环监听。每个项目将其 ID 映射到限定作用域的 `token`，以及管理员配置的仓库镜像 `root`、权威 Git 引用 `ref`、可选的发布时拉取远端 `remote` 和公开仓库标识。使用 TLS 反向代理或 SSH 回环隧道；客户端拒绝非回环地址的明文 HTTP、URL 中的凭据、重定向和查询参数中的凭据。
 
@@ -28,10 +28,14 @@ Cloud Main 和每个 Session Map 各自拥有独立的文件系统 v2 投影；�
 
 运行服务的用户必须能读取受保护的配置和仓库镜像，并能读写 `dataDir`。如果源码检出目录刻意设为只读，例如 systemd 使用 `ProtectSystem=strict`，应省略 `remote`：由部署流程更新镜像，发布时只验证配置的 `ref`。不得仅为了让服务执行 `git fetch`，就授予广泛的源码检出目录写权限。
 
-首次连接使用 `context-guard workbench connect --root <project> --url
-<cloud-origin> --session <actual-session-id> --wait`。CLI 显示验证 URL 和验证码；人登录 Cloud，并在浏览器确认项目与设备。等待中的后端保存设备凭据，不向 Agent 暴露凭据或密码。不带 `--wait` 时立即返回链接，批准后重跑同一命令完成连接。
+## 连接与设备授权
 
-待处理请求保留到人允许或拒绝；已鉴权项目的工作台工具提供设备连接请求入口，不是宿主的工具执行审批。新客户端协商 `X-Context-Guard-Device-Grant: persistent-v1`，待处理时收到 `persistent:true`、`expiresAt:null`、`expiresIn:null`。旧客户端只有有限等待预算，可能十分钟后停止，但不会使服务器请求过期或消失；需升级客户端以持续等待。已批准请求仍有有限的一次性领取窗口；决策表单票据、浏览器登录 Cookie 和设备凭据各自保留有效期及授权规则。有限等待预算在本地计时，不要求电脑时钟与服务器绝对 `expiresAt` 一致。
+首次连接使用 `context-guard workbench connect --root <project> --url
+<cloud-origin> --session <actual-session-id> --wait`。CLI 显示验证 URL 和验证码；人登录 Cloud，并在浏览器确认项目与设备。等待中的后端保存设备凭据，不向 Agent 暴露凭据或密码。不带 `--wait` 时立即返回链接，批准后重跑同一命令完成连接。连接后，普通 `workbench --root <project> --session <actual-session-id>` 复用项目连接；工作台负责后台连接，不另启项目级 Map daemon，也不让 Session 指向 Main 来绕过发布。
+
+待处理请求保留到人允许或拒绝；已鉴权项目的工作台工具提供设备连接请求入口，不是宿主的工具执行审批。新客户端协商 `X-Context-Guard-Device-Grant: persistent-v1`，待处理时收到 `persistent:true`、`expiresAt:null`、`expiresIn:null`。旧客户端只有有限等待预算，可能十分钟后停止，但不会使服务器请求过期或消失；需升级客户端以持续等待。已批准请求仍有有限的一次性领取窗口；决策表单票据、浏览器登录 Cookie 和设备凭据各自保留有效期及授权规则。有限等待预算在本地计时，不要求电脑时钟与服务器绝对 `expiresAt` 一致。每个 HTTP 请求仍限时 15 秒；停止 CLI 即停止等待，再运行同一连接命令继续等待。命令停止或稍后重试时，复用同一私有请求，不因经过十分钟就另发验证码。
+
+领取结果不确定时，不自动创建新请求或签发新凭据；保留原请求并报告失败。这不改变 Session 身份、设备现有权限、凭据续期或原生 Hook 信任。
 
 被拒绝或领取过期时重新申请；已领取的回复若在保存前丢失，也须重新授权，不能重放已消费授权。这是浏览器设备配对流程，不代表完整 OAuth 互操作能力。`--input <private-file|->` 仍是兼容登录方式，JSON 只含 `password`，`-` 从标准输入读取，不强制创建密码文件。不得要求 Agent 把聊天密码复制进命令或文件。
 
@@ -39,18 +43,68 @@ Cloud 依据已验证的 GitHub 仓库确定项目，返回项目 ID 和 `device
 
 设备凭据可以读取 Main 和偏好设置，并且只能读写绑定到该设备的 Session。它们不能发布、恢复、查看历史或管理 Cloud。现有基于 Token 的客户端保持兼容，直到通过登录明确迁移；设备凭据被拒绝时，绝不能静默回退到旧 Token。旧的 `memory configure --input <private-file>` 流程仍用于独立记忆服务器，输入包含 `url`、`projectId` 和 `token`。登录会把先前配置保存到私有恢复文件中。不得将凭据放入命令行、节点、Session 记录或 Git。浏览器仍使用独立的 HttpOnly Cookie。
 
+## 版本化写入与历史恢复
+
 需要鉴权的 API 包括 `/v1/projects/<id>/main`、`/preferences`、`/sessions/<session-id>`、`/publish`、`/history` 和 `/restore`。公开 Cloud 路由不暴露这些记录。Session 写入携带 `operationId`、`baseVersion`、`baseMainVersion`、`sourceCommit` 和 `memory:{map,records}`。快照与幂等回执在每项目独立锁的保护下，通过执行 fsync 的原子替换一并提交。同一操作 ID 若携带不同内容，必须失败。私有路径和运行时路径通过严格的记录白名单予以拒绝；记录应保留，不按保留期限裁剪。Session 快照包含服务器写入时间。不得上传秘密内容。
 
-从 Main 或 Session Map 删除 Bug 时，必须在同一事务中删除其活跃的旧版 Bug/修复记录，并持久化内部删除标记。陈旧的 Session 上传和发布不得恢复这些记录，也不得复用已删除的 Bug ID。Main 只保留最近五份可恢复快照；更早的条目保留审计元数据，但不能恢复。经授权恢复保留的 Main 快照，是独立且须检查版本的操作。
+从 Main 或 Session Map 删除 Bug 时，必须在同一事务中删除其活跃的旧版 Bug/修复记录，并持久化内部删除标记。陈旧的 Session 上传和发布不得恢复这些记录，也不得复用已删除的 Bug ID。恢复和保留范围见下文的历史规则；经授权恢复保留的 Main 快照，是独立且须检查版本的操作。
 
 `memory.display` 可以为当前 Session 携带 `{name, platform}`。客户端读取宿主中已登记的任务标题，不根据提示词猜测。两个字段分别限制为 200 和 30 个字符。缺少元数据时，Cloud 使用该 Session 已有的生命周期名称作为后备值；显示信息不授予任何权限。
 
 每次已确认的写入都会追加一条带服务器时间戳的历史记录。Session 历史保留完整快照；Main 历史只保留最近五个版本的完整快照，并去除更早版本的快照内容，包括重试回执中的副本。较早的 Main 条目仍保留版本、时间和操作者供审计，其操作 ID 仍用于防止重复写入。`memory history --scope main` 或 `--scope session:<id>` 用于读取可用历史。`memory restore --input
 <private-request>` 根据 `targetVersion` 创建新版本，绝不倒退版本计数。请求必须包含 `operationId`、`scope`、`baseVersion` 和 `targetVersion`。`baseVersion` 过期时应失败，而不是覆盖人或 Agent 的较新编辑。恢复 Main 或偏好设置需要管理员凭据。
 
+## Map 同步与冲突
+
 `memory prepare` 读取带版本的 Main/Session Map，并保留冲突的本地编辑。会话笔记不上传：Hook 和归档只保存本地文件；`memory sync` 只同步结构化 Map，不收集本地笔记。含记录的旧上传队列返回 `RECORD_SYNC_DISABLED`，不重放、不删除；既有服务器历史记录原样保留。Map 的工作台读写、审核和发布不因此停用。
 
 `memory rebase` 合并互不重叠的 Main 变更，备份旧 Map；重叠则拒绝并交协调。没有 Main 祖先版本的旧 Session，先审核草稿，再显式使用 `--adopt-main`；已有祖先版本时不得借此覆盖草稿。这个 Map 恢复入口不能用于同步本地会话笔记。
+
+### 队列与回执
+
+本地 Map 编辑进入持久化发件队列；Cloud 变更通过事件读取，并由心跳恢复。回执、队列和游标按 Session 隔离：
+
+```text
+<project-shared-dir>/session-memory/<session-hash>/remote-sync/
+  state.json
+  server-base.json
+  outbox.json
+  conflict.json
+```
+
+这些是私有数据，不是仓库文件。投递结果不确定时保留请求，重试原操作 ID；独立编辑可以合并，重叠编辑保留基线、本地和远端文档供审核。
+
+### 命令与确认
+
+```bash
+context-guard sync status --root <project> --session <actual-session-id>
+context-guard sync ensure --root <project> --session <actual-session-id>
+context-guard sync prepare --root <project> --session <actual-session-id>
+context-guard sync checkpoint --root <project> --session <actual-session-id>
+context-guard sync finish --root <project> --session <actual-session-id>
+```
+
+`status` 读取已保存的 Map 同步状态，不打印凭据，也不是新的服务器回执。`ensure` 复用工作台。`prepare`、`pull`、`checkpoint` 使用当前 Map 读取与协调通道。`finish` 只同步结构化 Map，不收集本地笔记；服务器确认版本后才返回 `confirmed: true`。这些命令不发布 Main，也不记录人工验收；`plan-finish` 仍执行归档与审核门禁。
+
+已淘汰的项目级开发窗口不再支持。Plan 范围保留在生命周期计划中；`sync track`、`sync connect`、`sync serve` 不得启动旧传输。鉴权使用 `workbench connect`。
+
+### 升级与绑定冲突
+
+对旧 `.codex/context/private/cloud-sync/` 数据和共享 `cloud-sync/` 配置只读检查。未确认工作、已变化草稿、不可读状态或冲突，返回 `UPGRADE_REQUIRED`，原因为 `legacy-sync-state-pending`。保留并协调记录，不删除，也不猜旧项目 Map 属于哪个 Session。仅剩配置的残留不会阻止已连接的当前客户端；若它是唯一连接，`legacy-sync-reconnect` 要求当前浏览器授权。
+
+网络失败时队列保留在磁盘，重连按退避策略重试；冲突必须显式协调。不编造新请求 ID、不清空私有状态，也不因连接存活就报告成功。
+
+私有 Session 服务使用已授权的 `/v1/projects/:project/sessions/` 读取、变更 / 事件和 Map 写入。Session 代次与服务器授权仍须遵守；凭据不得进入 Map、日志或生成的 HTML。
+
+#### Session 绑定冲突
+
+`session.bind` 通过 `POST /api/v2/messages` 登记实际宿主 Session。设备连接授权不代表可以接管其他设备的旧 Session。
+
+跨设备绑定返回 HTTP 409，`error.code` 为 `CONFLICT`、`error.retryable` 为 `false`、`error.details.reason` 为 `session-bound-elsewhere`；不返回旧设备身份或绑定版本。同设备的版本核对与迁移权限保持原规则。
+
+客户端保留确定拒绝的回执和待同步数据，停止盲目重试并提示新建真实宿主会话。新 Session 使用新的实际宿主 ID 和独立队列；不改名复用旧 ID，不继承旧任务，不自动接管。旧版迁移拒绝只能显示一般绑定冲突，不能据此推断其他设备身份。
+
+## Main 发布与 Session 代次
 
 Main 在审核完成后自动发布。可信的人或明确的可信审核路径须确认精确的 `{sessionId, generation, sessionVersion, sourceCommit}`。普通上传、心跳或初始 HEAD 已在 Main 上都不能生成完成证明；之后的快照、Map 编辑或恢复会使证明失效。缺少证明的既有 Session 继续等待，迁移不能伪造审核。
 
@@ -76,7 +130,7 @@ Cloud 服务定期刷新配置的权威 Git 引用，只有已完成 Session 这
 
 All Sessions（全部会话）视图只读取服务器已发布的 Main 基线。通过权威仓库、分支、Main 提交 SHA 和记忆版本识别基线。Session 上传或 `sync finish` 不等于 Main 发布。确认相应源码改动已经合并到配置的 Main 分支后，协调对应记忆并原子发布完整基线。保留其他 Session 的记录，不提升无关、未合并的变更。如果发布完成前 GitHub main 已前进，应把最后确认的基线标为过期或待发布，而不是声称它仍是最新。无法确定唯一的 Main 分支时，让用户选择作为权威来源的远端与分支，或本地分支。
 
-## 读写规则
+## 按需读取与断连
 
 1. 每次收到人的提示先核对真实 Session、项目与工作树绑定。绑定缺失或不明确时，需要用户选择，不能通过发现历史 Session 来猜测。
 2. Executor 开工取轻量导航、项目说明和版本，开发时复用已读缓存、新节点按需查询，收工再检查最新 Cloud。缓存只代表该次读取，不保证一直最新；源码始终读取实际工作树。完整流程见 [上下文读取设计](design-context-v1.0.0.md)。其他角色的权威读取与发布规则不变。

@@ -64,7 +64,7 @@ FIND_MD = """# Four stores — jump small, then open one file
 4. Map — `context-guard map read/apply` uses the authoritative map and a page synchronization checkpoint. `archive-session --files ...` records completed work on owning nodes. Unowned files stay unclassified unless `--input` explicitly assigns them or supplies an evidence-backed node proposal.
 
 Do not paste `map.json` or `jump-index.json`. Do not Grep this whole folder. Do not read or update a legacy `roadmap.md`.
-Before using cards/indexes, verify projection-status.json matches the current map version. Generate with `python3 scripts/map_owns.py cards --root <project>`, or read the current node through the Node CLI. See the installed skill references/design/design-workbench-interface-v1.1.0.md.
+Before using cards/indexes, verify projection-status.json matches the current map version. Generate with `python3 scripts/map_owns.py cards --root <project>`, or read the current node through the Node CLI. See the installed skill skill-reference/design/design-interface-v1.2.1.md.
 """
 
 ARCHITECTURE_MD = """# Architecture Map

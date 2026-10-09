@@ -581,7 +581,7 @@ export function logMentionsDirectoryFailure(log, directory) {
 export function startFailedMessage({ log = '', directory } = {}) {
   const base = 'Node workbench did not become healthy; inspect private/node-workbench.log';
   if (!directory || directory.overridden || !directory.unavailable || !logMentionsDirectoryFailure(log, directory.path)) return base;
-  return `${base} The default directory ${directory.path} is unavailable. Override it as described in references/design/design-workbench-v1.0.1.md.`;
+  return `${base} The default directory ${directory.path} is unavailable. Override it as described in skill-reference/design/design-interface-v1.2.1.md.`;
 }
 async function failStart(logPath) {
   const log = await fs.readFile(logPath, 'utf8').catch(() => '');

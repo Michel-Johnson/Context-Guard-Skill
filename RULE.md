@@ -10,9 +10,9 @@
 
 - 项目文档统一中文；命令、路径、代码和协议标识不翻译。第三方许可证与版权声明保留原文，并补中文说明。同一规范只留一份，各 Agent 的职责写在其中，不复制英文版或角色版。
 - 禁止将整个 `.codex/` 目录及其中内容放入任何 GitHub 分支、PR 附件、CI 产物或 npm/Skill 分发包。不得通过改名或复制到其他目录绕过此限制。公开 PR 只写必要的变更和验证摘要，不粘贴私有记忆。
-- 使用 Cloud 的项目以 Cloud Map 为准；未使用 Cloud 的项目以本地 Map 为准。本仓库选用私有 Cloud。记忆正文见 [撰写规范](references/design/design-memory-definition-v0.2.0.md)，底层目录和事项文件见 [文件结构规范](references/design/design-memory-filesystem-v1.0.1.md)。
+- 使用 Cloud 的项目以 Cloud Map 为准；未使用 Cloud 的项目以本地 Map 为准。本仓库选用私有 Cloud。记忆正文见 [撰写规范](skill-reference/design/design-memory-definition-v0.2.0.md)，底层目录和事项文件见 [文件结构规范](skill-reference/design/design-memory-filesystem-v1.0.1.md)。
 - 无论项目是否使用 Cloud，Agent 都按需读取上下文。
-- 开发记录由归档工具写入本地 `sessions/<会话标识>.md`，以工具返回路径为准。记录摘要、决策、改动、验证和后续事项，见 [会话记录模板](references/design/design-session-record-v1.0.0.md)；不写入 Map 节点记忆。
+- 开发记录由归档工具写入本地 `sessions/<会话标识>.md`，以工具返回路径为准。记录摘要、决策、改动、验证和后续事项，见 [会话记录模板](skill-reference/formats/session-record.md)；不写入 Map 节点记忆。
 - 无论项目是否使用 Cloud，会话记录都只保存在本地，本阶段不向 Cloud 同步。已配置 Cloud 的项目仍从 Cloud 读取上下文并进行收工检查；更新 Main（项目共享 Map）仍须经过审核与发布流程。
 - 产品中，Coordinator 是唯一可修改 Main 结构的非人角色；白名单 developer 客户端没有这项例外权限。本仓库开发 Agent 只能写自己的 Session。
 - 服务器连接信息只放在未被 Git 跟踪的本地配置中。本仓库通过 `.codex/context/private/memory-server.md` 交接这些信息。`.env`、密钥和真实数据转储（dump）不得进入 Git，也不得绕过密钥扫描。
@@ -24,11 +24,11 @@
 - **无 Cloud**：开工从本地 Map 读取导航和必要全局说明。
 - 默认使用 `map read --context`；用 `--node` 按需读取，收工用 `map context-check`。旧 FIND / snapshot 只用于明确的迁移或恢复，不作为第二套默认入口。
 
-- 开发先确认源码归属：[两仓库边界](references/design/design-repository-v1.0.0.md)。共享核心和 UI 改 Skill；云端托管与集成改 Cloud，不能在消费方修改生成物。
+- 开发先确认源码归属：[两仓库边界](development-docs/repository-boundaries.md)。共享核心和 UI 改 Skill；云端托管与集成改 Cloud，不能在消费方修改生成物。
 
 - 修改设计先确认范围和方案；未批准草案标明“未生效”，不能作为实现依据。
-- 开始任务先读 [当前开发方向](docs/current-focus.md)。现阶段只开发 Map/fs-v2.1、本机对话型 Coordinator、Claude Code CLI 与 Cursor 接入。Codex Hook 和 Cloud 自动派发暂缓；不因历史待办恢复开发，既有安全门禁和必要回归保留。
-- 按 [开发流程规范](docs/engineering/README.md) 完成需求、设计、编码、测试、Review、交付和复盘，并保留各阶段要求的证据。风险等级不能作为降低安全、测试或合并要求的理由。
+- 开始任务先读 [当前开发方向](development-docs/current-focus.md)。现阶段只开发 Map/fs-v2.1、本机对话型 Coordinator、Claude Code CLI 与 Cursor 接入。Codex Hook 和 Cloud 自动派发暂缓；不因历史待办恢复开发，既有安全门禁和必要回归保留。
+- 按 [开发流程规范](development-docs/engineering/README.md) 完成需求、设计、编码、测试、Review、交付和复盘，并保留各阶段要求的证据。风险等级不能作为降低安全、测试或合并要求的理由。
 - 用户明确要求“开发、修复、执行或合并”，就已授权本次仓库实现及正常交付步骤。记录计划、归档和完成本次变更适用的验收，不得重复要求确认。只有任务范围仍不明确、设计文档创建尚未获批、需要破坏性操作或需要新增外部权限时，才向用户询问。
 - 上述授权规则只适用于仓库开发对话，不替代产品里的 Coordinator 审核流程。产品任务仍须由人审核后才能收工，见 `SKILL.md` / Coordinator。
 - 每次开发先拉取最新 `main`，再创建自己的分支。分支名必须使用 `{平台}/{主题}`：Codex 用 `codex/…`，Cursor 用 `cursor/…`。同一主题允许多个平台并行开发。
@@ -38,7 +38,7 @@
 - 已读资料用本地缓存；需要新模块时，有 Cloud 就查询 Cloud，无 Cloud 就读取本地 Map。明确刷新时重读对应来源。
 - 未完成的功能、需求和开发阻塞汇报给 Coordinator，由 Coordinator 跟踪后续工作。
 - 创建任何设计文档（包括草案和新版本）前，必须先向用户说明主题、用途和范围，获得明确批准；不能把开发任务的批准当作创建文档的批准。
-- 设计放在 `references/design/`，从 [设计目录](references/design/README.md) 查找；命名为 `design-主题-vX.Y.Z.md`，主题用小写英文和连字符，正文版本与文件名一致。导航 README、运行提示、操作及部署指南保留原入口。main 每个主题只留当前版，旧版查 Git，不另建版本指引文档。
+- 设计放在 `skill-reference/design/`，从 [设计目录](skill-reference/design/README.md) 查找；命名为 `design-主题-vX.Y.Z.md`，主题用小写英文和连字符，正文版本与文件名一致。导航 README、运行提示、操作及部署指南保留原入口。main 每个主题只留当前版，旧版查 Git，不另建版本指引文档。
 - 版本号 `X.Y.Z`：X 是主版本，表示不兼容的重大变更；Y 是次版本，表示兼容的功能新增；Z 是修订号，表示兼容的问题修复。
 - 所有临时测试、临时脚本和脚本草稿，一律放在仓库根目录的 `temp/`。
 - 必须将 `temp/` 写入 `.gitignore`。不得上传到云端，也不得把其中的草稿当作正式测试。

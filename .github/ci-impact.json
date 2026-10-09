@@ -9,6 +9,8 @@
     "clients"
   ],
   "fullRunPatterns": [
+    "docs/**",
+    "references/**",
     ".github/**",
     ".github/ci-impact.json",
     ".github/workflows/ci.yml",
@@ -22,9 +24,8 @@
     "tests/browser-device-login-runner.mjs",
     "plugins/**",
     "RULE.md",
-    "docs/engineering/README.md",
-    "docs/test-governance.md",
-    "docs/ci.md",
+    "development-docs/engineering/README.md",
+    "development-docs/ci.md",
     "bin/build-runtime.mjs",
     "scripts/cloud/**",
     "scripts/legacy/**",
@@ -33,12 +34,17 @@
   ],
   "rules": [
     {
+      "id": "interface-catalog",
+      "patterns": ["skill-reference/interface-contract-v2.json"],
+      "jobs": ["test", "package"]
+    },
+    {
       "id": "repository-docs",
       "patterns": [
         "AGENTS.md",
         "CI_todo.md",
         "TODO.md",
-        "docs/**"
+        "development-docs/**"
       ],
       "jobs": []
     },
@@ -48,11 +54,8 @@
         "README.md",
         "README.zh-CN.md",
         "THIRD_PARTY_NOTICES.md",
-        "Coordinator.md",
-        "Executor.md",
-        "Tester.md",
-        "roles.md",
-        "references/**",
+        "roles/**",
+        "skill-reference/**",
         "licenses/**"
       ],
       "jobs": [

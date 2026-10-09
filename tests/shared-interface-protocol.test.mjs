@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { validateMessage, payloadRules, canonical, errorReply } from '../scripts/shared/protocol.mjs';
 
-const catalog = JSON.parse(await fs.readFile(new URL('../docs/interface-contract-v2.json', import.meta.url), 'utf8'));
+const catalog = JSON.parse(await fs.readFile(new URL('../skill-reference/interface-contract-v2.json', import.meta.url), 'utf8'));
 const noSession = ['auth.open', 'auth.close', 'sync.heartbeat', 'session.bind', 'main.structure.patch'];
 const message = item => ({ v: 2, id: 'request-1', type: item.type, ...(!noSession.includes(item.type) ? { session: { id: 'session-1', generation: 1 } } : {}), payload: structuredClone(item.payload) });
 test('IF-001: all documented messages have executable validators', () => {
