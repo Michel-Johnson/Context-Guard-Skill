@@ -1243,7 +1243,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           return res.end(html.replace('<!-- CG_SERVER_BOOT -->', `<script>window.__CG_SERVER=${boot};</script>`).replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`));
         }
         if (route === '/prototype/map-model.mjs') { file = path.join(skillRoot, 'scripts/shared/map-model.mjs'); contentType = 'text/javascript; charset=utf-8'; }
-        else if (['/scripts/shared/map-model.mjs', '/prototype/workbench-sync.mjs', '/prototype/attachments.mjs', '/prototype/coordinator-markdown.mjs', '/prototype/coordinator-working-blot.mjs', '/prototype/cursor-chat.mjs', '/prototype/vendor/marked.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
+        else if (['/scripts/shared/map-model.mjs', '/prototype/workbench-sync.mjs', '/prototype/map-graph-view.mjs', '/prototype/map-translations.mjs', '/prototype/attachments.mjs', '/prototype/coordinator-markdown.mjs', '/prototype/coordinator-working-blot.mjs', '/prototype/cursor-chat.mjs', '/prototype/vendor/marked.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
         else if (['/prototype/workbench-app.js', '/prototype/workbench-data.js'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
         else if (route === '/prototype/workbench.css') { file = path.join(skillRoot, route.slice(1)); contentType = 'text/css; charset=utf-8'; }
         else if (route === '/prototype/working-blot-atlas.png') { file = path.join(skillRoot, route.slice(1)); contentType = 'image/png'; }

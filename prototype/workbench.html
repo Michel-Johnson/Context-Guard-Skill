@@ -71,21 +71,7 @@
   <div class="top-tools">
     <details class="workbench-tools" id="workbench-tools">
       <summary data-i18n="workbenchTools">工作台工具</summary>
-      <div class="workbench-tools-menu">
-    <button type="button" class="dir-toggle" id="dir-toggle" aria-pressed="false" data-dir="lr" data-i18n-title="dirTitle" title="布局" aria-label="布局">
-      <span class="dir-thumb" aria-hidden="true"></span>
-      <span class="dir-opt on" data-dir="lr">左右</span>
-      <span class="dir-opt" data-dir="tb">上下</span>
-    </button>
-    <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
-      <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
-    </div>
-    <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
-    <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑</button>
-    <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
-    <button class="tray-btn" id="btn-todos">TODO (<span id="todo-count">0</span>)</button>
-    <button type="button" class="tray-btn" id="btn-device-approvals" aria-expanded="false" aria-controls="device-approvals" hidden><span data-i18n="deviceApprovals">设备连接申请</span> (<span id="device-approval-count">0</span>)</button>
-      </div>
+      <div class="workbench-tools-menu" id="workbench-tools-menu"></div>
     </details>
     <button type="button" class="tray-btn" id="btn-coordinator" aria-expanded="false" hidden>Coordinator</button>
     <button type="button" class="tray-btn" id="btn-cursor" aria-expanded="false" hidden>Cursor</button>
@@ -106,18 +92,48 @@
       </svg>
     </button>
     <div class="settings-menu" id="settings-menu">
+      <div class="set-block" id="beta-map-settings" hidden>
+        <div class="set-label">Map 视图</div>
+        <div class="settings-map-controls">
+          <div class="settings-map-control">
+            <span class="set-caption">视图</span>
+            <button type="button" class="dir-toggle map-view-toggle" id="map-view-toggle" aria-pressed="false" data-view="tree" title="Map 视图：树" aria-label="Map 视图：树">
+              <span class="dir-thumb" aria-hidden="true"></span><span class="dir-opt" data-view="tree">树</span><span class="dir-opt" data-view="architecture">架构</span>
+            </button>
+          </div>
+          <div class="settings-map-control" id="beta-direction-slot">
+            <span class="set-caption">方向</span>
+            <button type="button" class="dir-toggle" id="dir-toggle" aria-pressed="false" data-dir="lr" data-i18n-title="dirTitle" title="布局" aria-label="布局">
+              <span class="dir-thumb" aria-hidden="true"></span><span class="dir-opt on" data-dir="lr">左右</span><span class="dir-opt" data-dir="tb">上下</span>
+            </button>
+          </div>
+        </div>
+        <div id="beta-relation-slot">
+        <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="点击模块查看关联关系">
+          <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
+        </div>
+        <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
+        </div>
+      </div>
       <div class="set-block">
         <div class="set-label" data-i18n="toolsLabel">工具</div>
-        <div class="set-tools">
-          <div class="rel-toggle" id="lens-toggle" data-i18n-title="lensTitle" title="首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。">
+        <div class="set-tools" id="settings-tools">
+          <div class="rel-toggle" id="lens-toggle" data-i18n-title="lensTitle">
             <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
           </div>
+          <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
+          <button class="tray-btn" id="btn-todos">TODO (<span id="todo-count">0</span>)</button>
+          <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑 <span data-i18n="authMode">授权模式</span></button>
           <button type="button" class="tray-btn" id="btn-tray" aria-expanded="false" aria-controls="tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
-          <button type="button" class="tray-btn" id="btn-link-repo" hidden data-i18n="linkRepo" data-i18n-title="linkRepoTitle" title="选带 SKILL.md 的仓库根，改图可以写回 map.json">连接仓库</button>
+          <button type="button" class="tray-btn" id="btn-link-repo" hidden data-i18n="linkRepo" data-i18n-title="linkRepoTitle">连接仓库</button>
+          <button type="button" class="tray-btn settings-wide" id="btn-device-approvals" aria-expanded="false" aria-controls="device-approvals" hidden><span data-i18n="deviceApprovals">设备连接申请</span> (<span id="device-approval-count">0</span>)</button>
         </div>
       </div>
       <div class="set-block">
         <div class="set-label" data-i18n="betaLabel">实验功能</div>
+        <button type="button" class="tray-btn beta-motion-toggle" id="btn-beta-map" role="switch" aria-checked="false" data-i18n-title="betaMapTitle">
+          <span class="beta-badge" aria-hidden="true">BETA</span><span data-i18n="betaMap">新版 Map（Beta）</span>
+        </button>
         <button type="button" class="tray-btn beta-motion-toggle" id="btn-beta-motion" aria-pressed="false" data-i18n-title="betaMotionTitle" title="Beta：启用 0.5 秒地图层级钻取动效">
           <span class="beta-badge">BETA</span>
           <span data-i18n="betaMotion">地图钻取动效</span>
@@ -184,6 +200,7 @@
 </div>
 
 <div id="viewport">
+  <div id="graph-relation-overlay" hidden></div>
   <div id="world">
     <svg id="links"></svg>
     <div id="nodes"></div>
@@ -192,6 +209,8 @@
   </div>
 </div>
 <div id="dot-hint" hidden role="tooltip"></div>
+<div id="map-view-hint" class="map-view-hint" role="status" hidden></div>
+<div id="map-translation-status" class="map-translation-status" role="status" hidden><span></span><button type="button" hidden></button></div>
 <dialog id="device-approvals" class="device-approvals" aria-labelledby="device-approvals-title">
   <div class="tray-head"><h3 id="device-approvals-title" data-i18n="deviceApprovals">设备连接申请</h3><button type="button" id="device-approvals-close" data-i18n-title="deviceApprovalsClose" aria-label="关闭设备连接申请">×</button></div>
   <p data-i18n="deviceApprovalScope">仅允许你发起的连接：读取本项目 Main、读写自身 Session；不授予管理或 Main 发布权限。</p>
@@ -215,7 +234,19 @@
 </aside>
 
 <div class="drawer-split" id="drawer-split" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="splitTitle" title="拖动调整检查器宽度，双击恢复"></div>
-<aside class="drawer" id="detail"></aside>
+<aside class="drawer" id="detail">
+  <div class="drawer-map-actions" role="group" aria-label="Map 编辑">
+    <button type="button" id="btn-map-add-module" class="map-icon-button" hidden data-i18n-title="addModuleAtLevelTitle" title="在当前层级添加模块" aria-label="添加模块">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 7v10M7 12h10"/></svg>
+      <span class="visually-hidden" data-i18n="addModuleAtLevel">＋ 添加模块</span>
+    </button>
+    <button type="button" id="btn-map-add-relation" class="map-icon-button" hidden aria-pressed="false" aria-label="建立关系" title="建立关系">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="8" width="6" height="8" rx="1.5"/><rect x="16" y="8" width="6" height="8" rx="1.5"/><path d="M8 12h8m-3-3 3 3-3 3"/></svg>
+    </button>
+    <button type="button" id="btn-map-route-auto" hidden>恢复自动走线</button>
+  </div>
+  <div id="detail-body"></div>
+</aside>
 
 <script src="./workbench-data.js?v=bug-claim"></script>
 <script src="./workbench-app.js?v=work-tools-v2"></script>

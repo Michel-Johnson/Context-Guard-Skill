@@ -1,6 +1,6 @@
 import { copy, diffTrees, entries, same, validate } from '../scripts/shared/map-model.mjs';
 export const ALL_SESSIONS = '__all__';
-export const workbenchTimeoutMs = method => ['GET', 'HEAD'].includes(String(method).toUpperCase()) ? 30000 : 10000;
+export const workbenchTimeoutMs = (method,route='') => route==='/api/map/translations' && String(method).toUpperCase()==='POST' ? 35000 : ['GET', 'HEAD'].includes(String(method).toUpperCase()) ? 30000 : 10000;
 const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', draft: '有未保存草稿', saving: '保存中', busy: '服务暂忙 · 草稿已保留，等待自动重试', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
 function stored(key) { try { const raw = localStorage.getItem(key); if (!raw) return null; try { return JSON.parse(raw); } catch { return { invalidJSON: true, raw }; } } catch { return null; } }
 function diagnostic(error, fallback = '服务暂不可用') {
@@ -162,7 +162,7 @@ export class WorkbenchSync {
   async call(route, body, method = body === undefined ? 'GET' : 'POST', viewId = this.viewId) {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     for (let attempt = 0; ; attempt++) {
-      const response = await fetch(this.endpoint(route, viewId), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: payload, cache: 'no-store', signal: AbortSignal.timeout(workbenchTimeoutMs(method)) });
+      const response = await fetch(this.endpoint(route, viewId), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: payload, cache: 'no-store', signal: AbortSignal.timeout(workbenchTimeoutMs(method,route)) });
       if (response.status === 401) throw Object.assign(new Error('登录已失效，请重新登录；草稿已保留'), { code: 'UNAUTHORIZED', serverResponse: true });
       if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用，未收到有效响应；草稿已保留');
       let result;

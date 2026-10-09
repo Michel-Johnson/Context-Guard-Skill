@@ -38,6 +38,8 @@ export const installedFiles = [
   "scripts/workbench/portless-routes.mjs",
   "scripts/shared/map-model.mjs",
   "prototype/workbench-app.js",
+  "prototype/map-graph-view.mjs",
+  "prototype/map-translations.mjs",
   "prototype/workbench-data.js",
   "prototype/workbench.css",
   "prototype/workbench-sync.mjs",

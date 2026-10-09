@@ -39,6 +39,10 @@
   ],
   "helpers": [
     {
+      "path": "tests/helpers/openclaw-map.mjs",
+      "usedBy": "tests/map-architecture-reading.test.mjs"
+    },
+    {
       "path": "tests/hook-test-helpers.mjs",
       "usedBy": "tests/hook-lifecycle.test.mjs"
     },
@@ -57,6 +61,11 @@
   ],
   "separatePackages": [],
   "productFiles": [
+    "tests/map-beta.test.mjs",
+    "tests/map-graph-view.test.mjs",
+    "tests/map-graph-fixtures.test.mjs",
+    "tests/map-architecture-reading.test.mjs",
+    "tests/helpers/openclaw-map.mjs",
     "tests/cursor-chat-browser.mjs",
     "tests/doctor.test.mjs",
     "tests/executor-context.test.mjs",
