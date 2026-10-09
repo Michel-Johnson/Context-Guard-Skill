@@ -154,6 +154,52 @@ test('收工只报变化，不自动确认；查看差异后仍需明确接受�
   assert.deepEqual(await call('check'), ['无变化'], '接受过的变化不能因重新读取正文再次出现');
 });
 
+test('显式刷新导航与全局说明，保留原基线且首次刷新不重复读取', async t => {
+  const { call, snapshot, requests, project } = await clientFixture(t);
+  const initial = await call('read', { refresh: true });
+  assert.equal(requests.length, 2, '首次读取只查询一次索引和根说明');
+  await call('check');
+  const file = path.join(sessionMemoryDir(project, 'executor'), 'context-cache.json');
+  const before = JSON.parse(await fs.readFile(file, 'utf8'));
+  snapshot.version = 'v2'; snapshot.memory.map.root.purpose = '更新的全局说明';
+  snapshot.memory.map.root.children[2].title = '结算';
+  const count = requests.length;
+  assert.deepEqual(await call('read'), initial); assert.equal(requests.length, count, '未要求刷新时继续使用缓存');
+  const updated = await call('read', { refresh: true, offset: 2, limit: 2 });
+  assert.equal(updated.version, 'v2'); assert.equal(updated.global.node.purpose, '更新的全局说明');
+  assert.equal(updated.navigation.length, 2); assert.equal(updated.remaining, 1);
+  assert.equal(requests.length, count + 2);
+  const after = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.deepEqual(after.baseline, before.baseline); assert.deepEqual(after.original, before.original);
+  assert.equal(after.checked, null, '刷新后的版本仍须重新检查再确认');
+  assert.ok((await call('check')).includes('项目 — 修改'));
+  const diff = await call('read', { node: '项目', diff: true });
+  assert.equal(diff.before.node.purpose, '项目'); assert.equal(diff.after.node.purpose, '更新的全局说明');
+});
+
+test('导航刷新失败或返回错误根/版本时，不替换缓存或回退假成功', async t => {
+  const { call, project, snapshot, localRead } = await clientFixture(t);
+  await call('read');
+  const file = path.join(sessionMemoryDir(project, 'executor'), 'context-cache.json'), before = await fs.readFile(file);
+  snapshot.version = 'v2';
+  for (const failure of ['断连', '版本', '节点', 'Session']) {
+    const read = async (key, version) => {
+      if (failure === '断连') throw Object.assign(new Error('合成网络故障'), { code: 'MEMORY_UNAVAILABLE' });
+      const result = await localRead(key, version);
+      if (key) {
+        if (failure === '版本') result.version = 'v-other';
+        if (failure === '节点') result.content.node.id = 'other-root';
+        if (failure === 'Session') result.sessionId = 'other-session';
+      }
+      return result;
+    };
+    await assert.rejects(executorContext(project, 'executor', 'read', { refresh: true }, { localRead: read }),
+      { code: failure === '断连' ? 'MEMORY_UNAVAILABLE' : 'CONTEXT_UNAVAILABLE' });
+    assert.deepEqual(await fs.readFile(file), before, failure);
+  }
+  assert.equal((await call('read')).version, 'v1', '失败后原缓存保留，但未被当作刷新成功');
+});
+
 test('首次实际读取之后的 Cloud 变化不会被刷新正文吞掉', async t => {
   const { call, snapshot } = await clientFixture(t);
   await call('read', { node: '主页' });
@@ -266,8 +312,24 @@ test('公共 CLI 的 Cloud 读取契约：只访问薄接口，不下载 Main �
   assert.deepEqual(await cli(['map', 'context-check']), ['无变化']);
   snapshot.version = 'v2'; snapshot.memory.map.root.children[1].purpose = '鉴权更新';
   assert.deepEqual(await cli(['map', 'context-check']), ['登录 — 修改']);
+  snapshot.version = 'v3'; snapshot.memory.map.root.purpose = 'Cloud 已更新全局说明';
+  snapshot.memory.map.root.children[2].title = 'Cloud 新名称';
+  const refreshCount = requests.length;
+  const fresh = await cli(['map', 'read', '--context', '--refresh']);
+  assert.equal(fresh.version, 'v3'); assert.equal(fresh.global.node.purpose, 'Cloud 已更新全局说明');
+  assert.ok(fresh.navigation.some(item => item.name === 'Cloud 新名称'));
+  assert.equal(requests.length, refreshCount + 2, '显式刷新只补读索引与当前根说明');
+  const changes = await cli(['map', 'context-check']);
+  assert.ok(changes.includes('项目 — 修改')); assert.ok(changes.includes('登录 — 修改'));
   assert.ok(requests.every(value => value.startsWith('/v1/projects/project/context?')));
-  assert.equal(await fs.stat(path.join(sessionMemoryDir(project, 'executor'), 'context-cache.json')).then(value => value.mode & 0o777), 0o600);
+  const cachePath = path.join(sessionMemoryDir(project, 'executor'), 'context-cache.json');
+  const cacheStat = await fs.stat(cachePath);
+  assert.equal(cacheStat.isFile(), true);
+  if (process.platform === 'win32') {
+    // Node 的 Windows mode 不区分 owner/group/others；不能冒称已验证 NTFS ACL。
+    assert.equal(path.dirname(cachePath), sessionMemoryDir(project, 'executor'));
+    await fs.access(cachePath, fs.constants.R_OK | fs.constants.W_OK);
+  } else assert.equal(cacheStat.mode & 0o777, 0o600);
   await assert.rejects(fs.access(path.join(sessionMemoryDir(project, 'executor'), 'map.json')), { code: 'ENOENT' });
   await assert.rejects(fs.access(path.join(root, '.codex/context/map.json')), { code: 'ENOENT' });
 });
