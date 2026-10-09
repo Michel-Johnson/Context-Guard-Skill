@@ -10,6 +10,11 @@
 
 ## Map 与文件读取
 
+### CONTEXT-NAV-REFRESH-01 · 显式导航刷新
+
+- [ ] 在准确合并后的安装入口验证 `map read --context --refresh`：已启用的真实 Cloud 项目返回新的轻量导航和项目说明，保留开工基线及原正文，变化检查仍报告未确认变更。断网、读错版本/根/Session 不替换缓存，不以旧缓存假报刷新成功；不恢复 Hook 或自动派发，不触碰其他项目进程。
+- [ ] Windows NTFS ACL 的其他账户读取隔离另行验收：Node 的 mode 不区分 owner/group/others，POSIX `0600` 断言只适用于支持它的平台。Windows 的私有目录定位/可读写不等于 ACL 已验证，不能用更改测试口径宣称 OS 级隐私通过。
+
 ### MAP-WORKBENCH-BETA-01 · 新版 Map
 
 - [ ] 从最新安装入口验证 Beta 开关、关系编辑、键盘操作、稳定版面板收起和深链恢复；Cloud 使用同一固定 UI 包后复验。旧候选的模块通过不能代替当前安装与消费验收。
