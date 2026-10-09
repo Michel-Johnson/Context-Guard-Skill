@@ -7,6 +7,12 @@ import { promisify } from 'node:util';
 import { atomicWrite, encode, hash, withFileLock } from '../shared/io.mjs';
 import { canonical } from '../shared/protocol.mjs';
 import { startCursorCiDiscovery, CURSOR_CI_TOOL_NAMES } from './cursor-ci-mcp.mjs';
+import { privateCursorCommand } from './cursor-acp.mjs';
+
+const invokePrivate = (command, args, options) => {
+  const native = privateCursorCommand(command, args);
+  return execute(native.command, native.args, { ...options, windowsHide: true });
+};
 
 const execute = promisify(execFile), uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const fail = code => { throw Object.assign(new Error('The assigned CI native profile is unavailable'), { code }); };
@@ -14,6 +20,40 @@ const policy = { version: 1, editor: { vimMode: false }, approvalMode: 'allowlis
   allow: CURSOR_CI_TOOL_NAMES.map(name => `Mcp(context-guard-ci:${name})`),
   deny: ['Shell(*)', 'Read(**)', 'Write(**)', 'WebFetch(*)'],
 } };
+// Verified against official CLI 2026.10.01. session/new adds defaults and later
+// refreshes privacyCache; a whole-file hash is an audit record, not a stable
+// permission oracle. Never learn a new baseline from the native process.
+const managedDefaults = {
+  display: { showLineNumbers: false, showThinkingBlocks: false, showStatusIndicators: false,
+    showStatusLineRunningTime: false, mode: 'zen' },
+  notifications: true, hints: true, modelSlashCommands: true, steering: true, rewind: true,
+  model: { modelId: 'default', displayModelId: 'auto', displayName: 'Auto', displayNameShort: 'Auto',
+    aliases: ['auto'], maxMode: false },
+  hasChangedDefaultModel: false, exploreSubagentModel: 'default',
+  network: { useHttp1ForAgent: false }, autoAcceptWebSearch: false,
+  selectedModel: { modelId: 'default', parameters: [] }, modelParameters: { default: [] },
+  modelSelectionHistory: ['default'],
+};
+const configurationPolicy = { version: 'cursor-cli-2026.10.01-default-v1', policy, managedDefaults, ghostMode: true };
+function verifyConfiguration(bytes, now) {
+  const value = JSON.parse(bytes);
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Object.keys(value).some(key => !Object.hasOwn(policy, key) && !Object.hasOwn(managedDefaults, key) && key !== 'privacyCache')) fail('CI_PROFILE_CHANGED');
+  for (const [key, expected] of Object.entries(policy)) if (canonical(value[key]) !== canonical(expected)) fail('CI_PROFILE_CHANGED');
+  for (const [key, expected] of Object.entries(managedDefaults)) {
+    if (Object.hasOwn(value, key) && canonical(value[key]) !== canonical(expected)) fail('CI_PROFILE_CHANGED');
+  }
+  if (Object.hasOwn(value, 'privacyCache')) {
+    const cache = value.privacyCache;
+    if (!cache || typeof cache !== 'object' || Array.isArray(cache) ||
+        Object.keys(cache).some(key => !['ghostMode', 'privacyMode', 'updatedAt'].includes(key)) || cache.ghostMode !== true ||
+        Object.hasOwn(cache, 'privacyMode') && ![0, 1, 2].includes(cache.privacyMode) ||
+        !Number.isSafeInteger(cache.updatedAt) || cache.updatedAt < 0 || cache.updatedAt > now() + 300000) fail('CI_PROFILE_CHANGED');
+  }
+  // Missing privacyCache uses the official ghost=true default. Do not seed a
+  // provider cache, suppress its refresh, or use its timestamp to renew TTL.
+  return hash(canonical(configurationPolicy));
+}
 const inherited = new Set(['PATH', 'LANG', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'SYSTEMROOT', 'COMSPEC', 'PATHEXT']);
 const redirected = new Set(['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TMPDIR', 'TEMP', 'TMP',
   'CURSOR_CONFIG_DIR', 'CURSOR_DATA_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'CONTEXT_GUARD_NAMED_STATE_DIR']);
@@ -61,7 +101,8 @@ async function privateBytes(file) {
 
 // This is native configuration preparation, not a filesystem sandbox or a new
 // model harness. No Core credential, arbitrary endpoint or hook is accepted.
-export async function prepareCursorCiProfile({ directory, sessionId, root, command, environment, invoke = execute, now = Date.now } = {}) {
+export async function prepareCursorCiProfile({ directory, sessionId, root, command, environment, model, invoke = invokePrivate, now = Date.now } = {}) {
+  if (![undefined, 'default', 'auto'].includes(model)) fail('CI_PROFILE_MODEL_UNSUPPORTED');
   if (!environment || typeof environment !== 'object' || Array.isArray(environment)) fail('CI_PROFILE_ENVIRONMENT_INVALID');
   const entries = Object.entries(environment);
   if (new Set(entries.map(([key]) => key.toUpperCase())).size !== entries.length) fail('CI_PROFILE_ENVIRONMENT_INVALID');
@@ -77,7 +118,8 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
   let intent;
   try { intent = await fs.open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600); }
   catch (cause) { if (cause.code === 'EEXIST') fail('CI_PROFILE_ALREADY_EXISTS'); throw cause; }
-  let record = { format: 1, mode: 'ci-mcp-only-v1', sessionId, worktreeRoot: root, command, state: 'preparing', expiresAt: now() + 1800000 };
+  let record = { format: 2, mode: 'ci-mcp-only-v1', sessionId, worktreeRoot: root, command, model: 'default',
+    state: 'preparing', expiresAt: now() + 1800000 };
   try { await intent.writeFile(encode(record)); await intent.sync(); } finally { await intent.close(); }
   let discovery, closed = false;
   const close = async () => { closed = true; await discovery?.close(); };
@@ -110,7 +152,8 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
     if (canonical(JSON.parse(mcpBytes)) !== canonical(mcpConfiguration) ||
         canonical(JSON.parse(configurationBytes)) !== canonical(policy) ||
         [...provider].some(key => environment[key] && [configurationBytes, mcpBytes].some(bytes => bytes.includes(environment[key])))) fail('CI_PROFILE_CHANGED');
-    record = { ...record, state: 'prepared', configSha256: hash(configurationBytes), mcpSha256: hash(mcpBytes) };
+    record = { ...record, state: 'prepared', configSha256: hash(configurationBytes),
+      configPolicySha256: verifyConfiguration(configurationBytes, now), mcpSha256: hash(mcpBytes) };
     await atomicWrite(file, encode(record));
     const verify = async () => {
       if (closed) fail('CI_PROFILE_CLOSED');
@@ -121,7 +164,8 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
         // No project files, ancestor repository discovery or user tool roots.
         await realDirectory(record.nativeCwd, { outsideProject: true });
         if ((await fs.readdir(record.nativeCwd)).length || canonical(JSON.parse(await privateBytes(file))) !== canonical(record) ||
-            hash(await privateBytes(configuration)) !== record.configSha256 || hash(await privateBytes(mcp)) !== record.mcpSha256) fail('CI_PROFILE_CHANGED');
+            verifyConfiguration(await privateBytes(configuration), now) !== record.configPolicySha256 ||
+            hash(await privateBytes(mcp)) !== record.mcpSha256) fail('CI_PROFILE_CHANGED');
       } catch { await close(); fail('CI_PROFILE_CHANGED'); }
       if (closed) fail('CI_PROFILE_CLOSED');
       if (now() >= record.expiresAt) { await close(); fail('CI_PROFILE_EXPIRED'); }

@@ -231,7 +231,15 @@ test('new CI native creation discovers tools from a private native cwd and keeps
   const tester = randomUUID(), executor = randomUUID(), nativeSessionId = randomUUID(), calls = [], created = [];
   let connects = 0, prompts = 0, closed = 0;
   const native = { initialized: false, sessionId: nativeSessionId, child: { pid: process.pid }, async connect() {
-    connects++; this.initialized = true; return { sessionId: nativeSessionId };
+    connects++; this.initialized = true;
+    // Official session/new populates its own defaults before returning the ID.
+    // Keep this at the native boundary, so provision exercises bind + ready.
+    const file = path.join(created[0].env.CURSOR_CONFIG_DIR, 'cli-config.json');
+    const config = await readJSON(file);
+    await fs.writeFile(file, JSON.stringify({ ...config, network: { useHttp1ForAgent: false },
+      autoAcceptWebSearch: false, privacyCache: { ghostMode: true, privacyMode: 2, updatedAt: Date.now() },
+      selectedModel: { modelId: 'default', parameters: [] } }));
+    return { sessionId: nativeSessionId };
   }, async prompt() { prompts++; throw new Error('Native business prompting is not part of profile creation'); }, async close() { closed++; } };
   const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: config => { created.push(config); return native; },
     ciProfileInvoke: async (command, argv, options) => { calls.push({ command, argv, options }); return { stdout: '', stderr: '' }; } });
@@ -245,16 +253,23 @@ test('new CI native creation discovers tools from a private native cwd and keeps
   assert.equal(created.length, 1); assert.notEqual(created[0].cwd, root);
   assert.deepEqual(await fs.readdir(created[0].cwd), []);
   assert.equal(created[0].env.CURSOR_API_KEY, provider); assert.notEqual(created[0].env.HOME, process.env.HOME);
+  assert.equal(created[0].privateFiles, true);
   assert.equal(calls.length, 1); assert.deepEqual(calls[0].argv, ['mcp', 'enable', 'context-guard-ci']);
   assert.equal(calls[0].options.cwd, created[0].cwd);
   const state = await readJSON(runtime.sessionFile(tester));
   assert.equal(state.config.root, root); assert.equal(state.nativeSessionId, nativeSessionId);
+  assert.equal(state.config.model, 'default'); assert.deepEqual(created[0].args, ['--model', 'default']);
   assert.equal(state.ciProfile.nativeCwd, created[0].cwd); assert.equal(state.ciProfile.worktreeRoot, root);
   assert.equal(state.ciProfile.nativeSessionId, nativeSessionId);
   assert.equal(JSON.stringify(state).includes(provider), false);
   assert.equal(runtime.pendingNative.get(tester), native);
   await assert.rejects(runtime.pendingCiProfiles.get(tester).discovery.call('context_guard_context', {}), { code: 'CI_NOT_ACTIVE' });
   assert.equal(await fs.readFile(path.join(root, '.cursor', 'mcp.json'), 'utf8'), 'project marker remains\n');
+  const foreignTester = randomUUID();
+  await assert.rejects(runtime.provision({ ...input, sessionId: foreignTester, operationId: 'unsupported-native-model',
+    config: { ...input.config, model: 'foreign-model' } }), { code: 'CI_PROFILE_MODEL_UNSUPPORTED' });
+  await assert.rejects(fs.stat(path.dirname(runtime.sessionFile(foreignTester))), { code: 'ENOENT' });
+  assert.equal(connects, 1); assert.equal(calls.length, 1); assert.equal(prompts, 0);
 });
 
 test('closing during CI profile preparation never starts a late native connection', async () => {

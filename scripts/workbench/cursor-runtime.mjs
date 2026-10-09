@@ -34,9 +34,12 @@ async function validateConfig(config) {
       config.timeoutMs !== undefined && (!Number.isSafeInteger(config.timeoutMs) || config.timeoutMs < 1000 || config.timeoutMs > 1800000) ||
       ![undefined, 'reject', 'allow-once'].includes(config.permissionPolicy) ||
       config.permissionPolicy === 'allow-once' && config.permissionsApproved !== true) fail('INVALID_RUNTIME', 'Use explicit bounded Cursor settings and approved tool permissions');
+  if (config.role === 'ci' && ![undefined, 'default', 'auto'].includes(config.model)) {
+    fail('CI_PROFILE_MODEL_UNSUPPORTED', 'The verified CI native profile only supports the default model route');
+  }
   const root = await fs.realpath(config.root);
   if (!(await fs.stat(config.command)).isFile() || !(await fs.stat(root)).isDirectory()) fail('INVALID_RUNTIME', 'Cursor executable and workspace must exist');
-  return { ...config, root };
+  return { ...config, root, ...(config.role === 'ci' ? { model: 'default' } : {}) };
 }
 
 export function cursorEnvironment(credentials = {}, parent = process.env) {
@@ -215,7 +218,7 @@ export class CursorRuntime {
             await fs.mkdir(directory, { recursive: true, mode: 0o700 });
             if (this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
             const preparing = prepareCursorCiProfile({ directory: await fs.realpath(directory), sessionId, root: config.root,
-              command: config.command, environment: env, invoke: this.ciProfileInvoke });
+              command: config.command, model: config.model, environment: env, invoke: this.ciProfileInvoke });
             this.ciPreparing.set(sessionId, preparing);
             try { createdProfile = await preparing; } finally { this.ciPreparing.delete(sessionId); }
             if (this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
@@ -223,7 +226,8 @@ export class CursorRuntime {
             cwd = (await createdProfile.verify()).nativeCwd; env = createdProfile.environment;
           }
           if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
-          acp = this.acpFactory({ command: config.command, cwd, args: config.model ? ['--model', config.model] : [], env });
+          acp = this.acpFactory({ command: config.command, cwd, args: config.model ? ['--model', config.model] : [], env,
+            privateFiles: config.role === 'ci' });
           if (createdProfile) this.ciConnecting.set(sessionId, acp);
           const native = await acp.connect();
           if (!uuid.test(native.sessionId)) fail('CURSOR_INVALID_SESSION', 'Cursor returned an unsupported native Session identifier');

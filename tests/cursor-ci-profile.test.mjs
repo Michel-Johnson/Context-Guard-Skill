@@ -13,6 +13,19 @@ const required = () => {
   return profileModule.prepareCursorCiProfile;
 };
 const tools = ['context_guard_context', 'context_guard_source', 'context_guard_test', 'context_guard_exchange'];
+// Official CLI 2026.10.01 adds these defaults during session/new, not during
+// mcp enable. This independent fixture contains no credentials or native ID.
+const nativeDefaults = {
+  display: { showLineNumbers: false, showThinkingBlocks: false, showStatusIndicators: false,
+    showStatusLineRunningTime: false, mode: 'zen' },
+  notifications: true, hints: true, modelSlashCommands: true, steering: true, rewind: true,
+  model: { modelId: 'default', displayModelId: 'auto', displayName: 'Auto', displayNameShort: 'Auto',
+    aliases: ['auto'], maxMode: false },
+  hasChangedDefaultModel: false, exploreSubagentModel: 'default',
+  network: { useHttp1ForAgent: false }, autoAcceptWebSearch: false,
+  selectedModel: { modelId: 'default', parameters: [] }, modelParameters: { default: [] },
+  modelSelectionHistory: ['default'],
+};
 async function fixture() {
   const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-profile-fixture-')));
   const root = path.join(directory, 'source'), owner = path.join(directory, 'owner');
@@ -55,6 +68,23 @@ test('CI profile fixes separate native and source roots and never persists provi
   await assert.rejects(profile.discovery.call('context_guard_context', {}), { code: 'CI_NOT_ACTIVE' });
 });
 
+test('CI native enable atomically rewrites configuration with private permissions from process start',
+  { skip: process.platform === 'win32' ? 'POSIX umask is not a Windows ACL guarantee' : false }, async t => {
+    const f = await fixture(), parentMask = process.umask(), command = path.join(f.directory, 'synthetic-native');
+    assert.equal(/\s/.test(process.execPath), false, 'the synthetic shebang needs an unambiguous Node path');
+    await fs.writeFile(command, `#!${process.execPath}\nconst fs = require('node:fs'), path = require('node:path');
+if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(['mcp', 'enable', 'context-guard-ci'])) process.exit(7);
+const file = path.join(process.env.CURSOR_CONFIG_DIR, 'cli-config.json');
+const bytes = fs.readFileSync(file); fs.writeFileSync(file+'.tmp', bytes); fs.renameSync(file+'.tmp', file);
+fs.writeFileSync(path.join(process.env.TMPDIR, 'native-mask.json'), JSON.stringify({ mask: process.umask() }));\n`, { mode: 0o700, flag: 'wx' });
+    const { invoke, ...options } = f.options;
+    const profile = await required()({ ...options, command }); t.after(() => profile.close());
+    await profile.verify();
+    assert.equal((await fs.stat(path.join(profile.environment.CURSOR_CONFIG_DIR, 'cli-config.json'))).mode & 0o777, 0o600);
+    assert.equal(JSON.parse(await fs.readFile(path.join(profile.environment.TMPDIR, 'native-mask.json'))).mask, 0o077);
+    assert.equal(process.umask(), parentMask);
+  });
+
 test('CI profile binds one native ID without replacing the original profile or discovery', async t => {
   const prepare = required(), f = await fixture(), profile = await prepare(f.options); t.after(() => profile.close());
   const original = await profile.verify(), nativeSessionId = randomUUID();
@@ -66,6 +96,78 @@ test('CI profile binds one native ID without replacing the original profile or d
   assert.equal(JSON.parse(await fs.readFile(path.join(f.owner, 'ci-profile.json'), 'utf8')).nativeSessionId, nativeSessionId);
   await assert.rejects(prepare(f.options), { code: 'CI_PROFILE_ALREADY_EXISTS' });
   assert.equal(f.calls.length, 1, 'a persisted profile is not permission to start another native environment');
+});
+
+test('CI profile accepts fixed official default hydration without relearning its authority or extending expiry', async t => {
+  const f = await fixture(), clock = 1700000000000;
+  let current = clock;
+  const profile = await required()({ ...f.options, model: 'auto', now: () => current }); t.after(() => profile.close());
+  const original = await profile.verify(), configFile = path.join(profile.environment.CURSOR_CONFIG_DIR, 'cli-config.json');
+  const config = JSON.parse(await fs.readFile(configFile, 'utf8'));
+  assert.equal(config.privacyCache, undefined, 'the host does not impersonate the provider privacy cache');
+  Object.assign(config, structuredClone(nativeDefaults), { privacyCache: { ghostMode: true, privacyMode: 2, updatedAt: clock } });
+  await fs.writeFile(configFile, JSON.stringify(config, null, 4));
+  const native = randomUUID(), bound = await profile.bindNative(native);
+  assert.equal(bound.nativeSessionId, native); assert.equal(bound.configSha256, original.configSha256);
+  assert.equal(bound.configPolicySha256, original.configPolicySha256); assert.match(bound.configPolicySha256, /^[a-f0-9]{64}$/);
+  assert.equal(bound.profileRoot, original.profileRoot); assert.equal(bound.expiresAt, clock + 1800000);
+  current += 1000; config.privacyCache.updatedAt = current;
+  await fs.writeFile(configFile, JSON.stringify(config));
+  assert.deepEqual(await profile.verify(), bound, 'a native cache refresh does not refreeze or renew the original profile');
+  await assert.rejects(profile.discovery.call('context_guard_context', {}), { code: 'CI_NOT_ACTIVE' });
+  current = bound.expiresAt;
+  await assert.rejects(profile.verify(), { code: 'CI_PROFILE_EXPIRED' });
+  assert.deepEqual(JSON.parse(await fs.readFile(configFile, 'utf8')), config, 'expiry preserves the native configuration');
+});
+
+test('CI profile rejects native configuration outside fixed defaults and preserves the failed bytes', async t => {
+  const changes = {
+    'shell permission': c => c.permissions.allow.push('Shell(*)'),
+    'permission omission': c => { delete c.permissions; },
+    'permission order': c => c.permissions.deny.reverse(),
+    'unrestricted approval': c => { c.approvalMode = 'unrestricted'; },
+    'automatic search': c => { c.autoAcceptWebSearch = true; },
+    'network override': c => { c.network.useHttp1ForAgent = true; },
+    'unknown nested field': c => { c.display.command = 'synthetic executable'; },
+    'status line command': c => { c.statusLine = { command: 'synthetic executable' }; },
+    'sandbox override': c => { c.sandbox = { mode: 'disabled' }; },
+    'authentication cache': c => { c.authInfo = { userId: 'synthetic' }; },
+    'extra model': c => { c.model.modelId = 'foreign-model'; },
+    'max model': c => { c.model.maxMode = true; },
+    'selected model': c => { c.selectedModel.modelId = 'foreign-model'; },
+    'model parameters': c => { c.modelParameters.default.push({ id: 'max', value: true }); },
+    'subagent model': c => { c.exploreSubagentModel = 'inherit'; },
+    'extra subagent model': c => { c.subagentModels = { explore: 'foreign-model' }; },
+    'privacy disabled': c => { c.privacyCache.ghostMode = false; },
+    'foreign privacy policy': c => { c.privacyCache.privacyMode = 3; },
+    'invalid privacy timestamp': c => { c.privacyCache.updatedAt = -1; },
+    'future privacy timestamp': c => { c.privacyCache.updatedAt = 1700000300001; },
+    'privacy nested extra': c => { c.privacyCache.token = 'synthetic-provider'; },
+    'unknown root': c => { c.futureToolPolicy = true; },
+  };
+  for (const [name, change] of Object.entries(changes)) await t.test(name, async t => {
+    const f = await fixture(), profile = await required()({ ...f.options, now: () => 1700000000000 }); t.after(() => profile.close());
+    const configFile = path.join(profile.environment.CURSOR_CONFIG_DIR, 'cli-config.json');
+    const config = Object.assign(JSON.parse(await fs.readFile(configFile, 'utf8')), structuredClone(nativeDefaults),
+      { privacyCache: { ghostMode: true, privacyMode: 2, updatedAt: 1700000000000 } });
+    change(config); const bytes = JSON.stringify(config);
+    await fs.writeFile(configFile, bytes);
+    await assert.rejects(profile.bindNative(randomUUID()), { code: 'CI_PROFILE_CHANGED' });
+    assert.equal(await fs.readFile(configFile, 'utf8'), bytes);
+    assert.equal(JSON.parse(await fs.readFile(path.join(f.owner, 'ci-profile.json'), 'utf8')).nativeSessionId, undefined);
+    await assert.rejects(profile.discovery.call('context_guard_context', {}), { code: 'CI_CAPABILITY_EXPIRED' });
+  });
+});
+
+test('CI profile refuses unsupported model routes before creating any native preparation intent', async () => {
+  const f = await fixture();
+  let unexpected;
+  try {
+    await assert.rejects(async () => { unexpected = await required()({ ...f.options, model: 'foreign-model' }); },
+      { code: 'CI_PROFILE_MODEL_UNSUPPORTED' });
+  } finally { await unexpected?.close(); }
+  await assert.rejects(fs.stat(path.join(f.owner, 'ci-profile.json')), { code: 'ENOENT' });
+  assert.equal(f.calls.length, 0);
 });
 
 test('CI profile refuses policy, MCP endpoint and empty native cwd drift without repairing files', async t => {
