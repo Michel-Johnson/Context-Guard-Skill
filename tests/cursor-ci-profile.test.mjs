@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 
 let profileModule;
 try { profileModule = await import('../scripts/workbench/cursor-ci-profile.mjs'); }
@@ -278,6 +279,155 @@ test('CI profile serializes repeated native binding without replacing the origin
   const native = randomUUID(), results = await Promise.all([profile.bindNative(native), profile.bindNative(native)]);
   assert.deepEqual(results[0], results[1]); assert.equal((await profile.verify()).nativeSessionId, native);
   assert.equal(f.calls.length, 1);
+});
+
+async function guardCall(record, input, { bytes, manifestSha = record.guardPolicySha256 } = {}) {
+  const hooks = JSON.parse(await fs.readFile(path.join(record.profileRoot, 'home', '.cursor', 'hooks.json'), 'utf8'));
+  // Execute the actual pinned bootstrap, not the copied module directly.
+  const command = hooks.hooks.preToolUse[0].command.replace(record.guardPolicySha256, manifestSha);
+  const child = spawn(command, { shell: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '';
+  child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });
+  const done = new Promise((resolve, reject) => {
+    child.once('error', reject); child.once('close', code => resolve({ code, stdout, stderr }));
+  });
+  child.stdin.on('error', () => {}); child.stdin.end(bytes ?? JSON.stringify(input));
+  const result = await done;
+  assert.equal(result.code, 0); assert.equal(result.stderr, '');
+  return JSON.parse(result.stdout);
+}
+const nativeEvent = (record, extra = {}) => ({ hook_event_name: 'preToolUse',
+  conversation_id: record.nativeSessionId, session_id: record.nativeSessionId,
+  workspace_roots: [record.nativeCwd], cwd: record.nativeCwd,
+  tool_name: 'MCP:context_guard_context', tool_input: {}, ...extra });
+
+test('CI profile creates only its fixed fail-closed native guards before vendor enable', async t => {
+  const f = await fixture();
+  f.options.invoke = async (_command, _argv, options) => {
+    const hooks = JSON.parse(await fs.readFile(path.join(options.env.CURSOR_CONFIG_DIR, 'hooks.json'), 'utf8'));
+    assert.equal(hooks.version, 1);
+    assert.deepEqual(Object.keys(hooks.hooks), ['preToolUse', 'subagentStart', 'beforeMCPExecution']);
+    for (const entries of Object.values(hooks.hooks)) {
+      assert.equal(entries.length, 1); assert.equal(entries[0].failClosed, true);
+      assert.equal(entries[0].timeout, 5); assert.equal(entries[0].loop_limit, null);
+      assert.equal(entries[0].matcher, '.*'); assert.match(entries[0].command, /cursor-ci-guard/);
+    }
+  };
+  const profile = await required()(f.options); t.after(() => profile.close());
+  const original = await profile.verify(); assert.equal(original.format, 3);
+  assert.equal(original.mode, 'ci-mcp-only-v2');
+  const denied = await guardCall(original, nativeEvent(original)); assert.equal(denied.permission, 'deny');
+  const bound = await profile.bindNative(randomUUID());
+  assert.equal(bound.guardPolicySha256, original.guardPolicySha256);
+  assert.equal(bound.hooksSha256, original.hooksSha256);
+  assert.equal(bound.expiresAt, original.expiresAt);
+  for (const tool of tools) {
+    assert.equal((await guardCall(bound, nativeEvent(bound, { tool_name: `MCP:${tool}` }))).permission, 'allow');
+    // Official ACP local MCP wrapper 2026.10.01 omits cwd from its base
+    // payload; the HookExecutor still supplies the single native workspace.
+    const noCwd = nativeEvent(bound, { tool_name: `MCP:${tool}` }); delete noCwd.cwd;
+    assert.equal((await guardCall(bound, noCwd)).permission, 'allow');
+    assert.equal((await guardCall(bound, nativeEvent(bound, { hook_event_name: 'beforeMCPExecution', tool_name: tool,
+      tool_input: '{}', mcp_server_name: 'context-guard-ci', url: profile.discovery.endpoint,
+      mcp_server_url: profile.discovery.endpoint }))).permission, 'allow');
+  }
+});
+
+test('CI native guard denies builtins, Task, foreign providers and identity drift without raw diagnostics', async t => {
+  const f = await fixture(), profile = await required()(f.options); t.after(() => profile.close());
+  const record = await profile.bindNative(randomUUID());
+  const cases = [
+    ...['Read', 'Grep', 'List', 'ReadLints', 'Glob', 'Shell', 'Write', 'WebFetch', 'Task', 'Unknown',
+      'MCP:context_guard_context_extra', 'MCP:foreign:context_guard_context'].map(tool_name => ({ tool_name })),
+    { hook_event_name: 'subagentStart' }, { hook_event_name: 'futureEvent' },
+    { conversation_id: randomUUID() }, { session_id: randomUUID() }, { cwd: f.root },
+    { workspace_roots: [record.nativeCwd, f.root] }, { workspace_roots: [] },
+    { hook_event_name: 'beforeMCPExecution', tool_name: tools[0], tool_input: '{}',
+      mcp_server_name: 'foreign', url: profile.discovery.endpoint, mcp_server_url: profile.discovery.endpoint },
+    { hook_event_name: 'beforeMCPExecution', tool_name: tools[0], tool_input: '{}',
+      mcp_server_name: 'context-guard-ci', url: 'https://foreign.invalid', mcp_server_url: profile.discovery.endpoint },
+    { hook_event_name: 'beforeMCPExecution', tool_name: tools[0], tool_input: '{}',
+      mcp_server_name: 'context-guard-ci', url: profile.discovery.endpoint },
+    { hook_event_name: 'beforeMCPExecution', tool_name: tools[0], tool_input: '{}',
+      mcp_server_name: 'context-guard-ci', url: profile.discovery.endpoint, mcp_server_url: profile.discovery.endpoint,
+      command: 'unapproved executable' },
+  ];
+  for (const change of cases) {
+    const result = await guardCall(record, nativeEvent(record, change));
+    assert.equal(result.permission, 'deny', JSON.stringify(change));
+    assert.equal(JSON.stringify(result).includes(f.provider), false);
+    assert.equal(JSON.stringify(result).includes(profile.discovery.endpoint), false);
+  }
+  for (const bytes of ['null', '[]', '{', ' '.repeat(65537), JSON.stringify({ ...nativeEvent(record), tool_input: f.provider })]) {
+    assert.equal((await guardCall(record, null, { bytes })).permission, 'deny');
+  }
+  assert.equal((await guardCall(record, nativeEvent(record), { manifestSha: '0'.repeat(64) })).permission, 'deny');
+});
+
+test('CI native guard and profile reject altered owned files without learning or repairing them', async t => {
+  for (const relative of ['guard/guard-policy.json', 'guard/cursor-ci-guard.mjs', 'home/.cursor/hooks.json', 'home/.cursor/mcp.json']) {
+    const f = await fixture(), profile = await required()(f.options); t.after(() => profile.close());
+    const record = await profile.bindNative(randomUUID()), file = path.join(record.profileRoot, relative);
+    const original = await fs.readFile(file), changed = Buffer.concat([original, Buffer.from('\n ')]);
+    await fs.writeFile(file, changed);
+    if (relative.endsWith('.mjs')) {
+      // A corrupted executable fails the bootstrap; vendor failClosed must
+      // turn that nonzero/no-output into denial (real vendor control pending).
+      const hooks = JSON.parse(await fs.readFile(path.join(record.profileRoot, 'home', '.cursor', 'hooks.json'), 'utf8'));
+      const child = spawn(hooks.hooks.preToolUse[0].command, { shell: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      const done = new Promise(resolve => child.once('close', code => resolve(code)));
+      child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify(nativeEvent(record)));
+      assert.equal(await done, 1);
+    } else assert.equal((await guardCall(record, nativeEvent(record))).permission, 'deny');
+    await assert.rejects(profile.verify(), { code: 'CI_PROFILE_CHANGED' });
+    assert.deepEqual(await fs.readFile(file), changed);
+  }
+});
+
+test('CI native guard pins the complete immutable original record and rejects linked or missing authority', async t => {
+  for (const change of ['expiry', 'logical-id', 'source-root', 'native-cwd', 'command', 'state', 'new-field', 'manifest-link', 'record-missing']) {
+    const f = await fixture(), profile = await required()(f.options); t.after(() => profile.close());
+    const record = await profile.bindNative(randomUUID()), recordFile = path.join(f.owner, 'ci-profile.json');
+    const changed = structuredClone(record);
+    if (change === 'expiry') changed.expiresAt++;
+    else if (change === 'logical-id') changed.sessionId = randomUUID();
+    else if (change === 'source-root') changed.worktreeRoot = f.directory;
+    else if (change === 'native-cwd') changed.nativeCwd = f.root;
+    else if (change === 'command') changed.command = path.join(f.directory, 'foreign-cli');
+    else if (change === 'state') changed.state = 'failed';
+    else if (change === 'new-field') changed.verified = true;
+    else if (change === 'manifest-link') {
+      await fs.link(path.join(record.profileRoot, 'guard', 'guard-policy.json'), path.join(f.directory, 'manifest-link'));
+    } else await fs.rename(recordFile, recordFile + '.preserved');
+    if (!['manifest-link', 'record-missing'].includes(change)) await fs.writeFile(recordFile, JSON.stringify(changed));
+    assert.equal((await guardCall(record, nativeEvent(record))).permission, 'deny', change);
+    await assert.rejects(profile.verify(), { code: 'CI_PROFILE_CHANGED' });
+  }
+  const f = await fixture(), profile = await required()(f.options); t.after(() => profile.close());
+  const record = await profile.bindNative(randomUUID());
+  const guard = await import('../scripts/workbench/cursor-ci-guard.mjs');
+  assert.equal((await guard.evaluateCursorCiGuard({ manifestFile: path.join(record.profileRoot, 'guard', 'guard-policy.json'),
+    manifestSha256: record.guardPolicySha256, input: nativeEvent(record), now: () => record.expiresAt })).permission, 'deny');
+  assert.equal((await guardCall(record, nativeEvent(record, { hook_event_name: 'beforeMCPExecution', tool_name: tools[0],
+    mcp_server_name: 'context-guard-ci', url: profile.discovery.endpoint, mcp_server_url: profile.discovery.endpoint,
+    tool_input: '{' }))).permission, 'deny');
+});
+
+test('CI native guard denies expiry occurring during the original record read', async t => {
+  const f = await fixture(), profile = await required()(f.options); t.after(() => profile.close());
+  const record = await profile.bindNative(randomUUID());
+  const guard = await import('../scripts/workbench/cursor-ci-guard.mjs');
+  const originalOpen = fs.open; let current = record.expiresAt - 1, reached = false;
+  fs.open = async (...args) => {
+    const result = await originalOpen(...args);
+    if (args[0] === path.join(f.owner, 'ci-profile.json')) { reached = true; current = record.expiresAt; }
+    return result;
+  };
+  try {
+    const result = await guard.evaluateCursorCiGuard({ manifestFile: path.join(record.profileRoot, 'guard', 'guard-policy.json'),
+      manifestSha256: record.guardPolicySha256, input: nativeEvent(record), now: () => current });
+    assert.equal(reached, true); assert.equal(result.permission, 'deny');
+  } finally { fs.open = originalOpen; }
 });
 
 test('CI profile rejects linked configuration bytes even when their content has not changed', async t => {

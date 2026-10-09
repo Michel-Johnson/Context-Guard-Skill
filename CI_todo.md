@@ -50,11 +50,13 @@
 
 ### CURSOR-WORKBENCH-01 · 安装后的 Cursor
 
+- [ ] 新 CI 私有 profile 格式 3 的固定官方 guard，在准确安装入口及官方 CLI 验证四工具放行、内置工具/Task/同名外来 MCP 拒绝，以及缺失、篡改、崩溃、超时、无输出、非法输出的 fail-closed；需要实际原生尝试与无越界效果，模型自述或无调用不能算通过。正式 profile/guard 子进程测试不证明厂商旁路、OS/Windows ACL 或 Cloud VM 隔离，原业务硬停保留。
+
 - [ ] 原 held CI 的管理员 Runner 策略、完整 Plan.paths 快照与同一 HostProof 已在 preparation-only 路径组装；从准确安装版本核验私有策略、真实 daemon/镜像和原 Task 归属。正式 Runtime/profile 回归中的厂商 ACP、Docker 元数据及批准为合成；零激活/模型/容器执行仅证明硬停保留，不代表独立 Tester 闭环。关闭未确认的原 active job/ownership 必须保留，真实原生与准确 CID 的停止仍须另验。
 
 - [ ] 原 Runtime 关闭的单次操作、全部自有资源收拢及准备失败私有确认，在准确安装版本和 owning 后端验证；未确认停止保留归属，不将模块替身或原 Node 退出用例推广为实际 Runner/CID 停止。业务原生硬停保持，生产 worker 到 Runner 的停止链仍须验收。
 - [ ] 原 Discovery 的完整宿主证明回调与无回调只读模式，在准确安装版本和原 owning worker 验证。正式 HTTP/HostProof/Runner/Core 组合覆盖原编号失 ACK、单次执行、撤权及初始期限；Docker/批准为合成依赖，不代替真实模型、实际容器或生产任务验收，原执行硬停保留。
-- [ ] 新 CI profile 的严格默认配置兼容与格式 2，在准确安装版本及官方 CLI 验证原 native ID、MCP、默认模型路由和首次期限不变；补充默认值不重新学习权限，未知配置和隐私降级拒绝。正式 profile/Runtime 回归与原生机制实验分别记录，不代替 Task 隔离、真实业务任务和三路径验收。
+- [ ] 新 CI profile 的严格默认配置兼容与格式 3，在准确安装版本及官方 CLI 验证原 native ID、MCP、默认模型路由和首次期限不变；补充默认值不重新学习权限，未知配置和隐私降级拒绝。旧格式 2 不升级；正式 profile/Runtime 回归与原生机制实验分别记录，不代替 Task 隔离、真实业务任务和三路径验收。
 - [ ] 原任务范围校验已接入 owning 后端准备及操作路径、固定设备传输与缓存重验；从准确安装版本验证完整 owning 后端到 Cloud 的原任务、批准版本、重绑和失 ACK，不能用分开的 HTTP/私有 IPC 正反测试代替真实组合。原生隔离硬停、公开结果拒绝及宿主证明门禁保留。
 - [ ] 本任务已实现的私有 CI profile、MCP、Runner 与宿主证据发布器，在准确安装版本验证原生工具边界、实际观察不可覆盖和终态回执。源码真实 Core/MCP 组合测试仍使用合成 Docker/批准，不能替代原任务、独立 Tester 与三条连接路径验收。
 - [ ] 宿主证据 sender/Cloud 接收器已补原 Core 同事务版本/内容核验、范围摘要同存与双 ACK；从固定制品和原 owning worker 私有 commit 验证组合、未知回执恢复及实际宿主观察，不能用独立 sender/HTTP 模块用例代替。生产调用未接通，业务硬停及公开结果拒绝必须保留；历史定向、失败与冻结证据保留在本任务 Git 记录和本地日志，不把未接线功能记为已验收。

@@ -94,6 +94,20 @@ POSIX 上，CI 专用 `mcp enable` 和 ACP 进程从启动起使用子进程内�
 
 核验还拒绝私有 HOME 中新增的已知 Hook、规则、commands、agents、plugins 和第三方 Skill 配置根；不删除这些文件，不修改用户配置。检查配置漂移不等于阻止运行中的所有文件写入或厂商动态加载，不能当作操作系统隔离证明。
 
+用户对 Cursor 接入的权限授权及本范围 P02 复核允许新 CI 私有 HOME 的官方工具拦截；不替换既有 Hook，不增加生命周期、同步或普通 Executor Hook。新 profile 格式为 3，旧记录不升级、重建或重新学习信任。宿主预置 `preToolUse`、`subagentStart` 和 `beforeMCPExecution`，均 `failClosed:true`、有界超时、全匹配、无循环豁免。
+
+固定绝对 Node 命令先核对复制脚本摘要，再直接执行已核验字节，避免 hash 后重新 import 路径的竞态。不可变 manifest 固定原 record 的完整不变投影、文件位置、原 endpoint 与期限；仅原 record 的 native ID 可一次绑定。Hook 命令和 manifest 不随绑定更新，避免厂商缓存旧配置。
+
+guard 对 NOFOLLOW、单链接、私有权限、有界 UTF-8 JSON、canonical 父目录和同 FD/命名 inode 前后变化作校验。每次精确核真实 Hook 输入的原 native ID、native cwd、唯一 workspace root；缺失、子 agent 身份、漂移或到期默认拒绝。固化脚本/MCP/Hook 摘要，不信正文或 record 新增的 verified 字段，不回显输入、路径或凭据。
+
+官方 2026.10.01 ACP 本地 MCP wrapper 不给 `preToolUse` 基础载荷添加 cwd；只对准确四 MCP 允许 cwd 缺席，仍强制原 native ID 和唯一原 workspace root，出现 cwd 时必须准确匹配。不会因此放行其他工具或忽略错误 cwd；provider/URL 另在原 MCP 事件核对。
+
+`preToolUse` 只放行准确四个 `MCP:context_guard_*` 名称，内置 Read/Grep/List/ReadLints/Glob/Shell/Write/Task 等默认拒绝。该事件不含可靠 provider，因此另以 `beforeMCPExecution` 精确核工具、`context-guard-ci`、原 HTTP URL 双字段，缺失或 stdio command 拒绝；`subagentStart` 一律拒绝。
+
+原 private record 的 native 关联仍依赖宿主文件边界，不是同 UID 防篡改、操作系统沙箱或远程 attestation。原宿主每次 verify 和 Core 当前授权继续生效；真实工具/Task/同名外来 MCP、fail-closed 故障及官方潜在旁路尚须验证。此准备实现不解除 `CI_NATIVE_ISOLATION_REQUIRED`，也不推断 Cursor Cloud VM 的 Hook 行为。
+
+异步读取结束、放行前再次核最初期限，不以 Hook 的 5 秒超时延长授权。拒绝只返回固定阶段类别，不输出原输入、错误 cause 或敏感定位；诊断码不是业务证据，也不授予重试、重新绑定或激活权限。
+
 关闭覆盖准备、连接与登记阶段；每次异步边界后重查关闭标记。准备前先完成目录规范化，再同步核关闭；调用准备与登记 Promise 之间不留 await，关闭后晚到的目录解析不能启动新 Discovery。关闭中晚到的 native ID仍保存，但不登记为就绪。已丢失的空 transport 在重启后保持创建不确定，不调用 new 或以原文件恢复业务权限。
 
 CI 创建的 ready 回执也须核原 held transport 的错误/关闭状态与真实子进程终态、活 profile；缓存存在不证明进程活着。连接失效时关闭自有能力、保留原记录，不替换空 native。重启后不能仅凭旧成功记录报告可用。等待事件登记锁期间关闭时，不追加启动事件或写 ready；持久化期间关闭亦不返回成功。

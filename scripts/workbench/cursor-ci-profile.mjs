@@ -8,6 +8,7 @@ import { atomicWrite, encode, hash, withFileLock } from '../shared/io.mjs';
 import { canonical } from '../shared/protocol.mjs';
 import { startCursorCiDiscovery, CURSOR_CI_TOOL_NAMES } from './cursor-ci-mcp.mjs';
 import { privateCursorCommand } from './cursor-acp.mjs';
+import { cursorCiGuardHooks } from './cursor-ci-guard.mjs';
 
 const invokePrivate = (command, args, options) => {
   const native = privateCursorCommand(command, args);
@@ -67,7 +68,7 @@ const provider = new Set(['CURSOR_API_KEY', 'CURSOR_AUTH_TOKEN']);
 async function refuseExecutableConfiguration(home) {
   // These are executable/custom instruction sources, not the native Session
   // store. Absence is checked again before use; drift is never repaired.
-  for (const relative of ['.cursor/hooks.json', '.cursor/hooks', '.cursor/skills', '.cursor/commands', '.cursor/agents',
+  for (const relative of ['.cursor/hooks', '.cursor/skills', '.cursor/commands', '.cursor/agents',
     '.cursor/plugins', '.cursor/rules', '.claude', '.agents', '.codex', '.grok', 'AGENTS.md', 'CLAUDE.md']) {
     const present = await fs.lstat(path.join(home, relative)).then(() => true, cause => {
       if (cause.code === 'ENOENT') return false; throw cause;
@@ -123,7 +124,7 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
   let intent;
   try { intent = await fs.open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600); }
   catch (cause) { if (cause.code === 'EEXIST') fail('CI_PROFILE_ALREADY_EXISTS'); throw cause; }
-  let record = { format: 2, mode: 'ci-mcp-only-v1', sessionId, worktreeRoot: root, command, model: 'default',
+  let record = { format: 3, mode: 'ci-mcp-only-v2', sessionId, worktreeRoot: root, command, model: 'default',
     state: 'preparing', expiresAt: now() + 1800000 };
   try { await intent.writeFile(encode(record)); await intent.sync(); } finally { await intent.close(); }
   let discovery, closed = false;
@@ -135,7 +136,8 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
     record = { ...record, profileRoot, nativeCwd: path.join(profileRoot, 'native-cwd') };
     await atomicWrite(file, encode(record));
     const home = path.join(profileRoot, 'home'), temporary = path.join(profileRoot, 'tmp');
-    const directories = [home, temporary, record.nativeCwd, path.join(home, '.cursor'), path.join(home, 'appdata'),
+    const guard = path.join(profileRoot, 'guard');
+    const directories = [home, temporary, guard, record.nativeCwd, path.join(home, '.cursor'), path.join(home, 'appdata'),
       path.join(home, 'local-appdata'), path.join(home, 'xdg-config'), path.join(home, 'xdg-data'), path.join(home, 'xdg-cache')];
     for (const target of directories) await fs.mkdir(target, { mode: 0o700 });
     // Override every native home/data/temp path, including Windows and XDG.
@@ -151,14 +153,27 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
       headers: { Authorization: `Bearer ${discovery.credential}` } } } };
     await fs.writeFile(configuration, encode(policy), { flag: 'wx', mode: 0o600 });
     await fs.writeFile(mcp, encode(mcpConfiguration), { flag: 'wx', mode: 0o600 });
+    const scriptFile = path.join(guard, 'cursor-ci-guard.mjs'), manifestFile = path.join(guard, 'guard-policy.json');
+    const hooksFile = path.join(env.CURSOR_CONFIG_DIR, 'hooks.json');
+    const scriptBytes = await fs.readFile(new URL('./cursor-ci-guard.mjs', import.meta.url));
+    await fs.writeFile(scriptFile, scriptBytes, { flag: 'wx', mode: 0o600 });
+    const expectedRecord = { ...record, state: 'prepared', configSha256: hash(encode(policy)),
+      configPolicySha256: verifyConfiguration(encode(policy), now), mcpSha256: hash(encode(mcpConfiguration)),
+      guardScriptSha256: hash(scriptBytes) };
+    const manifestBytes = encode({ format: 1, endpoint: discovery.endpoint, nodeCommand: process.execPath,
+      recordFile: file, record: expectedRecord });
+    const manifestSha256 = hash(manifestBytes);
+    await fs.writeFile(manifestFile, manifestBytes, { flag: 'wx', mode: 0o600 });
+    const hooksBytes = encode(cursorCiGuardHooks({ nodeCommand: process.execPath, scriptFile,
+      scriptSha256: expectedRecord.guardScriptSha256, manifestFile, manifestSha256 }));
+    await fs.writeFile(hooksFile, hooksBytes, { flag: 'wx', mode: 0o600 });
     try { await invoke(command, ['mcp', 'enable', 'context-guard-ci'], { cwd: record.nativeCwd, env, windowsHide: true, timeout: 15000, maxBuffer: 65536 }); }
     catch { fail('CI_PROFILE_ENABLE_FAILED'); }
     const configurationBytes = await privateBytes(configuration), mcpBytes = await privateBytes(mcp);
     if (canonical(JSON.parse(mcpBytes)) !== canonical(mcpConfiguration) ||
         canonical(JSON.parse(configurationBytes)) !== canonical(policy) ||
         [...provider].some(key => environment[key] && [configurationBytes, mcpBytes].some(bytes => bytes.includes(environment[key])))) fail('CI_PROFILE_CHANGED');
-    record = { ...record, state: 'prepared', configSha256: hash(configurationBytes),
-      configPolicySha256: verifyConfiguration(configurationBytes, now), mcpSha256: hash(mcpBytes) };
+    record = { ...expectedRecord, guardPolicySha256: manifestSha256, hooksSha256: hash(hooksBytes) };
     await atomicWrite(file, encode(record));
     const verify = async () => {
       if (closed) fail('CI_PROFILE_CLOSED');
@@ -170,7 +185,10 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
         await realDirectory(record.nativeCwd, { outsideProject: true });
         if ((await fs.readdir(record.nativeCwd)).length || canonical(JSON.parse(await privateBytes(file))) !== canonical(record) ||
             verifyConfiguration(await privateBytes(configuration), now) !== record.configPolicySha256 ||
-            hash(await privateBytes(mcp)) !== record.mcpSha256) fail('CI_PROFILE_CHANGED');
+            hash(await privateBytes(mcp)) !== record.mcpSha256 ||
+            hash(await privateBytes(scriptFile)) !== record.guardScriptSha256 ||
+            hash(await privateBytes(manifestFile)) !== record.guardPolicySha256 ||
+            hash(await privateBytes(hooksFile)) !== record.hooksSha256) fail('CI_PROFILE_CHANGED');
       } catch { await close(); fail('CI_PROFILE_CHANGED'); }
       if (closed) fail('CI_PROFILE_CLOSED');
       if (now() >= record.expiresAt) { await close(); fail('CI_PROFILE_EXPIRED'); }

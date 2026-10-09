@@ -15,6 +15,7 @@ export const installedFiles = [
   "scripts/workbench/cursor-ci-channel.mjs",
   "scripts/workbench/cursor-ci-commit.mjs",
   "scripts/workbench/cursor-ci-profile.mjs",
+  "scripts/workbench/cursor-ci-guard.mjs",
   "scripts/workbench/cursor-ci-runner.mjs",
   "scripts/workbench/cursor-ci-proof.mjs",
   "skill-reference/design/design-cursor-workbench-v0.2.0.md",
