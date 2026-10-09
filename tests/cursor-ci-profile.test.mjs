@@ -298,8 +298,57 @@ async function guardCall(record, input, { bytes, manifestSha = record.guardPolic
 }
 const nativeEvent = (record, extra = {}) => ({ hook_event_name: 'preToolUse',
   conversation_id: record.nativeSessionId, session_id: record.nativeSessionId,
-  workspace_roots: [record.nativeCwd], cwd: record.nativeCwd,
+  workspace_roots: [record.hookWorkspaceRoot], cwd: record.nativeCwd,
   tool_name: 'MCP:context_guard_context', tool_input: {}, ...extra });
+
+test('CI guard accepts the exact official ACP storage workspace, not an arbitrary native or private root', async t => {
+  const f = await fixture(), profile = await required()(f.options); t.after(() => profile.close());
+  const record = await profile.bindNative(randomUUID());
+  // Official 2026.10.01 ACP Hook input observed in the isolated native probe:
+  // workspace_roots points at private DATA/projects/<normalized cwd>, no cwd.
+  // Independent expected path uses path segments, not the production helper.
+  const slug = record.nativeCwd.split(/[^A-Za-z0-9]+/).filter(Boolean).join('-');
+  const expected = path.join(record.profileRoot, 'home', '.cursor', 'projects', slug);
+  const event = { hook_event_name: 'preToolUse', tool_name: 'MCP:context_guard_context', tool_input: {},
+    conversation_id: record.nativeSessionId, session_id: record.nativeSessionId, workspace_roots: [expected] };
+  assert.equal((await guardCall(record, event)).permission, 'allow');
+  assert.equal(record.hookWorkspaceRoot, expected);
+  assert.equal(await fs.realpath(record.hookWorkspaceRoot), record.hookWorkspaceRoot);
+  if (process.platform !== 'win32') assert.equal((await fs.stat(record.hookWorkspaceRoot)).mode & 0o077, 0);
+  for (const roots of [[record.nativeCwd], [f.root], [path.join(expected, 'foreign')], [expected, record.nativeCwd]]) {
+    assert.equal((await guardCall(record, { ...event, workspace_roots: roots })).permission, 'deny');
+  }
+  assert.equal((await guardCall(record, { ...event, cwd: f.root })).permission, 'deny');
+});
+
+test('CI Hook metadata storage allows native data but rejects executable roots and private directory drift', async t => {
+  const cases = ['.cursor/hooks.json', '.cursor/mcp.json', '.cursor/commands/foreign.md', '.cursor/agents/foreign.md',
+    '.cursor/skills/foreign/SKILL.md', '.cursor/rules/foreign.mdc', '.claude/settings.json', '.agents/skills/foreign/SKILL.md',
+    'AGENTS.md', 'CLAUDE.md', 'symlink', 'root-mode', 'projects-mode'];
+  for (const change of cases) await t.test(change, async t => {
+    const f = await fixture(), profile = await required()(f.options); t.after(() => profile.close());
+    const record = await profile.bindNative(randomUUID());
+    await fs.mkdir(path.join(record.hookWorkspaceRoot, 'agent-transcripts'));
+    await fs.writeFile(path.join(record.hookWorkspaceRoot, 'agent-transcripts', 'native-data.json'), '{}\n', { mode: 0o600 });
+    assert.equal((await guardCall(record, nativeEvent(record))).permission, 'allow'); await profile.verify();
+    let preserved;
+    if (change === 'symlink') {
+      preserved = record.hookWorkspaceRoot + '.preserved'; await fs.rename(record.hookWorkspaceRoot, preserved);
+      try { await fs.symlink(preserved, record.hookWorkspaceRoot, 'dir'); }
+      catch (cause) { if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(cause.code)) { t.skip('Windows symlink permission is unavailable'); return; } throw cause; }
+    } else if (change.endsWith('-mode')) {
+      if (process.platform === 'win32') { t.skip('POSIX mode is not a Windows ACL guarantee'); return; }
+      preserved = change === 'root-mode' ? record.hookWorkspaceRoot : path.dirname(record.hookWorkspaceRoot);
+      await fs.chmod(preserved, 0o755);
+    } else {
+      preserved = path.join(record.hookWorkspaceRoot, change); await fs.mkdir(path.dirname(preserved), { recursive: true });
+      await fs.writeFile(preserved, 'synthetic unapproved executable configuration\n', { mode: 0o600 });
+    }
+    assert.equal((await guardCall(record, nativeEvent(record))).permission, 'deny');
+    await assert.rejects(profile.verify(), { code: 'CI_PROFILE_CHANGED' });
+    assert.ok(await fs.stat(preserved), 'reject drift without repairing or deleting the observed configuration');
+  });
+});
 
 test('CI profile creates only its fixed fail-closed native guards before vendor enable', async t => {
   const f = await fixture();

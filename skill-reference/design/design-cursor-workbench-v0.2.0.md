@@ -102,6 +102,10 @@ guard 对 NOFOLLOW、单链接、私有权限、有界 UTF-8 JSON、canonical �
 
 官方 2026.10.01 ACP 本地 MCP wrapper 不给 `preToolUse` 基础载荷添加 cwd；只对准确四 MCP 允许 cwd 缺席，仍强制原 native ID 和唯一原 workspace root，出现 cwd 时必须准确匹配。不会因此放行其他工具或忽略错误 cwd；provider/URL 另在原 MCP 事件核对。
 
+真实 ACP Hook 的唯一 `workspace_roots` 是厂商内部 DATA/projects 存储槽，不是传给 ACP 的 native cwd。新 profile 由宿主按已核验官方 `cursor-config.Xq` / `workspace-paths.r_` 规则，派生并固定 `hookWorkspaceRoot`：私有 DATA/projects 下，native cwd 的非 ASCII 字母数字替为连字符、折叠并裁两端。不能从模型或观测输入学习、接受任意私有子目录或迁移旧记录。
+
+`hookWorkspaceRoot` 纳入原 immutable record/manifest，仅用于核 Hook 元数据；实际 ACP 启动仍用 native cwd，逻辑工作树及 Git 源码快照授权仍分开。宿主预建 projects 与准确槽位为私有目录，逐父核 canonical/非链接及权限；允许厂商 transcript/store 数据，但新增项目 Hook/MCP/规则/commands/agents/Skill 等可执行配置根会撤销原能力，保留文件而不修复。
+
 `preToolUse` 只放行准确四个 `MCP:context_guard_*` 名称，内置 Read/Grep/List/ReadLints/Glob/Shell/Write/Task 等默认拒绝。该事件不含可靠 provider，因此另以 `beforeMCPExecution` 精确核工具、`context-guard-ci`、原 HTTP URL 双字段，缺失或 stdio command 拒绝；`subagentStart` 一律拒绝。
 
 原 private record 的 native 关联仍依赖宿主文件边界，不是同 UID 防篡改、操作系统沙箱或远程 attestation。原宿主每次 verify 和 Core 当前授权继续生效；真实工具/Task/同名外来 MCP、fail-closed 故障及官方潜在旁路尚须验证。此准备实现不解除 `CI_NATIVE_ISOLATION_REQUIRED`，也不推断 Cursor Cloud VM 的 Hook 行为。

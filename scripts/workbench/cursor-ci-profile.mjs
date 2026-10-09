@@ -8,7 +8,7 @@ import { atomicWrite, encode, hash, withFileLock } from '../shared/io.mjs';
 import { canonical } from '../shared/protocol.mjs';
 import { startCursorCiDiscovery, CURSOR_CI_TOOL_NAMES } from './cursor-ci-mcp.mjs';
 import { privateCursorCommand } from './cursor-acp.mjs';
-import { cursorCiGuardHooks } from './cursor-ci-guard.mjs';
+import { cursorCiGuardHooks, cursorCiHookWorkspaceRoot, verifyCursorCiHookWorkspace } from './cursor-ci-guard.mjs';
 
 const invokePrivate = (command, args, options) => {
   const native = privateCursorCommand(command, args);
@@ -133,11 +133,13 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
     const base = await fs.realpath(os.tmpdir()); await realDirectory(base, { outsideProject: true });
     const profileRoot = await fs.realpath(await fs.mkdtemp(path.join(base, 'context-guard-cursor-ci-')));
     await fs.chmod(profileRoot, 0o700);
-    record = { ...record, profileRoot, nativeCwd: path.join(profileRoot, 'native-cwd') };
+    const nativeCwd = path.join(profileRoot, 'native-cwd');
+    record = { ...record, profileRoot, nativeCwd, hookWorkspaceRoot: cursorCiHookWorkspaceRoot(profileRoot, nativeCwd) };
     await atomicWrite(file, encode(record));
     const home = path.join(profileRoot, 'home'), temporary = path.join(profileRoot, 'tmp');
     const guard = path.join(profileRoot, 'guard');
-    const directories = [home, temporary, guard, record.nativeCwd, path.join(home, '.cursor'), path.join(home, 'appdata'),
+    const directories = [home, temporary, guard, record.nativeCwd, path.join(home, '.cursor'),
+      path.dirname(record.hookWorkspaceRoot), record.hookWorkspaceRoot, path.join(home, 'appdata'),
       path.join(home, 'local-appdata'), path.join(home, 'xdg-config'), path.join(home, 'xdg-data'), path.join(home, 'xdg-cache')];
     for (const target of directories) await fs.mkdir(target, { mode: 0o700 });
     // Override every native home/data/temp path, including Windows and XDG.
@@ -181,6 +183,7 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
       try {
         for (const target of [directory, profileRoot, ...directories]) await realDirectory(target, { privateMode: true });
         await refuseExecutableConfiguration(home);
+        await verifyCursorCiHookWorkspace(record);
         // No project files, ancestor repository discovery or user tool roots.
         await realDirectory(record.nativeCwd, { outsideProject: true });
         if ((await fs.readdir(record.nativeCwd)).length || canonical(JSON.parse(await privateBytes(file))) !== canonical(record) ||

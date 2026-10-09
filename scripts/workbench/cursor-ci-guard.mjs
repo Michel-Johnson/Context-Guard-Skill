@@ -36,15 +36,40 @@ export function cursorCiGuardHooks({ nodeCommand, scriptFile, scriptSha256, mani
   return { version: 1, hooks: { preToolUse: [{ ...entry }], subagentStart: [{ ...entry }], beforeMCPExecution: [{ ...entry }] } };
 }
 
-async function privateBytes(file) {
-  if (!path.isAbsolute(file) || await fs.realpath(file) !== file) throw new Error('Private path changed');
-  for (let current = path.dirname(file);; current = path.dirname(current)) {
+async function privateDirectory(directory) {
+  if (!path.isAbsolute(directory || '') || await fs.realpath(directory) !== directory) throw new Error('Private path changed');
+  for (let current = directory;; current = path.dirname(current)) {
     const info = await fs.lstat(current);
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Private parent changed');
     if (path.dirname(current) === current) break;
   }
-  const parent = await fs.stat(path.dirname(file));
+  const parent = await fs.stat(directory);
   if (process.platform !== 'win32' && parent.mode & 0o077) throw new Error('Private parent changed');
+}
+// Official 2026.10.01 cursor-config Xq / workspace-paths r_: ACP's Hook
+// workspace is the DATA/projects slot, not its actual native startup cwd.
+export function cursorCiHookWorkspaceRoot(profileRoot, nativeCwd) {
+  const slot = nativeCwd.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  return path.join(profileRoot, 'home', '.cursor', 'projects', slot);
+}
+export async function verifyCursorCiHookWorkspace(record) {
+  if (typeof record.hookWorkspaceRoot !== 'string' || typeof record.nativeCwd !== 'string' ||
+      record.hookWorkspaceRoot !== cursorCiHookWorkspaceRoot(record.profileRoot, record.nativeCwd)) throw new Error('Private Hook workspace changed');
+  await privateDirectory(path.dirname(record.hookWorkspaceRoot));
+  await privateDirectory(record.hookWorkspaceRoot);
+  // Native transcript/store data is expected here; executable project
+  // configuration is not. Preserve unexpected files, never repair them.
+  for (const relative of ['.cursor/hooks.json', '.cursor/hooks', '.cursor/mcp.json', '.cursor/skills', '.cursor/commands',
+    '.cursor/agents', '.cursor/plugins', '.cursor/rules', '.claude', '.agents', '.codex', '.grok', 'AGENTS.md', 'CLAUDE.md']) {
+    const present = await fs.lstat(path.join(record.hookWorkspaceRoot, relative)).then(() => true, cause => {
+      if (cause.code === 'ENOENT') return false; throw cause;
+    });
+    if (present) throw new Error('Private Hook workspace changed');
+  }
+}
+async function privateBytes(file) {
+  if (!path.isAbsolute(file) || await fs.realpath(file) !== file) throw new Error('Private path changed');
+  await privateDirectory(path.dirname(file));
   const handle = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
   try {
     const before = await handle.stat();
@@ -81,7 +106,8 @@ export async function evaluateCursorCiGuard({ manifestFile, manifestSha256, inpu
     stage = 'identity';
     if (input.conversation_id !== nativeSessionId || input.session_id !== nativeSessionId) return denied();
     stage = 'workspace';
-    if (canonical(input.workspace_roots) !== canonical([record.nativeCwd]) ||
+    await verifyCursorCiHookWorkspace(record);
+    if (canonical(input.workspace_roots) !== canonical([record.hookWorkspaceRoot]) ||
         Object.hasOwn(input, 'cwd') && input.cwd !== record.nativeCwd) return denied();
     stage = 'files';
     const host = path.join(record.profileRoot, 'guard'), home = path.join(record.profileRoot, 'home', '.cursor');

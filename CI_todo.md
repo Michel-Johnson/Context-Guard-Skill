@@ -52,6 +52,8 @@
 
 - [ ] 新 CI 私有 profile 格式 3 的固定官方 guard，在准确安装入口及官方 CLI 验证四工具放行、内置工具/Task/同名外来 MCP 拒绝，以及缺失、篡改、崩溃、超时、无输出、非法输出的 fail-closed；需要实际原生尝试与无越界效果，模型自述或无调用不能算通过。正式 profile/guard 子进程测试不证明厂商旁路、OS/Windows ACL 或 Cloud VM 隔离，原业务硬停保留。
 
+- [ ] 原生 Hook 元数据的固定 `hookWorkspaceRoot`，从准确安装版本验证与实际 native cwd、逻辑源码根分别对应；不借元数据存储目录授权文件/Task，也不从旧记录学习新根。正式反例已覆盖准确厂商形状误拒绝及目录/可执行配置漂移；隔离原生四 MCP/实际 Docker/宿主证明组合不代替原 owning Runtime、业务 Task 和三路径验收。
+
 - [ ] 原 held CI 的管理员 Runner 策略、完整 Plan.paths 快照与同一 HostProof 已在 preparation-only 路径组装；从准确安装版本核验私有策略、真实 daemon/镜像和原 Task 归属。正式 Runtime/profile 回归中的厂商 ACP、Docker 元数据及批准为合成；零激活/模型/容器执行仅证明硬停保留，不代表独立 Tester 闭环。关闭未确认的原 active job/ownership 必须保留，真实原生与准确 CID 的停止仍须另验。
 
 - [ ] 原 Runtime 关闭的单次操作、全部自有资源收拢及准备失败私有确认，在准确安装版本和 owning 后端验证；未确认停止保留归属，不将模块替身或原 Node 退出用例推广为实际 Runner/CID 停止。业务原生硬停保持，生产 worker 到 Runner 的停止链仍须验收。
