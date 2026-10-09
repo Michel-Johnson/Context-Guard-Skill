@@ -154,7 +154,13 @@ Cloud 在原 Core authorize 中核当前 Task 与已发批准，新写入把范�
 
 MCP 用私有 `submitVerifiedResult` callback 发布经核验的结果，不增加公开工具或绕过普通模型结果拒绝。正式测试已覆盖产品 MCP HTTP、Runner 与 Core 事务组合；Docker、任务批准为合成依赖，不代表原生角色闭环。
 
-私有提交还携带宿主保存的证据引用、准确版本与内容摘要。接收 callback 必须在原 Core 的同一事务 authorize 中调用 `assertCursorCiHostEvidence`，确保 reducer 读取的 latest 就是该观察；不能用提交前网络回读替代。期望不进入模型消息，不改变原编号/载荷；真正生产接收 callback 仍须按此接线。
+私有提交还携带宿主保存的证据引用、准确版本与内容摘要。接收 callback 必须在原 Core 的同一事务 authorize 中核验这些期望，确保 reducer 读取的 latest 就是该观察；不能用提交前网络回读替代。模块内测试使用 `assertCursorCiHostEvidence`，Cloud 自有接收器使用 `authorizeCursorCiHostEvidence`，不反向导入本地工作台源码。
+
+宿主发送器和 Cloud 接收器已增加 `X-Context-Guard-CI-Evidence` 的 canonical 范围传输，仅用于带原 Task 期望的 `ci.result`。证据必须来自本 Tester 的 host 命名空间，逐项匹配准确版本、内容摘要、Task 与最终 SHA；failed 的 reproductionRef 只能复用该 evidenceRef，其他状态不得夹带额外 reproductionRef。该 header 只是收窄原设备委托，不证明原生执行、宿主隔离或观察真实性。
+
+原事务将 evidenceHash 与 Task 范围、原结果回执共同提交。既有编号不能升级、省略或修改 proof；终态同编号也继续核原证据 latest/内容。成功才返回 `X-Context-Guard-CI-Evidence-Authorized`，发送器须同时确认 Task 与 Evidence 两个准确摘要。缺失、错误或旧服务忽略 proof header 时保持未知，不换编号或改正文。两个新增 header 的编码长度合计至多 12288 字节，各自至多 8192 字节。
+
+上述发送/接收模块已接线，owning worker 的私有 commit callback、原生激活及安装组合仍待完成。期望不进入模型消息，不改变原编号/载荷；公开模型结果拒绝和原生执行硬停继续保留，不能由独立 sender/HTTP 测试推断真实任务闭环。
 
 已持久保存的终态回执只确认当次 Core 接受的历史事实；先核当前身份/授权/固定快照，不产生新业务写入，也不证明后来 evidence latest 未变。没有本地确认回执的失 ACK 重放仍走同一原事务与原证据期望。原 ciResult 已保存的引用版本不会随 evidence 新版改写。
 

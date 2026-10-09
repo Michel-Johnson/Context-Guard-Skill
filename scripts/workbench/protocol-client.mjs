@@ -14,12 +14,36 @@ export function encodeCiTaskExpectation(tuple) {
   return encoded;
 }
 
+// This is supplied by the owning proof publisher, not the model message.
+function encodeCiHostEvidence(expectations, message, ciSessionId) {
+  const fields = ['ref', 'version', 'contentHash'];
+  const checks = message.payload.checks;
+  if (!Array.isArray(expectations) || !expectations.length || expectations.length > 20 ||
+      expectations.length !== checks.length || new Set(expectations.map(entry => entry?.ref)).size !== expectations.length ||
+      expectations.some(entry => !entry || typeof entry !== 'object' || Array.isArray(entry) ||
+        Object.keys(entry).length !== fields.length || fields.some(field => !Object.hasOwn(entry, field)) ||
+        typeof entry.ref !== 'string' || entry.ref.length > 128 || !entry.ref.startsWith(`ci:${ciSessionId}:host:`) ||
+        typeof entry.version !== 'string' || !entry.version || entry.version.length > 4096 ||
+        /[\x00-\x1f\x7f]/.test(entry.ref + entry.version) || typeof entry.contentHash !== 'string' || !/^[a-f0-9]{64}$/.test(entry.contentHash)) ||
+      new Set(checks.map(check => check.evidenceRef)).size !== checks.length ||
+      checks.some(check => !expectations.some(entry => entry.ref === check.evidenceRef) ||
+        (check.status === 'failed' ? check.reproductionRef !== check.evidenceRef : check.reproductionRef !== undefined))) {
+    fail('INVALID_ARGUMENT', 'Invalid CI host evidence expectation');
+  }
+  const encoded = Buffer.from(canonical(expectations)).toString('base64url');
+  if (encoded.length > 8192) fail('INVALID_ARGUMENT', 'CI host evidence expectation is too large');
+  return encoded;
+}
+
 // Never interpret a legacy HTML/JSON response as successful v2 delivery.
-export async function sendMessage(origin, credential, message, { fetcher = fetch, timeoutMs = 10000, allowLoopback = false, receiveCredential, ciSessionId, ciTaskExpectation } = {}) {
+export async function sendMessage(origin, credential, message, { fetcher = fetch, timeoutMs = 10000, allowLoopback = false, receiveCredential, ciSessionId, ciTaskExpectation, ciHostEvidence } = {}) {
   validateMessage(message);
   if (ciSessionId && (typeof ciSessionId !== 'string' || !/^[a-zA-Z0-9._:-]{1,128}$/.test(ciSessionId))) fail('INVALID_ARGUMENT', 'Invalid CI Session identity');
   if (ciTaskExpectation !== undefined && (!ciSessionId || !['object.read', 'object.put', 'ci.result'].includes(message.type))) fail('INVALID_ARGUMENT', 'Task expectation requires delegated CI');
   const ciTaskHeader = ciTaskExpectation === undefined ? undefined : encodeCiTaskExpectation(ciTaskExpectation);
+  if (ciHostEvidence !== undefined && (!ciTaskHeader || message.type !== 'ci.result')) fail('INVALID_ARGUMENT', 'Host evidence requires a scoped CI result');
+  const ciEvidenceHeader = ciHostEvidence === undefined ? undefined : encodeCiHostEvidence(ciHostEvidence, message, ciSessionId);
+  if (ciEvidenceHeader && ciEvidenceHeader.length + ciTaskHeader.length > 12288) fail('INVALID_ARGUMENT', 'CI authorization headers are too large');
   const base = new URL(origin);
   if (base.protocol !== 'https:' && !(allowLoopback && base.protocol === 'http:' && ['127.0.0.1', '[::1]', 'localhost'].includes(base.hostname))) fail('FORBIDDEN', 'Cloud transport requires HTTPS');
   if (base.username || base.password) fail('INVALID_ARGUMENT', 'Credentials must not be part of the URL');
@@ -28,7 +52,8 @@ export async function sendMessage(origin, credential, message, { fetcher = fetch
     response = await fetcher(new URL('/api/v2/messages', base), {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${credential}`, ...(ciSessionId ? { 'X-Context-Guard-CI-Session': ciSessionId } : {}),
-        ...(ciTaskHeader ? { 'X-Context-Guard-CI-Task': ciTaskHeader } : {}) }, body: JSON.stringify(message),
+        ...(ciTaskHeader ? { 'X-Context-Guard-CI-Task': ciTaskHeader } : {}),
+        ...(ciEvidenceHeader ? { 'X-Context-Guard-CI-Evidence': ciEvidenceHeader } : {}) }, body: JSON.stringify(message),
     });
   } catch { fail('UNAVAILABLE', 'Connection failed; keep the pending message and retry with the same ID'); }
   const possibleLegacy = [404, 405, 426].includes(response.status);
@@ -58,6 +83,9 @@ export async function sendMessage(origin, credential, message, { fetcher = fetch
     // Older servers ignore unknown headers. A valid generic receipt cannot
     // prove the new scope was authorized; preserve any uncertain original ID.
     fail('UNAVAILABLE', 'Server did not confirm current CI task authorization');
+  }
+  if (ciEvidenceHeader && response.headers.get('x-context-guard-ci-evidence-authorized') !== hash(Buffer.from(ciEvidenceHeader, 'base64url'))) {
+    fail('UNAVAILABLE', 'Server did not confirm the original CI host evidence');
   }
   if (message.type === 'auth.open' && receiveCredential) {
     const issued = response.headers.get('x-context-guard-credential');
