@@ -5,11 +5,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { promisify } from 'node:util';
 import { CursorRuntime, cursorEnvironment } from '../scripts/workbench/cursor-runtime.mjs';
 import { ProtocolDelivery } from '../scripts/workbench/protocol-delivery.mjs';
-import { readJSON, atomicWrite, encode, hash, pause } from '../scripts/shared/io.mjs';
+import { readJSON, atomicWrite, encode, hash, pause, withFileLock } from '../scripts/shared/io.mjs';
 import { canonical, validateMessage } from '../scripts/shared/protocol.mjs';
 import { resolveProject } from '../scripts/workbench/project.mjs';
 import { pythonCommand } from '../.github/scripts/python-command.mjs';
@@ -49,13 +50,16 @@ for (const role of ['executor', 'ci']) {
         return { stopReason: 'end_turn' };
       }, async close() {},
     };
-    const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: () => native });
+    const environmentFile = path.join(directory, 'provider.json');
+    if (role === 'ci') await fs.writeFile(environmentFile, JSON.stringify({ CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` }), { mode: 0o600 });
+    const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: () => native,
+      ciProfileInvoke: async () => ({ stdout: '', stderr: '' }) });
     t.after(() => runtime.close()); // Preserve isolated files under the user's no-deletion instruction.
     if (role === 'ci') await runtime.configure(executorSessionId, { command: process.execPath, root: directory, name: 'Executor' });
     await runtime.provision({ operationId: 'permission-task', sessionId, config: {
       command: process.execPath, root, name: 'Permission fixture', role,
       permissionPolicy: 'allow-once', permissionsApproved: true,
-      ...(role === 'ci' ? { executorSessionId, ciCommands: ['node --test'] } : {}),
+      ...(role === 'ci' ? { executorSessionId, ciCommands: ['node --test'], environmentFile } : {}),
     } });
     await runtime.deliver({ id: 'permission-turn', sessionId, root, message: 'Inspect assigned code',
       ...(role === 'ci' ? { execution: { session: { id: executorSessionId, generation: 1 }, taskId: 'permission-task', sourceSha } } : {}),
@@ -67,7 +71,7 @@ for (const role of ['executor', 'ci']) {
     const outcome = await readJSON(jobFile);
     if (role === 'ci') {
       assert.equal(outcome.state, 'failed'); assert.equal(outcome.error, 'CI_CONNECTION_UNAVAILABLE');
-      assert.equal(prompts, 0, 'an unprofiled Tester cannot prompt without original host authorization');
+      assert.equal(prompts, 0, 'an unverified Tester cannot prompt without original host authorization');
       // The real worker has installed its CI-only callback on the held native
       // transport. Probe that callback, not a paid vendor/model invocation.
       for (const request of requests) decisions.push(await native.requestPermission({ sessionId, ...request }));
@@ -183,6 +187,204 @@ test('owning CI Node worker uses private original-task IPC but cannot prompt bef
   assert.equal((await fs.readFile(file + '.jsonl', 'utf8')).includes(secret), false);
   assert.equal((await fs.readFile(runtime.sessionFile(tester), 'utf8')).includes(secret), false);
   assert.equal(await fs.readFile(path.join(root, 'source.txt'), 'utf8'), 'unchanged\n');
+});
+
+test('new CI native creation discovers tools from a private native cwd and keeps the logical root unchanged', async t => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-native-profile-')));
+  const root = path.join(directory, 'tester'); await fs.mkdir(root);
+  await fs.mkdir(path.join(root, '.cursor')); await fs.writeFile(path.join(root, '.cursor', 'mcp.json'), 'project marker remains\n');
+  const environmentFile = path.join(directory, 'provider.json'), provider = `SYNTHETIC_PROVIDER_${randomUUID()}`;
+  await fs.writeFile(environmentFile, JSON.stringify({ CURSOR_API_KEY: provider }), { mode: 0o600 });
+  const tester = randomUUID(), executor = randomUUID(), nativeSessionId = randomUUID(), calls = [], created = [];
+  let connects = 0, prompts = 0, closed = 0;
+  const native = { initialized: false, sessionId: nativeSessionId, child: { pid: process.pid }, async connect() {
+    connects++; this.initialized = true; return { sessionId: nativeSessionId };
+  }, async prompt() { prompts++; throw new Error('Native business prompting is not part of profile creation'); }, async close() { closed++; } };
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: config => { created.push(config); return native; },
+    ciProfileInvoke: async (command, argv, options) => { calls.push({ command, argv, options }); return { stdout: '', stderr: '' }; } });
+  t.after(() => runtime.close());
+  await runtime.configure(executor, { command: process.execPath, root: directory, name: 'Executor' });
+  const input = { operationId: 'original-ci-creation', sessionId: tester,
+    config: { command: process.execPath, root, name: 'Independent Tester', role: 'ci', executorSessionId: executor,
+      ciCommands: ['fixed-test'], environmentFile } };
+  const first = await runtime.provision(input); assert.deepEqual(await runtime.provision(input), first);
+  assert.equal(connects, 1); assert.equal(prompts, 0); assert.equal(closed, 0);
+  assert.equal(created.length, 1); assert.notEqual(created[0].cwd, root);
+  assert.deepEqual(await fs.readdir(created[0].cwd), []);
+  assert.equal(created[0].env.CURSOR_API_KEY, provider); assert.notEqual(created[0].env.HOME, process.env.HOME);
+  assert.equal(calls.length, 1); assert.deepEqual(calls[0].argv, ['mcp', 'enable', 'context-guard-ci']);
+  assert.equal(calls[0].options.cwd, created[0].cwd);
+  const state = await readJSON(runtime.sessionFile(tester));
+  assert.equal(state.config.root, root); assert.equal(state.nativeSessionId, nativeSessionId);
+  assert.equal(state.ciProfile.nativeCwd, created[0].cwd); assert.equal(state.ciProfile.worktreeRoot, root);
+  assert.equal(state.ciProfile.nativeSessionId, nativeSessionId);
+  assert.equal(JSON.stringify(state).includes(provider), false);
+  assert.equal(runtime.pendingNative.get(tester), native);
+  await assert.rejects(runtime.pendingCiProfiles.get(tester).discovery.call('context_guard_context', {}), { code: 'CI_NOT_ACTIVE' });
+  assert.equal(await fs.readFile(path.join(root, '.cursor', 'mcp.json'), 'utf8'), 'project marker remains\n');
+});
+
+test('closing during CI profile preparation never starts a late native connection', async () => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-profile-close-')));
+  const root = path.join(directory, 'tester'); await fs.mkdir(root);
+  const environmentFile = path.join(directory, 'provider.json');
+  await fs.writeFile(environmentFile, JSON.stringify({ CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` }), { mode: 0o600 });
+  let entered, release, creates = 0;
+  const started = new Promise(resolve => { entered = resolve; }), waiting = new Promise(resolve => { release = resolve; });
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), {
+    acpFactory: () => { creates++; throw new Error('No late native spawn is allowed'); },
+    ciProfileInvoke: async () => { entered(); await waiting; return { stdout: '', stderr: '' }; },
+  });
+  const tester = randomUUID(), executor = randomUUID();
+  await runtime.configure(executor, { command: process.execPath, root: directory, name: 'Executor' });
+  const creating = runtime.provision({ operationId: 'close-preparation', sessionId: tester,
+    config: { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor, ciCommands: ['fixed-test'], environmentFile } });
+  const rejected = assert.rejects(creating, { code: 'RUNTIME_CLOSING' });
+  await started; const closing = runtime.close(); release();
+  await rejected; await closing;
+  assert.equal(creates, 0); assert.equal(runtime.ciPreparing.size, 0); assert.equal(runtime.pendingCiProfiles.size, 0);
+  await assert.rejects(fs.stat(runtime.sessionFile(tester)), { code: 'ENOENT' });
+  const intent = await readJSON(path.join(path.dirname(runtime.sessionFile(tester)), 'profile-owner', 'ci-profile.json'));
+  assert.equal(intent.sessionId, tester); assert.ok(await fs.stat(intent.profileRoot), 'failed preparation evidence stays on disk');
+});
+
+test('CI shutdown rejects late native spawn and late registration after asynchronous profile checks', async t => {
+  for (const phase of ['verified-profile', 'connecting-native', 'configured-session']) await t.test(phase, async t => {
+    const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-profile-race-')));
+    const root = path.join(directory, 'tester'); await fs.mkdir(root);
+    const environmentFile = path.join(directory, 'provider.json');
+    await fs.writeFile(environmentFile, JSON.stringify({ CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` }), { mode: 0o600 });
+    const tester = randomUUID(), executor = randomUUID(), nativeSessionId = randomUUID();
+    let entered, release, creates = 0, closes = 0;
+    const started = new Promise(resolve => { entered = resolve; }), waiting = new Promise(resolve => { release = resolve; });
+    const native = { async connect() {
+      if (phase === 'connecting-native') { entered(); await waiting; }
+      return { sessionId: nativeSessionId };
+    }, async close() { closes++; } };
+    const runtime = new CursorRuntime(path.join(directory, 'runtime'), {
+      acpFactory: () => { creates++; return native; }, ciProfileInvoke: async () => ({ stdout: '', stderr: '' }),
+    });
+    t.after(() => runtime.close());
+    await runtime.configure(executor, { command: process.execPath, root: directory, name: 'Executor' });
+    // Select the real product boundary without replacing profile creation,
+    // checks, identity persistence or the shutdown implementation.
+    if (phase === 'verified-profile') {
+      const register = runtime.pendingCiProfiles.set.bind(runtime.pendingCiProfiles);
+      runtime.pendingCiProfiles.set = (key, profile) => {
+        const verify = profile.verify;
+        profile.verify = async () => { const record = await verify(); entered(); await waiting; return record; };
+        return register(key, profile);
+      };
+    } else if (phase === 'configured-session') {
+      const configure = runtime.configure.bind(runtime);
+      runtime.configure = async (id, config) => {
+        const result = await configure(id, config);
+        if (id === tester) { entered(); await waiting; }
+        return result;
+      };
+    }
+    const creating = runtime.provision({ operationId: `close-${phase}`, sessionId: tester,
+      config: { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor, ciCommands: ['fixed-test'], environmentFile } });
+    const rejected = assert.rejects(creating, { code: 'RUNTIME_CLOSING' });
+    try { await started; await runtime.close(); } finally { release(); }
+    await rejected;
+    assert.equal(creates, phase === 'verified-profile' ? 0 : 1);
+    assert.equal(phase === 'verified-profile' ? closes === 0 : closes > 0, true);
+    assert.equal(runtime.pendingNative.size, 0); assert.equal(runtime.pendingCiProfiles.size, 0);
+    assert.equal(runtime.ciConnecting.size, 0);
+    const intent = await readJSON(path.join(path.dirname(runtime.sessionFile(tester)), 'profile-owner', 'ci-profile.json'));
+    assert.equal(intent.sessionId, tester); assert.ok(await fs.stat(intent.profileRoot));
+    if (phase === 'connecting-native') {
+      const receipt = await readJSON(path.join(runtime.directory, 'creations', hash(`close-${phase}`) + '.json'));
+      assert.equal(receipt.nativeSessionId, nativeSessionId); assert.equal(receipt.state, 'created');
+      const restarted = new CursorRuntime(runtime.directory, {
+        acpFactory: () => { throw new Error('A lost empty native transport cannot be recreated'); },
+        ciProfileInvoke: async () => { throw new Error('A persisted profile cannot renew its capability'); },
+      });
+      t.after(() => restarted.close());
+      await assert.rejects(restarted.provision({ operationId: `close-${phase}`, sessionId: tester,
+        config: { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor, ciCommands: ['fixed-test'], environmentFile } }), { code: 'CREATION_UNCERTAIN' });
+      assert.equal((await readJSON(path.join(runtime.directory, 'creations', hash(`close-${phase}`) + '.json'))).state, 'created');
+    }
+  });
+});
+
+test('CI creation replay requires the original live profile and cannot become ready after event-lock shutdown', async t => {
+  for (const phase of ['ready-restart', 'event-lock']) await t.test(phase, async t => {
+    const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-ready-profile-')));
+    const root = path.join(directory, 'tester'); await fs.mkdir(root);
+    const environmentFile = path.join(directory, 'provider.json');
+    await fs.writeFile(environmentFile, JSON.stringify({ CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` }), { mode: 0o600 });
+    const tester = randomUUID(), executor = randomUUID(), nativeSessionId = randomUUID();
+    let closes = 0;
+    const native = { async connect() { return { sessionId: nativeSessionId }; }, async close() { closes++; } };
+    const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: () => native,
+      ciProfileInvoke: async () => ({ stdout: '', stderr: '' }) });
+    t.after(() => runtime.close());
+    await runtime.configure(executor, { command: process.execPath, root: directory, name: 'Executor' });
+    const input = { operationId: `original-${phase}`, sessionId: tester,
+      config: { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor, ciCommands: ['fixed-test'], environmentFile } };
+    const receiptFile = path.join(runtime.directory, 'creations', hash(input.operationId) + '.json');
+    if (phase === 'ready-restart') {
+      await runtime.provision(input); const original = await fs.readFile(receiptFile, 'utf8');
+      const restarted = new CursorRuntime(runtime.directory, {
+        acpFactory: () => { throw new Error('Never replace the original empty native'); },
+        ciProfileInvoke: async () => { throw new Error('Never refresh the original profile'); },
+      });
+      t.after(() => restarted.close());
+      await assert.rejects(restarted.provision(input), { code: 'CREATION_UNCERTAIN' });
+      assert.equal(await fs.readFile(receiptFile, 'utf8'), original);
+      assert.equal(runtime.pendingNative.get(tester), native);
+    } else {
+      let entered, release, registered;
+      const locked = new Promise(resolve => { entered = resolve; }), waiting = new Promise(resolve => { release = resolve; });
+      const held = new Promise(resolve => { registered = resolve; });
+      const register = runtime.pendingNative.set.bind(runtime.pendingNative);
+      runtime.pendingNative.set = (key, transport) => { const result = register(key, transport); registered(); return result; };
+      const holding = withFileLock(path.join(root, '.codex/context/sessions.jsonl.lock'), async () => { entered(); await waiting; });
+      await locked;
+      const creating = runtime.provision(input), rejected = assert.rejects(creating, { code: 'RUNTIME_CLOSING' });
+      try { await held; await runtime.close(); } finally { release(); }
+      await holding; await rejected;
+      assert.ok(closes > 0); assert.equal(runtime.pendingNative.size, 0);
+      const receipt = await readJSON(receiptFile);
+      assert.equal(receipt.state, 'created'); assert.equal(receipt.nativeSessionId, nativeSessionId);
+      await assert.rejects(fs.stat(path.join(root, '.codex/context/sessions.jsonl')), { code: 'ENOENT' });
+    }
+  });
+});
+
+test('CI ready replay refuses its actual exited native process despite a cached transport', async t => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-native-dead-')));
+  const root = path.join(directory, 'tester'); await fs.mkdir(root);
+  const environmentFile = path.join(directory, 'provider.json');
+  await fs.writeFile(environmentFile, JSON.stringify({ CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` }), { mode: 0o600 });
+  const tester = randomUUID(), executor = randomUUID(), nativeSessionId = randomUUID();
+  let native, creates = 0;
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), {
+    ciProfileInvoke: async () => ({ stdout: '', stderr: '' }), acpFactory: () => {
+      creates++;
+      const child = spawn(process.execPath, ['-e', "process.on('message', () => process.exit(0))"], {
+        windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      });
+      const closed = once(child, 'close');
+      native = { child, async connect() { await once(child, 'spawn'); return { sessionId: nativeSessionId }; },
+        async close() { if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); await closed; } };
+      return native;
+    },
+  });
+  t.after(() => runtime.close());
+  await runtime.configure(executor, { command: process.execPath, root: directory, name: 'Executor' });
+  const input = { operationId: 'original-dead-native', sessionId: tester,
+    config: { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor, ciCommands: ['fixed-test'], environmentFile } };
+  await runtime.provision(input);
+  const file = path.join(runtime.directory, 'creations', hash(input.operationId) + '.json'), original = await fs.readFile(file, 'utf8');
+  const exited = once(native.child, 'exit'); native.child.send('exit'); await exited;
+  assert.equal(native.child.exitCode, 0); assert.equal(runtime.pendingNative.get(tester), native);
+  await assert.rejects(runtime.provision(input), { code: 'CREATION_UNCERTAIN' });
+  assert.equal(creates, 1); assert.equal(await fs.readFile(file, 'utf8'), original);
+  assert.equal((await readJSON(file)).nativeSessionId, nativeSessionId);
+  await assert.rejects(runtime.pendingCiProfiles.get(tester).verify(), { code: 'CI_PROFILE_CLOSED' });
 });
 
 test('Cursor Tester retains its independent role and checks the exact Executor handoff without granting direct prompts', async () => {

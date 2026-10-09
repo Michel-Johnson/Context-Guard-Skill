@@ -5,6 +5,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { CursorAcp } from './cursor-acp.mjs';
 import { connectCursorCiWorkerClient, serveCursorCiWorker } from './cursor-ci-channel.mjs';
+import { prepareCursorCiProfile } from './cursor-ci-profile.mjs';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { canonical, validateMessage } from '../shared/protocol.mjs';
 
@@ -14,6 +15,8 @@ const git = async (root, ...args) => (await execute('git', args, { cwd: root, wi
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code, status: ['RUNTIME_BUSY', 'WORKTREE_MISMATCH', 'CREATION_UNCERTAIN', 'ID_REUSED', 'RUNTIME_NOT_CONFIGURED'].includes(code) ? 409 : 400 }); };
 const alive = pid => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (cause) { return cause.code !== 'ESRCH'; } };
+const nativeLive = acp => Boolean(acp && !acp.failure && !acp.stopping && !acp.child?.killed &&
+  acp.child?.exitCode == null && acp.child?.signalCode == null);
 const preview = text => ({ text: String(text || '').slice(0, 40000).replace(/[\uD800-\uDBFF]$/, ''), truncated: String(text || '').length > 40000 });
 
 async function validateConfig(config) {
@@ -53,10 +56,11 @@ export function cursorEnvironment(credentials = {}, parent = process.env) {
 // Reuse the workbench's delivery IDs, not a second queue or scheduler. A native
 // conversation ID is persisted separately from the Context Guard Session ID.
 export class CursorRuntime {
-  constructor(directory, { acpFactory = config => new CursorAcp(config), executorCreation, ciClientFactory } = {}) {
+  constructor(directory, { acpFactory = config => new CursorAcp(config), executorCreation, ciClientFactory, ciProfileInvoke } = {}) {
     this.directory = directory; this.acpFactory = acpFactory; this.pendingNative = new Map(); this.ownedTurns = new Map();
     this.executorCreation = executorCreation;
     this.ciClientFactory = ciClientFactory; this.ciWorkers = new Map(); this.ciClosing = false;
+    this.ciProfileInvoke = ciProfileInvoke; this.pendingCiProfiles = new Map(); this.ciPreparing = new Map(); this.ciConnecting = new Map();
   }
   sessionFile(sessionId) {
     if (!uuid.test(sessionId || '')) fail('INVALID_SESSION', 'Use a Context Guard Session UUID');
@@ -169,6 +173,7 @@ export class CursorRuntime {
     if (typeof operationId !== 'string' || !operationId.trim() || operationId.length > 128 || config?.nativeSessionId ||
         sessionId !== undefined && !uuid.test(sessionId)) fail('INVALID_CREATION', 'Explicit creation requires a stable operation ID and no existing native Session');
     config = await validateConfig(config);
+    if (config.role === 'ci' && (!sessionId || this.ciClosing)) fail('INVALID_CREATION', 'CI creation needs its reserved logical Session and a running host');
     const file = path.join(this.directory, 'creations', hash(operationId) + '.json'), fingerprint = hash(canonical(sessionId ? { sessionId, config } : config));
     if (sessionId) {
       const ownerFile = path.join(path.dirname(this.sessionFile(sessionId)), 'native-creation.json');
@@ -182,45 +187,114 @@ export class CursorRuntime {
       });
     }
     return withFileLock(file + '.lock', async () => {
-      let receipt = await readJSON(file, null), createdAcp;
+      let receipt = await readJSON(file, null), createdAcp, createdProfile;
       if (receipt && receipt.fingerprint !== fingerprint) fail('ID_REUSED', 'Cursor creation ID belongs to different settings');
-      if (receipt?.state === 'ready') return receipt.result;
       if (receipt && !receipt.sessionId) fail('CREATION_UNCERTAIN', 'Keep the original Cursor creation; do not create another conversation');
+      if (receipt && config.role === 'ci') {
+        const profile = this.pendingCiProfiles.get(receipt.sessionId);
+        const transport = this.pendingNative.get(receipt.sessionId);
+        if (!nativeLive(transport) || !profile || !receipt.ciProfile) {
+          await profile?.close(); await transport?.close();
+          fail('CREATION_UNCERTAIN', 'Preserve the CI native identity whose original transport was lost');
+        }
+        await profile.verify();
+        if (this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
+        if (!nativeLive(transport)) {
+          await profile.close(); await transport.close();
+          fail('CREATION_UNCERTAIN', 'Preserve the CI native transport that exited during verification');
+        }
+      }
+      if (receipt?.state === 'ready') return receipt.result;
       if (!receipt) {
         await atomicWrite(file, encode({ fingerprint, state: 'creating' }));
-        const acp = this.acpFactory({ command: config.command, cwd: config.root,
-          args: config.model ? ['--model', config.model] : [],
-          env: cursorEnvironment(config.environmentFile ? await readJSON(config.environmentFile) : {}) });
+        let acp;
         try {
+          let env = cursorEnvironment(config.environmentFile ? await readJSON(config.environmentFile) : {}), cwd = config.root;
+          if (config.role === 'ci') {
+            const directory = path.join(path.dirname(this.sessionFile(sessionId)), 'profile-owner');
+            await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+            if (this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
+            const preparing = prepareCursorCiProfile({ directory: await fs.realpath(directory), sessionId, root: config.root,
+              command: config.command, environment: env, invoke: this.ciProfileInvoke });
+            this.ciPreparing.set(sessionId, preparing);
+            try { createdProfile = await preparing; } finally { this.ciPreparing.delete(sessionId); }
+            if (this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
+            this.pendingCiProfiles.set(sessionId, createdProfile);
+            cwd = (await createdProfile.verify()).nativeCwd; env = createdProfile.environment;
+          }
+          if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
+          acp = this.acpFactory({ command: config.command, cwd, args: config.model ? ['--model', config.model] : [], env });
+          if (createdProfile) this.ciConnecting.set(sessionId, acp);
           const native = await acp.connect();
           if (!uuid.test(native.sessionId)) fail('CURSOR_INVALID_SESSION', 'Cursor returned an unsupported native Session identifier');
           receipt = { fingerprint, sessionId: sessionId || native.sessionId, nativeSessionId: native.sessionId, state: 'created' };
           await atomicWrite(file, encode(receipt));
+          if (createdProfile) {
+            if (this.ciClosing) fail('RUNTIME_CLOSING', 'Preserve the native identity returned during shutdown');
+            const ciProfile = await createdProfile.bindNative(native.sessionId);
+            receipt = { ...receipt, ciProfile }; await atomicWrite(file, encode(receipt));
+          }
           // Cursor does not save a usable ACP store for an empty Session.
           // Keep this native transport until its first real prompt; never add
           // a synthetic model turn or silently create a replacement Session.
           createdAcp = acp;
-        } catch (cause) { await acp.close(); throw cause; }
+        } catch (cause) {
+          await acp?.close(); await createdProfile?.close();
+          this.pendingCiProfiles.delete(sessionId); this.ciConnecting.delete(sessionId); throw cause;
+        }
       }
       try {
+        if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
         await this.configure(receipt.sessionId, { ...config, nativeSessionId: receipt.nativeSessionId || receipt.sessionId });
+        if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
+        if (receipt.ciProfile) await withFileLock(this.sessionFile(receipt.sessionId) + '.lock', async () => {
+          const state = await readJSON(this.sessionFile(receipt.sessionId));
+          if (state.nativeSessionId !== receipt.nativeSessionId || state.config.root !== receipt.ciProfile.worktreeRoot) fail('WORKTREE_MISMATCH', 'Preserve the original native profile identity');
+          await atomicWrite(this.sessionFile(receipt.sessionId), encode({ ...state, ciProfile: receipt.ciProfile }));
+        });
         if (createdAcp) {
+          if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
           if (this.pendingNative.has(receipt.sessionId)) fail('NATIVE_SESSION_CONFLICT', 'Preserve the existing first-turn native transport');
           this.pendingNative.set(receipt.sessionId, createdAcp);
         }
-      } catch (cause) { await createdAcp?.close(); throw cause; }
+      } catch (cause) { await createdAcp?.close(); await createdProfile?.close(); this.pendingCiProfiles.delete(receipt.sessionId); throw cause; }
+      finally { this.ciConnecting.delete(receipt.sessionId); }
       const eventsFile = path.join(config.root, '.codex/context/sessions.jsonl');
       await withFileLock(eventsFile + '.lock', async () => {
+        if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
         const previous = await fs.readFile(eventsFile, 'utf8').catch(cause => cause.code === 'ENOENT' ? '' : Promise.reject(cause));
         const found = previous.split('\n').some(line => { try { return JSON.parse(line).session_id === receipt.sessionId; } catch { return false; } });
         if (!found) {
           await fs.mkdir(path.dirname(eventsFile), { recursive: true });
+          if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
           await fs.appendFile(eventsFile, JSON.stringify({ at: new Date().toISOString(), event: 'session-start', platform: 'cursor',
             session_id: receipt.sessionId, thread_name: config.name, source: 'cursor-acp-provision', worktree_root: config.root }) + '\n', { mode: 0o600 });
         }
       });
+      if (config.role === 'ci') {
+        if (this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
+        const profile = this.pendingCiProfiles.get(receipt.sessionId);
+        const transport = this.pendingNative.get(receipt.sessionId);
+        if (!nativeLive(transport) || !profile) {
+          await profile?.close(); await transport?.close();
+          fail('CREATION_UNCERTAIN', 'Preserve the lost CI native transport');
+        }
+        await profile.verify();
+      }
       const result = { created: true, sessionId: receipt.sessionId, root: config.root };
-      await atomicWrite(file, encode({ ...receipt, state: 'ready', result }));
+      await atomicWrite(file, encode({ ...receipt, state: 'ready', result }), { beforeReplace: () => {
+        if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
+      } });
+      if (config.role === 'ci' && this.ciClosing) {
+        await atomicWrite(file, encode({ ...receipt, state: 'created' }));
+        fail('RUNTIME_CLOSING', 'Preserve the native creation returned during shutdown');
+      }
+      if (config.role === 'ci' && !nativeLive(this.pendingNative.get(receipt.sessionId))) {
+        await atomicWrite(file, encode({ ...receipt, state: 'created' }));
+        await this.pendingCiProfiles.get(receipt.sessionId)?.close();
+        await this.pendingNative.get(receipt.sessionId)?.close();
+        fail('CREATION_UNCERTAIN', 'Preserve the CI native transport that exited during registration');
+      }
       return result;
     });
   }
@@ -359,11 +433,14 @@ export class CursorRuntime {
   }
   async close() {
     this.ciClosing = true;
+    await Promise.allSettled([...this.ciPreparing.values()].map(async preparing => (await preparing).close()));
+    await Promise.all([...this.pendingCiProfiles.values()].map(profile => profile.close()));
+    this.pendingCiProfiles.clear();
     const workers = [...this.ciWorkers.values()];
     // wake() detaches this owning worker. Once IPC is disconnected, an exit
     // Promise alone cannot keep the host alive to confirm shutdown (Node 18).
     for (const { worker, bridge } of workers) { worker.ref(); bridge.close(); }
-    const transports = [...new Set([...this.pendingNative.values(), ...[...this.ownedTurns.values()].map(turn => turn.acp)])];
+    const transports = [...new Set([...this.pendingNative.values(), ...this.ciConnecting.values(), ...[...this.ownedTurns.values()].map(turn => turn.acp)])];
     this.pendingNative.clear();
     await Promise.all(transports.map(acp => acp.close()));
     await Promise.allSettled([...this.ownedTurns.values()].map(turn => turn.work));

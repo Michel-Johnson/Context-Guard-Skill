@@ -77,6 +77,7 @@ const tools = [
     inputSchema: { type: 'object', required: ['id', 'type', 'payload'], properties: {
       id: { type: 'string', minLength: 1, maxLength: 128 }, type: { enum: ['object.read', 'object.put', 'ci.result'] }, payload: { type: 'object' } }, additionalProperties: false } },
 ];
+export const CURSOR_CI_TOOL_NAMES = Object.freeze(tools.map(tool => tool.name));
 
 // One capability per native CI turn. Business truth/receipts remain in the
 // original protocol; this server has no task queue or model loop.

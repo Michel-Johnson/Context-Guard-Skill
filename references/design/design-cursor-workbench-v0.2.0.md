@@ -72,6 +72,28 @@ CLI 与网页直接发消息共用 `native.prompt` 检查和投递编号；管�
 
 当前仅接通执行前的原授权检查。私有原生 profile、工具边界与不可覆盖证明尚未完成时，worker 明确返回 `CI_NATIVE_ISOLATION_REQUIRED`，不调用模型；既有空 CI 原生连接保持原 ID 和原 transport，不冷加载或替换。普通 Executor 不增加该门禁。
 
+### CI 原生配置准备（创建阶段）
+
+新 CI 创建先固定预留的逻辑 Session，保存独占准备意图。首次原生返回后才保存实际 native ID；配置失败或结果不确定时保留原意图，不重建会话或覆盖已有目录。
+
+保留两个不同目录：工作台登记的逻辑 root 是批准的 Tester 工作树；Cursor 的 native cwd 是 Git 树外的私有空目录。源码只能经准确 SHA 快照工具读取，不能把原工作树或快照用作 CLI 配置发现目录。
+
+宿主创建独立 HOME、配置、数据和临时目录，并显式覆盖 Windows/XDG 路径。只接受明确的 Cursor provider 环境，厂商凭据使用内存存储；Core 凭据、用户 Hook、任意 MCP 地址及其他父进程秘密不进入原生环境。
+
+私有配置只登记四个 CI MCP 工具，使用宿主生成的能力。调用官方 `mcp enable`；随后核对原 endpoint、header 与完整服务器清单，拒绝多出的服务器。allowlist 与 Read/Shell/Write/WebFetch 拒绝配置不是操作系统沙箱，也不证明 Task 已被限制。
+
+记录准备目录、逻辑/原生身份、配置摘要和最初 30 分钟期限。每次核验目录、私有文件和准确字节；漂移、链接、关闭或到期永久失效，不自动修复、续期或重新签发能力。Windows ACL 与实际宿主工具边界仍待验证。
+
+核验还拒绝私有 HOME 中新增的已知 Hook、规则、commands、agents、plugins 和第三方 Skill 配置根；不删除这些文件，不修改用户配置。检查配置漂移不等于阻止运行中的所有文件写入或厂商动态加载，不能当作操作系统隔离证明。
+
+关闭覆盖准备、连接与登记阶段；每次异步边界后重查关闭标记。关闭中晚到的 native ID仍保存，但不登记为就绪。已丢失的空 transport 在重启后保持创建不确定，不调用 new 或以原文件恢复业务权限。
+
+CI 创建的 ready 回执也须核原 held transport 的错误/关闭状态与真实子进程终态、活 profile；缓存存在不证明进程活着。连接失效时关闭自有能力、保留原记录，不替换空 native。重启后不能仅凭旧成功记录报告可用。等待事件登记锁期间关闭时，不追加启动事件或写 ready；持久化期间关闭亦不返回成功。
+
+当前只接通首次创建与元数据发现；同 profile 的后续 load、原任务激活、测试 Runner 和不可覆盖证明仍未接线。既有未隔离空 native 不升级或替换，业务执行硬停与公开结果拒绝不解除。
+
+官方 CLI 的隔离元数据实验仅证明四工具可发现、原项目 MCP 不参与清单，以及用户配置摘要未变。没有模型、Task 或原任务授权，不把该实验视为独立 CI 闭环。
+
 关闭本机 CI host 时，先恢复自有 worker 的进程引用，再断开私有 IPC，并等待已登记的真实退出回报。退出 Promise 本身不保活；关闭与 spawn 并发时，晚到 spawn 不再次取消该引用。关闭后拒绝新 CI 投递，不创建替代 worker；Executor 的既有分离运行行为不变。
 
 Cursor 的公开 CI 入口在宿主证明及原事务校验接通前拒绝 `ci.result`，不接受模型、请求字段或 header 的“已验证”标记。`ci:<Tester>:host:` 为宿主保留的证明命名空间，模型不能写入；Claude 原 CI 通道不变。上述阶段保护不是原生独立测试已可交付的声明。
@@ -227,6 +249,7 @@ Skill 的普通 CI 为 `cursor/**` 源码推送运行完整检查，功能 job �
 ## 官方依据
 
 - [Cursor ACP](https://cursor.com/docs/cli/acp)
+- [Cursor Hook 来源](https://cursor.com/docs/hooks)
 - [Cursor Cloud API](https://cursor.com/docs/cloud-agent/api/endpoints)
 - [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
 - [GitHub workflow run 事实](https://docs.github.com/en/rest/actions/workflow-runs)
