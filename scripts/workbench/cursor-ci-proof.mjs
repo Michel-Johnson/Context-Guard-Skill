@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { CursorCiDockerRunner } from './cursor-ci-runner.mjs';
+import { cursorCiSourcePath } from './cursor-ci-source.mjs';
 import { atomicWrite, encode, hash, withFileLock } from '../shared/io.mjs';
 import { canonical, validateMessage } from '../shared/protocol.mjs';
 import { scopedObjectKey } from '../shared/protocol-workflow.mjs';
@@ -63,8 +64,10 @@ export function createCursorCiHostProof({ runner, approvedPlan, ciTodo, commit }
   if (!(runner instanceof CursorCiDockerRunner) || typeof commit !== 'function' ||
       !approvedPlan?.ref || !approvedPlan.version || !approvedPlan.approvalReceiptId ||
       !/^[a-f0-9]{40}$/.test(approvedPlan.sourceSha || '') || !Array.isArray(approvedPlan.paths) ||
-      !approvedPlan.paths.length || new Set(approvedPlan.paths).size !== approvedPlan.paths.length ||
-      canonical([...approvedPlan.paths].sort()) !== canonical(Object.keys(runner.source.manifest.files).sort()) ||
+      !approvedPlan.paths.length || approvedPlan.paths.length > 128 || !approvedPlan.paths.every(cursorCiSourcePath) ||
+      new Set(approvedPlan.paths).size !== approvedPlan.paths.length ||
+      Object.keys(runner.source.manifest.files).some(file => !approvedPlan.paths.some(scope => file === scope || file.startsWith(scope + '/'))) ||
+      approvedPlan.paths.some(scope => !Object.keys(runner.source.manifest.files).some(file => file === scope || file.startsWith(scope + '/'))) ||
       ciTodo?.ref !== runner.context.ciTodoRef || ciTodo?.kind !== 'ciTodo' || ciTodo?.version !== runner.context.references[ciTodo.ref] ||
       !Array.isArray(ciTodo.content?.items) || !ciTodo.content.items.length ||
       ciTodo.content.items.some(item => typeof item?.id !== 'string' || !item.id || item.id.length > 128) ||

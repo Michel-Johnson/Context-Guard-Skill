@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { ClaudeRuntime } from './claude-runtime.mjs';
 import { CursorRuntime } from './cursor-runtime.mjs';
 import { OriginalCursorCiClient } from './cursor-ci-mcp.mjs';
-import { bindCursorCiClient } from './cursor-ci-channel.mjs';
+import { bindCursorCiClient, pinCursorCiAuthority, readCursorCiHostContext } from './cursor-ci-channel.mjs';
 import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from '../shared/io.mjs';
@@ -797,7 +797,18 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const entry = [...agentTokens].find(([, actor]) => actor.sessionId === sessionId && actor.worktreeId === binding?.worktreeId);
     if (!entry) protocolFail('FORBIDDEN', 'The original CI Session capability is unavailable');
     const [credential, actor] = entry; // Fix once; never select a replacement on rebind/re-registration.
+    const connection = await projectDevice();
+    if (!connection) protocolFail('UNAVAILABLE', 'The original Cloud connection is required');
+    const authority = await pinCursorCiAuthority({ readAuthority: async () => {
+      const configured = await readJSON(memoryConfigPath(project), null);
+      const registration = await readJSON(connection.file, null);
+      if (device !== connection || configured?.url !== connection.origin || registration?.origin !== connection.origin) {
+        protocolFail('FORBIDDEN', 'The original Cloud authority changed');
+      }
+      return registration;
+    } });
     const readBinding = async () => {
+      const authorityVersion = await authority();
       const current = access.binding(sessionId);
       const localIdentity = canonical({ worktreeId: current?.worktreeId, root: current?.worktreeRoot, role: current?.role });
       const state = await readJSON(cursorRuntime.sessionFile(sessionId));
@@ -812,11 +823,25 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       const confirmed = access.binding(sessionId);
       if (agentTokens.get(credential) !== actor || canonical({ worktreeId: confirmed?.worktreeId,
         root: confirmed?.worktreeRoot, role: confirmed?.role }) !== localIdentity) protocolFail('FORBIDDEN', 'CI binding changed during authorization');
+      if (await authority() !== authorityVersion) protocolFail('FORBIDDEN', 'CI authority changed during authorization');
       return { epoch: instance, bindingVersion: hash(canonical({ protocol: registered.version, role: current.role,
-        access: access.accessRecord(sessionId), fingerprint })), worktreeId: current.worktreeId, generation: registered.generation,
+        access: access.accessRecord(sessionId), fingerprint, authorityVersion })), worktreeId: current.worktreeId, generation: registered.generation,
         sessionId, nativeSessionId, root: ciRoot };
     };
     return bindCursorCiClient({ client: new OriginalCursorCiClient({ origin: base, credential }), readBinding,
+      readHostContext: context => readCursorCiHostContext({ context,
+        readExecution: async () => {
+          await readBinding();
+          const active = await protocolStore.activeExecution(backendPrincipal, context.session);
+          await readBinding();
+          return active;
+        },
+        readObject: async (ref, version) => {
+          await readBinding();
+          const result = await connection.send({ v: 2, id: randomUUID(), type: 'object.read', session: context.session, payload: { ref, version } });
+          await readBinding();
+          return result;
+        } }),
       testerSessionId: sessionId, nativeSessionId, deliveryId, workerPid, root: ciRoot });
   }
   async function preparedSessionBinding(input) {

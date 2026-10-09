@@ -15,7 +15,7 @@ import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
 import { startCursorCiMcp } from '../scripts/workbench/cursor-ci-mcp.mjs';
 
 const imageId = 'sha256:' + 'd'.repeat(64), containerId = 'a'.repeat(64);
-async function fixture(t, { tap = false, setup } = {}) {
+async function fixture(t, { tap = false, setup, directoryScope = false } = {}) {
   const parent = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-ci-runner-test-')));
   await fs.chmod(parent, 0o700);
   const root = path.join(parent, 'repo'), directory = path.join(parent, 'records');
@@ -24,14 +24,21 @@ async function fixture(t, { tap = false, setup } = {}) {
   const git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true,
     env: { PATH: process.env.PATH, HOME: parent, GIT_CONFIG_NOSYSTEM: '1', ...(process.platform === 'win32' ? { SYSTEMROOT: process.env.SYSTEMROOT } : {}) } })).stdout.trim();
   await git('init'); await git('config', 'user.name', 'Synthetic Tester'); await git('config', 'user.email', 'tester@example.invalid');
-  await fs.writeFile(path.join(root, 'check.mjs'), 'import assert from "node:assert/strict"; assert.equal(1,1);\n');
+  if (directoryScope) {
+    await fs.mkdir(path.join(root, 'tests')); await fs.mkdir(path.join(root, 'tests-other'));
+    await fs.writeFile(path.join(root, 'tests', 'helper.mjs'), 'export const value = 1;\n');
+    await fs.writeFile(path.join(root, 'tests-other', 'outside.mjs'), 'throw new Error("outside approval");\n');
+    await fs.writeFile(path.join(root, 'unapproved.mjs'), 'throw new Error("outside approval");\n');
+  }
+  const testPath = directoryScope ? 'tests/check.mjs' : 'check.mjs';
+  await fs.writeFile(path.join(root, testPath), 'import assert from "node:assert/strict"; assert.equal(1,1);\n');
   await git('add', '.'); await git('commit', '-m', 'synthetic committed fixture');
   const sourceSha = await git('rev-parse', 'HEAD');
-  const source = await exportCursorCiSource({ root, sourceSha, directory: parent, paths: ['check.mjs'] });
+  const source = await exportCursorCiSource({ root, sourceSha, directory: parent, paths: [directoryScope ? 'tests' : testPath] });
   const context = { session: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', generation: 1 }, taskId: 'task', sourceSha, ciTodoRef: 'todo', references: { todo: 'v1' },
     commands: ['node --test'], tester: { sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', nativeSessionId: 'native', deliveryId: 'delivery', workerPid: process.pid } };
   const policy = { docker: process.execPath, socket: path.join(parent, 'synthetic.sock'), daemonId: 'synthetic-daemon', imageId,
-    imageEnvironment: ['PATH=/usr/bin:/bin', 'NODE_VERSION=24'], tests: [{ id: 'check', todoId: 'todo-one', commandLabel: 'node --test', argv: ['--test', ...(tap ? ['--test-reporter=tap'] : []), '/source/check.mjs'] }],
+    imageEnvironment: ['PATH=/usr/bin:/bin', 'NODE_VERSION=24'], tests: [{ id: 'check', todoId: 'todo-one', commandLabel: 'node --test', argv: ['--test', ...(tap ? ['--test-reporter=tap'] : []), `/source/${testPath}`] }],
     timeoutMs: 1000, outputBytes: 4096 };
   const state = { calls: [], status: 'created', exitCode: 0, stdout: 'synthetic observed output', stderr: '' };
   const inspected = () => ({ Id: containerId, Name: '/' + state.name, Image: imageId, Config: { Labels: state.labels,
@@ -195,10 +202,10 @@ test('CI runner rejects altered actual container policy but still stops by exact
 });
 
 const passingTap = 'TAP version 13\n# Subtest: fixed check\nok 1 - fixed check\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1\n';
-async function proofFixture(t) {
+async function proofFixture(t, { directoryScope = false } = {}) {
   let store, ci, taskKey;
   const sent = [];
-  const f = await fixture(t, { tap: true, setup: async ({ directory, context, ciTodo }) => {
+  const f = await fixture(t, { tap: true, directoryScope, setup: async ({ directory, context, ciTodo }) => {
     store = new ProtocolStore(path.join(directory, 'synthetic-core'));
     const device = { repositoryId: 'synthetic-repo', deviceId: 'synthetic-device', agentId: context.session.id, role: 'device' };
     ci = { ...device, agentId: context.tester.sessionId, role: 'ci', bindings: { [context.session.id]: 'synthetic-worktree' } };
@@ -215,7 +222,7 @@ async function proofFixture(t) {
   } });
   f.state.stdout = passingTap;
   const approvedPlan = { ref: 'synthetic-approved-plan', version: 'synthetic-plan-version', approvalReceiptId: 'synthetic-approval',
-    sourceSha: 'e'.repeat(40), paths: ['check.mjs'] }; // Plan baseline differs from the final handoff SHA.
+    sourceSha: 'e'.repeat(40), paths: [directoryScope ? 'tests' : 'check.mjs'] }; // Plan baseline differs from the final handoff SHA.
   const commit = async (message, { expectedEvidence } = {}) => {
     sent.push(structuredClone(message));
     const result = (await store.handle(ci, message, { authorize: (state, principal, input) => {
@@ -231,6 +238,26 @@ async function proofFixture(t) {
         ...(observed.reproductionRef ? { reproductionRef: observed.reproductionRef } : {}) }] } });
   return { ...f, proof, store, ci, taskKey, sent, proposal, approvedPlan, commit };
 }
+
+test('host proof accepts expanded original Plan directory scope but rejects unapproved or uncovered paths', async t => {
+  const f = await proofFixture(t, { directoryScope: true });
+  assert.deepEqual(Object.keys(f.source.manifest.files), ['tests/check.mjs', 'tests/helper.mjs']);
+  assert.equal(await fs.stat(path.join(f.source.snapshot, 'tests-other')).then(() => true, error => {
+    assert.equal(error.code, 'ENOENT'); return false;
+  }), false, 'adjacent path prefix is not an approved directory');
+  const observed = await f.proof.runTest({ id: 'request', testId: 'check' });
+  assert.equal(observed.status, 'passed');
+  const receipt = await f.proof.submitVerifiedResult(f.proposal(observed));
+  assert.equal(receipt.verdict, 'passed');
+  const evidence = f.sent.find(message => message.type === 'object.put').payload.content;
+  assert.deepEqual(evidence.approvedPlan.paths, ['tests'], 'keep original directory approval, not reconstructed file claims');
+  assert.deepEqual(evidence.argv, ['--test', '--test-reporter=tap', '/source/tests/check.mjs']);
+  for (const paths of [['elsewhere'], ['tests/check.mjs'], ['tests', 'tests-other'], ['tests', 'missing'],
+    ['.'], ['../tests'], ['.codex'], ['tests/.env']]) {
+    assert.throws(() => createCursorCiHostProof({ runner: f.runner, ciTodo: f.ciTodo, commit: f.commit,
+      approvedPlan: { ...f.approvedPlan, paths } }), { code: 'CI_PROOF_CONFIG_INVALID' });
+  }
+});
 
 test('host proof rejects zero discovery, skips, cancellation, partial and inconsistent TAP', async () => {
   assert.equal(cursorCiNodeTapPassed({ exitCode: 0, stdout: passingTap, stderr: '' }), true);

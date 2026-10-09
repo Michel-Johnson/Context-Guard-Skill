@@ -31,6 +31,98 @@ async function fixture(pid = process.pid) {
   return { root, state, options };
 }
 
+function hostFixture() {
+  const active = { taskId: 'original-task', mode: 'reviewed', closed: false,
+    plan: { ref: 'approved-plan', version: 'plan-v2', sourceSha: 'd'.repeat(40) }, approval: 'approved-receipt' };
+  const objects = {
+    'approved-plan': { ref: 'approved-plan', version: 'plan-v2', kind: 'plan', content: { paths: ['tests'], steps: ['test assigned commit'] } },
+    'approved-receipt': { ref: 'approved-receipt', version: 'approved-receipt', kind: 'reviewReceipt', content: {
+      kind: 'plan', ref: 'approved-plan', version: 'plan-v2', decision: 'approved', receiptId: 'approved-receipt', issuer: 'original-coordinator' } },
+    'original-todo': { ref: 'original-todo', version: 'todo-v3', kind: 'ciTodo', content: { items: [{ id: 'one' }] } },
+  };
+  const reads = [];
+  const options = { context: scope(process.pid), readExecution: async () => structuredClone(active),
+    readObject: async (ref, version) => { reads.push({ ref, version }); return structuredClone(objects[ref]); } };
+  return { active, objects, reads, options };
+}
+
+test('host preparation reads the exact original Plan, immutable approval receipt and handed-off TODO', async () => {
+  const f = hostFixture(), result = await required().readCursorCiHostContext(f.options);
+  assert.deepEqual(f.reads, [{ ref: 'approved-plan', version: 'plan-v2' },
+    { ref: 'approved-receipt', version: 'approved-receipt' }, { ref: 'original-todo', version: 'todo-v3' }]);
+  assert.deepEqual(result, { authorization: 'preparation-only', approvedPlan: { ref: 'approved-plan', version: 'plan-v2',
+    sourceSha: 'd'.repeat(40), approvalReceiptId: 'approved-receipt', paths: ['tests'] }, ciTodo: f.objects['original-todo'] });
+  assert.notEqual(result.approvedPlan.sourceSha, f.options.context.sourceSha, 'Plan baseline is not the final handoff commit');
+});
+
+test('host preparation refuses missing, foreign or changed original approval without expanding CI references', async () => {
+  const api = required();
+  for (const change of [f => { f.active.taskId = 'later-task'; }, f => { f.active.approval = null; },
+    f => { f.active.closed = true; }, f => { f.objects['approved-receipt'].content.decision = 'rejected'; },
+    f => { f.objects['approved-receipt'].content.version = 'foreign-plan'; },
+    f => { f.objects['approved-receipt'].content.receiptId = 'model-invented'; }]) {
+    const f = hostFixture(); change(f);
+    await assert.rejects(api.readCursorCiHostContext(f.options), { code: 'CI_APPROVED_PLAN_REQUIRED' });
+    assert.ok(f.reads.every(read => read.ref !== 'original-todo'), 'no TODO grant follows an invalid original approval');
+  }
+  for (const path of ['../elsewhere', '.', '.codex/context/private', 'tests/.env', 'tests\\file']) {
+    const f = hostFixture(); f.objects['approved-plan'].content.paths = [path];
+    await assert.rejects(api.readCursorCiHostContext(f.options), { code: 'CI_HOST_CONTEXT_INVALID' });
+  }
+  for (const field of ['version', 'kind', 'ref']) {
+    const f = hostFixture(); f.objects['original-todo'][field] = 'foreign';
+    await assert.rejects(api.readCursorCiHostContext(f.options), { code: 'CI_HOST_CONTEXT_INVALID' });
+  }
+  const f = hostFixture(); f.objects['original-todo'].content.items = [{ id: 'one' }, { id: 'one' }];
+  await assert.rejects(api.readCursorCiHostContext(f.options), { code: 'CI_HOST_CONTEXT_INVALID' });
+});
+
+test('host preparation rejects Plan or task drift while an object read is pending', async () => {
+  const api = required();
+  for (const alter of [f => { f.active.plan.version = 'later-plan'; }, f => { f.active.taskId = 'later-task'; },
+    f => { f.active.approval = 'later-approval'; }]) {
+    const f = hostFixture(), read = f.options.readObject;
+    f.options.readObject = async (...args) => { const result = await read(...args); alter(f); return result; };
+    await assert.rejects(api.readCursorCiHostContext(f.options), { code: 'CI_TASK_CHANGED' });
+    assert.equal(f.reads.length, 1);
+  }
+});
+
+test('authority pin keeps unrelated metadata changes but permanently rejects origin or login replacement', async () => {
+  const api = required(), secret = `SYNTHETIC_HOST_ONLY_${randomUUID()}`;
+  for (const field of ['origin', 'credential', 'repositoryId', 'deviceId', 'agentId', 'role']) {
+    const state = { origin: 'https://original.invalid', credential: secret, repositoryId: 'repo', deviceId: 'device', agentId: 'host', role: 'device' };
+    const check = await api.pinCursorCiAuthority({ readAuthority: async () => structuredClone(state) });
+    const stamp = await check(); assert.match(stamp, /^[a-f0-9]{64}$/); assert.equal(stamp.includes(secret), false);
+    state.capabilities = ['new-unrelated-capability']; assert.equal(await check(), stamp);
+    const old = state[field]; state[field] = 'replacement';
+    await assert.rejects(check(), { code: 'CI_AUTHORITY_CHANGED' }); state[field] = old;
+    await assert.rejects(check(), { code: 'CI_AUTHORITY_CHANGED' });
+  }
+});
+
+test('host client fixes prepared objects, refuses model arguments and revokes a late response', async t => {
+  const api = required(), f = await fixture(), h = hostFixture();
+  const client = await api.bindCursorCiClient({ ...f.options,
+    readHostContext: context => api.readCursorCiHostContext({ ...h.options, context }) });
+  t.after(() => client.close());
+  await assert.rejects(client.hostContext({ planRef: 'foreign' }), { code: 'CI_HOST_CONTEXT_REQUIRED' });
+  assert.equal(h.reads.length, 0);
+  await client.hostContext(); h.objects['approved-plan'].content.paths = ['other-tests'];
+  await assert.rejects(client.hostContext(), { code: 'CI_TASK_CHANGED' });
+  h.objects['approved-plan'].content.paths = ['tests'];
+  await assert.rejects(client.hostContext(), { code: 'CI_CAPABILITY_EXPIRED' });
+  const late = await fixture(), original = hostFixture();
+  let release, entered;
+  const waiting = new Promise(resolve => { release = resolve; }), started = new Promise(resolve => { entered = resolve; });
+  const lateClient = await api.bindCursorCiClient({ ...late.options, readHostContext: async context => {
+    entered(); await waiting; return api.readCursorCiHostContext({ ...original.options, context });
+  } });
+  t.after(() => lateClient.close());
+  const pending = lateClient.hostContext(), rejected = assert.rejects(pending, { code: 'CI_CAPABILITY_EXPIRED' });
+  await started; lateClient.close(); release(); await rejected;
+});
+
 test('CI host client fixes task, binding, native ID and owning PID before any exchange', async t => {
   const { bindCursorCiClient } = required(), f = await fixture();
   const client = await bindCursorCiClient(f.options); t.after(() => client.close());
@@ -104,7 +196,8 @@ test('binding changes while the original authorization is pending cannot grant a
 
 async function workerFixture(t, program, options = {}) {
   const api = required(), f = await fixture();
-  const { hostCredential, beforeOpen, ...transportOptions } = options;
+  const { hostCredential, beforeOpen, readHostContext, transformClient, ...transportOptions } = options;
+  if (readHostContext) f.options.readHostContext = readHostContext;
   if (hostCredential) {
     f.options.client.credential = hostCredential;
     f.state.context.hostCredential = hostCredential;
@@ -126,7 +219,7 @@ async function workerFixture(t, program, options = {}) {
     opens++; assert.equal(pid, worker.pid, 'parent derives ownership from its own ChildProcess');
     f.state.context.tester.workerPid = pid;
     await beforeOpen?.();
-    const client = await api.bindCursorCiClient({ ...f.options, workerPid: pid }); produced(client); return client;
+    const client = await api.bindCursorCiClient({ ...f.options, workerPid: pid }); produced(client); return transformClient ? transformClient(client) : client;
   }, ...transportOptions });
   t.after(async () => { bridge.close(); if (worker.exitCode === null && worker.signalCode === null) worker.kill(); await exited; });
   return { ...f, worker, bridge, exited, opened, output: () => output, diagnostics: () => diagnostics, opens: () => opens };
@@ -150,10 +243,31 @@ client.close();`, { hostCredential: secret });
   assert.equal(f.output().includes(secret), false);
 });
 
+test('real owning Node IPC reads original host preparation with no URL, identity or credential input', async t => {
+  const h = hostFixture(), secret = `SYNTHETIC_HOST_ONLY_${randomUUID()}`;
+  const f = await workerFixture(t, `const client = connectCursorCiWorkerClient();
+console.log(JSON.stringify(await client.hostContext())); client.close();`, { hostCredential: secret,
+    readHostContext: context => required().readCursorCiHostContext({ ...h.options, context }) });
+  const [code] = await f.exited; assert.equal(code, 0, f.diagnostics());
+  const result = JSON.parse(f.output()); assert.equal(result.authorization, 'preparation-only');
+  assert.equal(result.approvedPlan.approvalReceiptId, 'approved-receipt'); assert.equal(result.ciTodo.version, 'todo-v3');
+  assert.equal(h.reads.length, 3); assert.equal(f.output().includes(secret), false); assert.equal(f.opens(), 1);
+});
+
+test('owning Node IPC refuses an old host provider without preparation instead of prompting or restoring scope', async t => {
+  const f = await workerFixture(t, `const client = connectCursorCiWorkerClient();
+try { await client.hostContext(); console.log('UNEXPECTED_GRANT'); } catch (error) { console.log(error.code); }
+client.close();`, { transformClient: client => ({ ...client, hostContext: undefined }) });
+  const [code] = await f.exited; assert.equal(code, 0, f.diagnostics());
+  assert.match(f.output(), /CI_CHANNEL_CONFIG_INVALID/); assert.doesNotMatch(f.output(), /UNEXPECTED_GRANT/);
+  assert.equal((await f.opened).signal.aborted, true); assert.equal(f.state.exchanges.length, 0);
+});
+
 test('malformed or foreign IPC cannot bootstrap or invoke a business operation', async t => {
   for (const input of [{ channel: 'foreign', v: 1, id: randomUUID(), type: 'context', payload: {} },
     { channel: 'context-guard-cursor-ci', v: 1, id: randomUUID(), type: 'fetch', payload: { url: 'https://foreign.invalid' } },
-    { channel: 'context-guard-cursor-ci', v: 1, id: randomUUID(), type: 'context', payload: {}, workerPid: 42 }]) {
+    { channel: 'context-guard-cursor-ci', v: 1, id: randomUUID(), type: 'context', payload: {}, workerPid: 42 },
+    { channel: 'context-guard-cursor-ci', v: 1, id: randomUUID(), type: 'hostContext', payload: { planRef: 'foreign' } }]) {
     const f = await workerFixture(t, `process.on('disconnect', () => process.exit(0)); process.send(${JSON.stringify(input)});`);
     const [code] = await f.exited; assert.equal(code, 0, f.diagnostics());
     assert.equal(f.opens(), 0); assert.equal(f.state.exchanges.length, 0);

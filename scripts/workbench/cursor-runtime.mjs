@@ -483,6 +483,7 @@ async function runWorker(file, jobFile, heldAcp, openCiClient) {
       ciClient = openCiClient ? await openCiClient() : connectCursorCiWorkerClient();
       ciClient.signal.addEventListener('abort', () => { if (ready) stop(); }, { once: true });
       await ciClient.context(); // Original task/role checked before a paid/native prompt.
+      await ciClient.hostContext(); // Original approved Plan/receipt and fixed TODO, host-only preparation.
       // Discovery/runner primitives are verified, but the production private
       // profile and immutable proof gate are not connected yet. Never wake an
       // unisolated native Tester just because host IPC authorization succeeded.

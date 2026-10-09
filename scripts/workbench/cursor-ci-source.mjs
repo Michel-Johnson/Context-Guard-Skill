@@ -9,9 +9,10 @@ const sha = /^[a-f0-9]{40}$/;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }); };
 const digest = data => createHash('sha256').update(data).digest('hex');
 const blocked = part => ['.git', '.codex', '.ssh', '.npmrc', '.netrc'].includes(part) || /^\.env(?:\.|$)/.test(part);
-const relativePath = value => typeof value === 'string' && value.length > 0 && value.length <= 4096 &&
+export const cursorCiSourcePath = value => typeof value === 'string' && value.length > 0 && value.length <= 4096 &&
   !path.posix.isAbsolute(value) && !value.includes('\\') && !/[\u0000-\u001f\u007f]/.test(value) &&
   value.split('/').every(part => part && part !== '.' && part !== '..' && !blocked(part));
+const relativePath = cursorCiSourcePath;
 
 async function privateDirectory(directory) {
   if (!path.isAbsolute(directory || '') || path.resolve(directory) !== directory) {

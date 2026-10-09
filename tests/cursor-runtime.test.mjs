@@ -17,7 +17,7 @@ import { pythonCommand } from '../.github/scripts/python-command.mjs';
 import { fileURLToPath } from 'node:url';
 import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
 import { registeredExecutorCreation } from '../scripts/workbench/server.mjs';
-import { bindCursorCiClient } from '../scripts/workbench/cursor-ci-channel.mjs';
+import { bindCursorCiClient, readCursorCiHostContext } from '../scripts/workbench/cursor-ci-channel.mjs';
 
 for (const role of ['executor', 'ci']) {
   test(`Cursor ${role} worker keeps tool grants separate from the other role`, async t => {
@@ -157,12 +157,25 @@ test('owning CI Node worker uses private original-task IPC but cannot prompt bef
   const execute = promisify(execFile), git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
   await git('init', '-b', 'main'); await fs.writeFile(path.join(root, 'source.txt'), 'unchanged\n'); await git('add', 'source.txt');
   await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'exact source');
-  const sourceSha = await git('rev-parse', 'HEAD'), tester = randomUUID(), executor = randomUUID(), calls = [];
+  const sourceSha = await git('rev-parse', 'HEAD'), tester = randomUUID(), executor = randomUUID(), calls = [], objectReads = [];
   const secret = `SYNTHETIC_HOST_ONLY_${randomUUID()}`;
   const runtime = new CursorRuntime(path.join(directory, 'runtime'), { ciClientFactory: async identity => {
     calls.push(identity);
     const client = { credential: secret, context: () => runtime.ciContext(tester), exchange: async () => { throw new Error('No exchange requested'); } };
     return bindCursorCiClient({ client, ...identity, testerSessionId: tester,
+      readHostContext: context => readCursorCiHostContext({ context,
+        readExecution: async () => ({ taskId: 'original-task', mode: 'reviewed', closed: false, approval: 'fixed-approval',
+          plan: { ref: 'fixed-plan', version: 'plan-v1', sourceSha } }),
+        readObject: async (ref, version) => {
+          objectReads.push({ ref, version });
+          const objects = {
+            'fixed-plan': { ref, version, kind: 'plan', content: { paths: ['source.txt'] } },
+            'fixed-approval': { ref, version, kind: 'reviewReceipt', content: { kind: 'plan', ref: 'fixed-plan', version: 'plan-v1',
+              decision: 'approved', receiptId: 'fixed-approval', issuer: 'synthetic-coordinator' } },
+            'assigned-todo': { ref, version, kind: 'ciTodo', content: { items: [{ id: 'one' }] } },
+          };
+          return objects[ref];
+        } }),
       readBinding: async () => ({ epoch: 'own-backend', bindingVersion: 'binding-v1', worktreeId: 'tester-tree', generation: 1,
         sessionId: tester, nativeSessionId: tester, root }) });
   } });
@@ -183,6 +196,8 @@ test('owning CI Node worker uses private original-task IPC but cannot prompt bef
   assert.notEqual(calls[0].workerPid, process.pid, 'this exercises the actual separate Node IPC path');
   assert.equal(calls[0].deliveryId, job.id); assert.equal(calls[0].fingerprint, job.fingerprint);
   assert.equal(calls[0].sessionId, tester); assert.equal(calls[0].nativeSessionId, tester);
+  assert.deepEqual(objectReads, [{ ref: 'fixed-plan', version: 'plan-v1' }, { ref: 'fixed-approval', version: 'fixed-approval' },
+    { ref: 'assigned-todo', version: 'todo-v1' }], 'actual separate worker requests the original preparation before the isolation gate');
   assert.equal((await fs.readFile(file, 'utf8')).includes(secret), false);
   assert.equal((await fs.readFile(file + '.jsonl', 'utf8')).includes(secret), false);
   assert.equal((await fs.readFile(runtime.sessionFile(tester), 'utf8')).includes(secret), false);
