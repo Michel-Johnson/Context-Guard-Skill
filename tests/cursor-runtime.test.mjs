@@ -20,6 +20,207 @@ import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
 import { registeredExecutorCreation } from '../scripts/workbench/server.mjs';
 import { bindCursorCiClient, readCursorCiHostContext } from '../scripts/workbench/cursor-ci-channel.mjs';
 import * as ciProfiles from '../scripts/workbench/cursor-ci-profile.mjs';
+import { CursorCiDockerRunner } from '../scripts/workbench/cursor-ci-runner.mjs';
+
+async function heldCiPreparationFixture(t, mutation, beforeDelivery) {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-ci-host-preparation-')));
+  const root = path.join(directory, 'tester'); await fs.mkdir(root);
+  const execute = promisify(execFile), git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+  await git('init', '-b', 'main'); await fs.mkdir(path.join(root, 'tests'));
+  await fs.writeFile(path.join(root, '.gitignore'), '.codex/\n');
+  await fs.writeFile(path.join(root, 'tests', 'check.mjs'), 'import "./helper.mjs";\n');
+  await fs.writeFile(path.join(root, 'tests', 'helper.mjs'), 'export const answer = 42;\n');
+  await git('add', 'tests', '.gitignore'); await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'approved baseline');
+  const baseline = await git('rev-parse', 'HEAD');
+  await fs.appendFile(path.join(root, 'tests', 'helper.mjs'), 'export const final = true;\n');
+  await git('add', 'tests'); await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'exact handoff');
+  const sourceSha = await git('rev-parse', 'HEAD'), tester = randomUUID(), executor = randomUUID(), nativeId = randomUUID();
+  const policyFile = path.join(directory, 'policy.json'), environmentFile = path.join(directory, 'provider.json');
+  const policy = { docker: process.execPath, socket: path.join(directory, 'synthetic.sock'), daemonId: 'synthetic-daemon',
+    imageId: `sha256:${'a'.repeat(64)}`, imageEnvironment: ['PATH=/usr/local/bin:/usr/bin:/bin'], timeoutMs: 1000, outputBytes: 65536,
+    tests: [{ id: 'formal-test', todoId: 'one', commandLabel: 'fixed-test', argv: ['--test', '--test-reporter=tap', '/source/tests/check.mjs'] }] };
+  await fs.writeFile(policyFile, JSON.stringify(policy), { mode: 0o600 });
+  await fs.writeFile(environmentFile, JSON.stringify({ CURSOR_API_KEY: `SYNTHETIC_PROVIDER_${randomUUID()}` }), { mode: 0o600 });
+  const calls = { prompt: 0, activate: 0, writes: 0, docker: [], prepared: [] };
+  const native = { initialized: true, sessionId: nativeId, child: { pid: process.pid },
+    async connect() { return { sessionId: nativeId }; }, async prompt() { calls.prompt++; throw new Error('no business model call'); }, async close() {} };
+  let runtime;
+  runtime = new CursorRuntime(path.join(directory, 'runtime'), {
+    acpFactory: () => native, ciProfileInvoke: async () => ({ stdout: '', stderr: '' }),
+    ciRunnerCommand: async (_command, argv) => {
+      calls.docker.push(argv); assert.ok(argv.includes('info') || argv.includes('inspect'), 'metadata only; never create/start/pull');
+      if (mutation) await mutation({ runtime, policyFile, policy, tester, sourceSha, calls });
+      return { stdout: JSON.stringify(argv.includes('info')
+        ? { ID: 'synthetic-daemon', OSType: 'linux', Architecture: 'arm64' }
+        : { Id: policy.imageId, Os: 'linux', Architecture: 'arm64', Config: { Env: policy.imageEnvironment } }), stderr: '' };
+    },
+    ciClientFactory: async identity => bindCursorCiClient({ ...identity, testerSessionId: tester,
+      client: { context: () => runtime.ciContext(tester), exchange: async () => { calls.writes++; throw new Error('no ordinary write'); },
+        commit: async () => { calls.writes++; throw new Error('no host commit before isolation'); } },
+      authorizeTask: async () => {},
+      readBinding: async () => ({ epoch: 'synthetic-backend', bindingVersion: 'binding-v1', worktreeId: 'tester-tree', generation: 1,
+        sessionId: tester, nativeSessionId: nativeId, root }),
+      readHostContext: context => readCursorCiHostContext({ context,
+        readExecution: async () => ({ taskId: 'original-task', mode: 'reviewed', closed: false, approval: 'fixed-approval',
+          plan: { ref: 'fixed-plan', version: 'plan-v1', sourceSha: baseline } }),
+        readObject: async (ref, version) => ({ ref, version,
+          ...(ref === 'fixed-plan' ? { kind: 'plan', content: { paths: ['tests'] } }
+            : ref === 'fixed-approval' ? { kind: 'reviewReceipt', content: { kind: 'plan', ref: 'fixed-plan', version: 'plan-v1',
+              decision: 'approved', receiptId: 'fixed-approval', issuer: 'synthetic-coordinator' } }
+              : { kind: 'ciTodo', content: { items: [{ id: 'one' }] } }) }) }) }) });
+  t.after(() => runtime.close().catch(() => {}));
+  await runtime.configure(executor, { command: process.execPath, root: directory, name: 'Executor' });
+  const config = { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor,
+    ciCommands: ['fixed-test'], environmentFile, ciRunnerPolicyFile: policyFile };
+  await runtime.provision({ operationId: 'original-ci', sessionId: tester, config });
+  const profile = runtime.pendingCiProfiles.get(tester), originalActivate = profile.discovery.activate;
+  profile.discovery.activate = (...args) => { calls.activate++; return originalActivate(...args); };
+  const execution = { session: { id: executor, generation: 1 }, taskId: 'original-task', sourceSha,
+    ciTodoRef: 'assigned-todo', references: { 'assigned-todo': 'todo-v1' } };
+  await beforeDelivery?.({ runtime, tester });
+  await runtime.deliver({ id: 'original-delivery', sessionId: tester, root, message: 'Run assigned test', execution });
+  const jobFile = runtime.jobFile(tester, 'original-delivery'), deadline = Date.now() + 10000;
+  while (['starting', 'connecting', 'running'].includes((await readJSON(jobFile)).state)) {
+    assert.ok(Date.now() < deadline, 'original owning turn must settle'); await pause(10);
+  }
+  await runtime.ownedTurns.get(jobFile)?.work.catch(() => {}); // Wait finish's Session commit, not only its preceding job write.
+  return { runtime, directory, root, profile, policyFile, policy, calls, job: await readJSON(jobFile), tester, baseline, sourceSha, config };
+}
+
+test('original held CI prepares full approved snapshot and host proof but never activates or prompts before isolation', async t => {
+  const { runtime, profile, calls, job, tester, baseline, sourceSha } = await heldCiPreparationFixture(t);
+  assert.equal(job.state, 'failed'); assert.equal(job.error, 'CI_NATIVE_ISOLATION_REQUIRED');
+  assert.equal(calls.prompt, 0); assert.equal(calls.activate, 0); assert.equal(calls.writes, 0); assert.equal(calls.docker.length, 2);
+  const state = await readJSON(runtime.sessionFile(tester)); assert.equal(state.active, null);
+  assert.match(state.config.ciRunnerPolicySha256, /^[a-f0-9]{64}$/);
+  assert.equal(job.ciPreparation.authorization, 'preparation-only');
+  assert.equal(job.ciPreparation.planSourceSha, baseline); assert.equal(job.ciPreparation.sourceSha, sourceSha);
+  assert.equal(job.ciPreparation.fileCount, 2, 'Plan directory is not narrowed to test entrypoint');
+  assert.equal(job.ciPreparation.workerPid, process.pid);
+  const record = await profile.verify(); assert.deepEqual(await fs.readdir(record.nativeCwd), []);
+  const host = path.join(record.profileRoot, 'host'), deliveries = await fs.readdir(host);
+  assert.equal(deliveries.length, 1);
+  const sources = (await fs.readdir(path.join(host, deliveries[0]))).filter(name => name.startsWith('source-'));
+  assert.equal(sources.length, 1);
+  const snapshot = path.join(host, deliveries[0], sources[0]);
+  assert.deepEqual(await fs.readdir(snapshot), ['tests']);
+  assert.deepEqual((await fs.readdir(path.join(snapshot, 'tests'))).sort(), ['check.mjs', 'helper.mjs']);
+  assert.match(await fs.readFile(path.join(snapshot, 'tests', 'helper.mjs'), 'utf8'), /export const final = true/);
+  await assert.rejects(profile.discovery.call('context_guard_context', {}), { code: 'CI_NOT_ACTIVE' });
+});
+
+test('original held CI permanently rejects changed pinned Runner policy after Docker metadata', async t => {
+  let changed = false;
+  const { calls, job } = await heldCiPreparationFixture(t, async ({ policyFile, policy }) => {
+    if (!changed) { changed = true; await atomicWrite(policyFile, encode({ ...policy, timeoutMs: 2000 })); }
+  });
+  assert.equal(job.state, 'failed'); assert.equal(job.error, 'CI_RUNNER_POLICY_CHANGED');
+  assert.equal(job.ciPreparation, undefined); assert.equal(calls.prompt, 0); assert.equal(calls.activate, 0); assert.equal(calls.writes, 0);
+});
+
+for (const drift of ['bytes', 'mode']) test(`original held CI rejects snapshot ${drift} drift during metadata before saving preparation`, async t => {
+  let changed = false;
+  const { calls, job } = await heldCiPreparationFixture(t, async ({ runtime, tester }) => {
+    if (changed) return; changed = true;
+    const runner = runtime.ownedTurns.get(runtime.jobFile(tester, 'original-delivery')).owner.runner;
+    const file = path.join(runner.source.snapshot, 'tests', 'helper.mjs');
+    await fs.chmod(file, 0o600);
+    if (drift === 'bytes') { await fs.writeFile(file, 'export const answer = -1;\n'); await fs.chmod(file, 0o400); }
+  });
+  assert.equal(job.state, 'failed'); assert.equal(job.error, 'CI_SOURCE_CHANGED');
+  assert.equal(job.ciPreparation, undefined); assert.equal(calls.prompt, 0); assert.equal(calls.activate, 0); assert.equal(calls.writes, 0);
+});
+
+test('Runner policy pins cannot be supplied by external configuration or reused by Executor', async t => {
+  const { runtime, tester, config } = await heldCiPreparationFixture(t);
+  const hash = (await readJSON(runtime.sessionFile(tester))).config.ciRunnerPolicySha256;
+  await assert.rejects(runtime.configure(randomUUID(), { ...config, ciRunnerPolicySha256: hash }), { code: 'INVALID_RUNTIME' });
+  await assert.rejects(runtime.configure(randomUUID(), { ...config, role: 'executor', executorSessionId: undefined,
+    ciCommands: undefined }), { code: 'INVALID_RUNTIME' });
+});
+
+test('a cold owning Node worker cannot borrow an original profile or restore host preparation permission', async t => {
+  const { calls, job } = await heldCiPreparationFixture(t, undefined, async ({ runtime, tester }) => {
+    runtime.pendingNative.delete(tester); // Simulate the lost original transport, not a new native session.
+  });
+  assert.equal(job.state, 'failed'); assert.equal(job.error, 'CI_HELD_PROFILE_REQUIRED');
+  assert.notEqual(job.workerPid, process.pid, 'actual owning Node IPC, not a client claiming its own PID');
+  assert.equal(job.childPid, undefined); assert.equal(job.ciPreparation, undefined);
+  assert.equal(calls.docker.length, 0); assert.equal(calls.prompt, 0); assert.equal(calls.activate, 0); assert.equal(calls.writes, 0);
+});
+
+for (const change of ['source', 'todo', 'pid', 'profile']) test(`original held CI host preparation rejects ${change} drift after metadata`, async t => {
+  let changed = false;
+  const { calls, job } = await heldCiPreparationFixture(t, async ({ runtime, tester }) => {
+    if (changed) return; changed = true;
+    if (change === 'profile') {
+      const record = await runtime.pendingCiProfiles.get(tester).verify();
+      const file = path.join(record.profileRoot, 'home', '.cursor', 'mcp.json');
+      await fs.writeFile(file, '{}\n'); return;
+    }
+    const file = runtime.jobFile(tester, 'original-delivery'), job = await readJSON(file);
+    if (change === 'source') job.execution.sourceSha = 'b'.repeat(40);
+    if (change === 'todo') job.execution.references['assigned-todo'] = 'todo-v2';
+    if (change === 'pid') job.workerPid = process.pid + 1;
+    await atomicWrite(file, encode(job));
+  });
+  assert.equal(job.state, 'failed');
+  assert.ok(['CI_PROFILE_CHANGED', 'CI_NATIVE_MISMATCH', 'CI_TASK_CHANGED'].includes(job.error), job.error);
+  assert.equal(job.ciPreparation, undefined); assert.equal(calls.prompt, 0); assert.equal(calls.activate, 0); assert.equal(calls.writes, 0);
+});
+
+test('closing the original held CI host during metadata cannot activate late preparation', async t => {
+  let closing;
+  const { runtime, calls, job } = await heldCiPreparationFixture(t, async ({ runtime }) => {
+    closing ||= runtime.close(); closing.catch(() => {});
+  });
+  await closing;
+  assert.equal(job.state, 'failed'); assert.equal(job.error, 'CI_HELD_PROFILE_REQUIRED');
+  assert.equal(job.ciPreparation, undefined); assert.equal(calls.prompt, 0); assert.equal(calls.activate, 0); assert.equal(calls.writes, 0);
+  assert.equal(runtime.ciClosing, true);
+});
+
+test('unconfirmed prepared Runner stop preserves original job and ownership instead of finishing or retrying', async t => {
+  let stopCalls = 0;
+  const { runtime, calls, job, tester, root, sourceSha } = await heldCiPreparationFixture(t, async ({ runtime, tester }) => {
+    const owner = runtime.ownedTurns.get(runtime.jobFile(tester, 'original-delivery')).owner;
+    assert.ok(owner.runner instanceof CursorCiDockerRunner);
+    owner.runner.close = async () => { stopCalls++; throw new Error('SYNTHETIC PRIVATE STOP STDERR'); };
+  });
+  assert.equal(job.state, 'unknown'); assert.equal(job.error, 'CI_STOP_UNCONFIRMED'); assert.equal(stopCalls, 1);
+  assert.equal(JSON.stringify(job).includes('SYNTHETIC PRIVATE STOP STDERR'), false);
+  const file = runtime.jobFile(tester, 'original-delivery');
+  assert.equal((await readJSON(runtime.sessionFile(tester))).active, file);
+  assert.equal(runtime.ownedTurns.get(file).owner.unconfirmed, true);
+  await assert.rejects(runtime.deliver({ id: 'new-delivery', sessionId: tester, root, message: 'Do not retry',
+    execution: { session: { id: randomUUID(), generation: 1 }, taskId: 'original-task', sourceSha } }), { code: 'RUNTIME_BUSY' });
+  await assert.rejects(runtime.close(), { code: 'CURSOR_SHUTDOWN_UNCONFIRMED' });
+  assert.equal(stopCalls, 1); assert.equal(calls.prompt, 0); assert.equal(calls.activate, 0); assert.equal(calls.writes, 0);
+  assert.equal((await runtime.status(tester)).status, 'unknown');
+});
+
+test('private Runner policy rejects repository paths, aliases, links, wide permissions and unknown configuration', async t => {
+  const { runtime, directory, root, policy, config } = await heldCiPreparationFixture(t);
+  const configure = file => runtime.configure(randomUUID(), { ...config, ciRunnerPolicyFile: file });
+  const inside = path.join(root, 'private-policy.json'); await fs.writeFile(inside, JSON.stringify(policy), { mode: 0o600 });
+  await assert.rejects(configure(inside), { code: 'CI_RUNNER_POLICY_CHANGED' });
+  const common = path.join(root, '.git', 'private-policy.json'); await fs.writeFile(common, JSON.stringify(policy), { mode: 0o600 });
+  await assert.rejects(configure(common), { code: 'CI_RUNNER_POLICY_CHANGED' });
+  await assert.rejects(configure(directory + '/./policy.json'), { code: 'CI_RUNNER_POLICY_CHANGED' });
+  const link = path.join(directory, 'symlink.json'); await fs.symlink(config.ciRunnerPolicyFile, link);
+  await assert.rejects(configure(link), { code: 'CI_RUNNER_POLICY_CHANGED' });
+  const hard = path.join(directory, 'hardlink.json'); await fs.link(config.ciRunnerPolicyFile, hard);
+  await assert.rejects(configure(hard), { code: 'CI_RUNNER_POLICY_CHANGED' });
+  const broad = path.join(directory, 'broad.json'); await fs.writeFile(broad, JSON.stringify(policy), { mode: 0o644 });
+  if (process.platform !== 'win32') await assert.rejects(configure(broad), { code: 'CI_RUNNER_POLICY_CHANGED' });
+  const unknown = path.join(directory, 'unknown.json'); await fs.writeFile(unknown, JSON.stringify({ ...policy, verified: true }), { mode: 0o600 });
+  await assert.rejects(configure(unknown), { code: 'CI_RUNNER_POLICY_CHANGED' });
+  const nested = path.join(directory, 'nested.json'); await fs.writeFile(nested,
+    JSON.stringify({ ...policy, tests: [{ ...policy.tests[0], shell: true }] }), { mode: 0o600 });
+  await assert.rejects(configure(nested), { code: 'CI_RUNNER_POLICY_CHANGED' });
+  const oversize = path.join(directory, 'oversize.json'); await fs.writeFile(oversize, Buffer.alloc(65537, 32), { mode: 0o600 });
+  await assert.rejects(configure(oversize), { code: 'CI_RUNNER_POLICY_CHANGED' });
+});
 
 test('Cursor close attempts every owned resource, retains failed ownership and shares one safe failure', async () => {
   const runtime = new CursorRuntime(path.join(os.tmpdir(), `cg-close-${randomUUID()}`)), calls = [];
@@ -480,12 +681,17 @@ test('CI shutdown rejects late native spawn and late registration after asynchro
         return register(key, profile);
       };
     } else if (phase === 'configured-session') {
-      const configure = runtime.configure.bind(runtime);
-      runtime.configure = async (id, config) => {
-        const result = await configure(id, config);
-        if (id === tester) { entered(); await waiting; }
+      // Configuration saving is now private: intercept the exact original
+      // atomic rename, after persistence but before readiness, not an obsolete
+      // public wrapper the product no longer calls.
+      const rename = fs.rename;
+      let captured = false;
+      fs.rename = async (...args) => {
+        const result = await rename(...args);
+        if (!captured && args[1] === runtime.sessionFile(tester)) { captured = true; entered(); await waiting; }
         return result;
       };
+      t.after(() => { fs.rename = rename; });
     }
     const creating = runtime.provision({ operationId: `close-${phase}`, sessionId: tester,
       config: { command: process.execPath, root, name: 'Tester', role: 'ci', executorSessionId: executor, ciCommands: ['fixed-test'], environmentFile } });

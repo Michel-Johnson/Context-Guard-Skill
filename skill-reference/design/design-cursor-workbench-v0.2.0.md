@@ -98,7 +98,7 @@ POSIX 上，CI 专用 `mcp enable` 和 ACP 进程从启动起使用子进程内�
 
 CI 创建的 ready 回执也须核原 held transport 的错误/关闭状态与真实子进程终态、活 profile；缓存存在不证明进程活着。连接失效时关闭自有能力、保留原记录，不替换空 native。重启后不能仅凭旧成功记录报告可用。等待事件登记锁期间关闭时，不追加启动事件或写 ready；持久化期间关闭亦不返回成功。
 
-当前只接通首次创建与元数据发现；同 profile 的后续 load、原任务激活、测试 Runner 和不可覆盖证明仍未接线。既有未隔离空 native 不升级或替换，业务执行硬停与公开结果拒绝不解除。
+当前接通首次创建、元数据发现及原 held profile 的宿主准备；同 profile 的后续 load、原任务激活与实际证明回报仍未接通。既有未隔离空 native 不升级或替换，业务执行硬停与公开结果拒绝不解除。
 
 官方 CLI 的隔离元数据实验仅证明四工具可发现、原项目 MCP 不参与清单，以及用户配置摘要未变。没有模型、Task 或原任务授权，不把该实验视为独立 CI 闭环。
 
@@ -188,7 +188,13 @@ MCP 用私有 `submitVerifiedResult` callback 发布经核验的结果，不增�
 
 已持久保存的终态回执只确认当次 Core 接受的历史事实；先核当前身份/授权/固定快照，不产生新业务写入，也不证明后来 evidence latest 未变。没有本地确认回执的失 ACK 重放仍走同一原事务与原证据期望。原 ciResult 已保存的引用版本不会随 evidence 新版改写。
 
-当前发布器尚未接入原生 worker 激活。已接入宿主原引用准备；真实项目批准读取验收、管理员固定 Runner 策略、owning worker 私有结果通道、Task 边界及后续同 profile 能力轮换仍待完成。业务硬停和公开结果拒绝继续保留；宿主账本摘要是完整性检查，不是模型工具隔离或批准签名。
+原管理员配置可指定 CI 专用 `ciRunnerPolicyFile`；文件必须是 Git/linked worktree/common Git 外的 canonical 私有单链接常规文件，NOFOLLOW、有界 JSON。摘要由宿主配置时生成，外部 JSON 不能提供 `ciRunnerPolicySha256`；每次读取同 FD 核身份、权限及原摘要，不从新文件重设信任基线。Executor 不接受该选项，网页和模型不能配置。
+
+原 held profile/ACP 的 owning turn 已组装完整批准 Plan.paths、准确最终交接 SHA 的只读快照、固定 Runner 与同一 HostProof/私有 commit。准备仅检查可信 daemon/镜像元数据，并保存原 Task/Plan/TODO/PID/策略/快照摘要；不激活 Discovery、不调用模型、不创建或启动容器、不保存业务证据。Plan 基线与最终源码保持分开。
+
+异步准备后重查原 profile、原绑定/Task、固定策略与 owning transport。冷 Node worker 不能借旧 profile 恢复权限；没有策略时保持原硬停。有策略但缺原 held 归属、策略或身份漂移均拒绝。Runner 关闭未确认时保留原 active job、资源引用与 unknown，不自动清空或重试；其他自有 native/profile 的关闭仍继续尝试。
+
+当前发布器尚未接入原生 worker 激活。真实项目批准读取、管理员策略与实际环境的安装验收、owning worker 业务结果、Task 边界及后续同 profile 能力轮换仍待完成。业务硬停和公开结果拒绝继续保留；准备及账本摘要不是模型隔离、CI 通过或批准签名。
 
 本轮合成容器正反控制已运行；准确提交快照、MCP 接线、撤权/重放和原生角色闭环仍须分别验证。历史宽泛工具授权及旧沙箱探针不能作为这些项目的通过证据。
 

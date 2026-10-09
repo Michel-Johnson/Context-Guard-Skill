@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, execFile } from 'node:child_process';
@@ -6,6 +7,9 @@ import { promisify } from 'node:util';
 import { CursorAcp } from './cursor-acp.mjs';
 import { connectCursorCiWorkerClient, serveCursorCiWorker } from './cursor-ci-channel.mjs';
 import { prepareCursorCiProfile, cursorCiProfileCleanupConfirmed } from './cursor-ci-profile.mjs';
+import { exportCursorCiSource } from './cursor-ci-source.mjs';
+import { CursorCiDockerRunner } from './cursor-ci-runner.mjs';
+import { createCursorCiHostProof } from './cursor-ci-proof.mjs';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { canonical, validateMessage } from '../shared/protocol.mjs';
 
@@ -19,8 +23,46 @@ const nativeLive = acp => Boolean(acp && !acp.failure && !acp.stopping && !acp.c
   acp.child?.exitCode == null && acp.child?.signalCode == null);
 const preview = text => ({ text: String(text || '').slice(0, 40000).replace(/[\uD800-\uDBFF]$/, ''), truncated: String(text || '').length > 40000 });
 
+async function readRunnerPolicy(file, expectedHash) {
+  const unavailable = () => fail('CI_RUNNER_POLICY_CHANGED', 'The pinned private Runner policy is unavailable');
+  if (!path.isAbsolute(file || '') || path.resolve(file) !== file || file.length > 4096) unavailable();
+  let current = path.parse(file).root, handle;
+  try {
+    for (const component of path.relative(current, path.dirname(file)).split(path.sep).filter(Boolean)) {
+      current = path.join(current, component);
+      const info = await fs.lstat(current);
+      if (!info.isDirectory() || info.isSymbolicLink()) unavailable();
+    }
+    // This includes linked worktrees and Git's common directory. Parent process
+    // Git overrides must not turn a repository path into a private policy path.
+    const env = { PATH: process.env.PATH, LANG: 'C', GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null', GIT_TERMINAL_PROMPT: '0',
+      ...(process.platform === 'win32' ? { SYSTEMROOT: process.env.SYSTEMROOT } : {}) };
+    try {
+      const gitState = (await execute('git', ['rev-parse', '--is-inside-work-tree', '--is-inside-git-dir'],
+        { cwd: path.dirname(file), env, windowsHide: true, timeout: 5000, maxBuffer: 4096 })).stdout.trim().split(/\r?\n/);
+      if (gitState.includes('true')) unavailable();
+    } catch (cause) { if (cause.code === 'CI_RUNNER_POLICY_CHANGED' || cause.code !== 128) unavailable(); }
+    handle = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    const info = await handle.stat();
+    if (!info.isFile() || info.nlink !== 1 || info.size < 2 || info.size > 65536 ||
+        process.platform !== 'win32' && (info.mode & 0o777) !== 0o600) unavailable();
+    const bytes = await handle.readFile();
+    if (bytes.length !== info.size || bytes.length > 65536 || expectedHash !== undefined && hash(bytes) !== expectedHash) unavailable();
+    const after = await handle.stat(), named = await fs.lstat(file);
+    if (await fs.realpath(file) !== file || named.isSymbolicLink() || named.dev !== info.dev || named.ino !== info.ino ||
+        after.nlink !== 1 || after.size !== info.size || after.mtimeMs !== info.mtimeMs || after.ctimeMs !== info.ctimeMs) unavailable();
+    const policy = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!policy || typeof policy !== 'object' || Array.isArray(policy) ||
+        Object.keys(policy).some(key => !['docker', 'socket', 'daemonId', 'imageId', 'imageEnvironment', 'tests', 'timeoutMs', 'outputBytes'].includes(key)) ||
+        !Array.isArray(policy.tests) || policy.tests.some(item => !item || typeof item !== 'object' || Array.isArray(item) ||
+          Object.keys(item).some(key => !['id', 'todoId', 'commandLabel', 'argv'].includes(key)))) unavailable();
+    return { policy, sha256: hash(bytes) };
+  } catch { unavailable(); } finally { await handle?.close(); }
+}
+
 async function validateConfig(config) {
-  if (!config || Object.keys(config).some(key => !['command', 'root', 'name', 'model', 'environmentFile', 'nativeSessionId', 'permissionPolicy', 'permissionsApproved', 'timeoutMs', 'role', 'executorSessionId', 'ciCommands', 'allowSessionCreation'].includes(key)) ||
+  if (!config || Object.keys(config).some(key => !['command', 'root', 'name', 'model', 'environmentFile', 'nativeSessionId', 'permissionPolicy', 'permissionsApproved', 'timeoutMs', 'role', 'executorSessionId', 'ciCommands', 'allowSessionCreation', 'ciRunnerPolicyFile'].includes(key)) ||
       !path.isAbsolute(config.command || '') || !path.isAbsolute(config.root || '') ||
       config.environmentFile !== undefined && !path.isAbsolute(config.environmentFile) ||
       typeof config.name !== 'string' || !config.name.trim() || config.name.length > 200 ||
@@ -30,7 +72,8 @@ async function validateConfig(config) {
       config.allowSessionCreation !== undefined && typeof config.allowSessionCreation !== 'boolean' ||
       config.role === 'ci' && config.allowSessionCreation === true ||
       config.role === 'ci' && (!uuid.test(config.executorSessionId || '') || !Array.isArray(config.ciCommands) || !config.ciCommands.length || config.ciCommands.length > 20 || config.ciCommands.some(command => typeof command !== 'string' || !command.trim() || command.length > 4000)) ||
-      config.role !== 'ci' && (config.executorSessionId !== undefined || config.ciCommands !== undefined) ||
+      config.role !== 'ci' && (config.executorSessionId !== undefined || config.ciCommands !== undefined || config.ciRunnerPolicyFile !== undefined) ||
+      config.ciRunnerPolicyFile !== undefined && !path.isAbsolute(config.ciRunnerPolicyFile || '') ||
       config.timeoutMs !== undefined && (!Number.isSafeInteger(config.timeoutMs) || config.timeoutMs < 1000 || config.timeoutMs > 1800000) ||
       ![undefined, 'reject', 'allow-once'].includes(config.permissionPolicy) ||
       config.permissionPolicy === 'allow-once' && config.permissionsApproved !== true) fail('INVALID_RUNTIME', 'Use explicit bounded Cursor settings and approved tool permissions');
@@ -39,7 +82,9 @@ async function validateConfig(config) {
   }
   const root = await fs.realpath(config.root);
   if (!(await fs.stat(config.command)).isFile() || !(await fs.stat(root)).isDirectory()) fail('INVALID_RUNTIME', 'Cursor executable and workspace must exist');
-  return { ...config, root, ...(config.role === 'ci' ? { model: 'default' } : {}) };
+  const pinned = config.ciRunnerPolicyFile === undefined ? {} :
+    { ciRunnerPolicySha256: (await readRunnerPolicy(config.ciRunnerPolicyFile)).sha256 };
+  return { ...config, root, ...pinned, ...(config.role === 'ci' ? { model: 'default' } : {}) };
 }
 
 export function cursorEnvironment(credentials = {}, parent = process.env) {
@@ -59,10 +104,10 @@ export function cursorEnvironment(credentials = {}, parent = process.env) {
 // Reuse the workbench's delivery IDs, not a second queue or scheduler. A native
 // conversation ID is persisted separately from the Context Guard Session ID.
 export class CursorRuntime {
-  constructor(directory, { acpFactory = config => new CursorAcp(config), executorCreation, ciClientFactory, ciProfileInvoke } = {}) {
+  constructor(directory, { acpFactory = config => new CursorAcp(config), executorCreation, ciClientFactory, ciProfileInvoke, ciRunnerCommand } = {}) {
     this.directory = directory; this.acpFactory = acpFactory; this.pendingNative = new Map(); this.ownedTurns = new Map();
     this.executorCreation = executorCreation;
-    this.ciClientFactory = ciClientFactory; this.ciWorkers = new Map(); this.ciClosing = false;
+    this.ciClientFactory = ciClientFactory; this.ciWorkers = new Map(); this.ciClosing = false; this.ciRunnerCommand = ciRunnerCommand;
     this.ciProfileInvoke = ciProfileInvoke; this.pendingCiProfiles = new Map(); this.ciPreparing = new Map(); this.ciConnecting = new Map();
   }
   sessionFile(sessionId) {
@@ -72,6 +117,9 @@ export class CursorRuntime {
   jobFile(sessionId, deliveryId) { return path.join(path.dirname(this.sessionFile(sessionId)), 'deliveries', `${hash(deliveryId)}.json`); }
   async configure(sessionId, config) {
     config = await validateConfig(config);
+    return this.#saveConfiguration(sessionId, config);
+  }
+  async #saveConfiguration(sessionId, config) {
     if (config.role === 'ci' && sessionId === config.executorSessionId) fail('INVALID_RUNTIME', 'Tester and Executor must have independent identities');
     if (config.role === 'ci') {
       const executor = await readJSON(this.sessionFile(config.executorSessionId), null);
@@ -250,7 +298,8 @@ export class CursorRuntime {
       }
       try {
         if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
-        await this.configure(receipt.sessionId, { ...config, nativeSessionId: receipt.nativeSessionId || receipt.sessionId });
+        if (config.ciRunnerPolicyFile) await readRunnerPolicy(config.ciRunnerPolicyFile, config.ciRunnerPolicySha256);
+        await this.#saveConfiguration(receipt.sessionId, { ...config, nativeSessionId: receipt.nativeSessionId || receipt.sessionId });
         if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
         if (receipt.ciProfile) await withFileLock(this.sessionFile(receipt.sessionId) + '.lock', async () => {
           const state = await readJSON(this.sessionFile(receipt.sessionId));
@@ -412,10 +461,13 @@ export class CursorRuntime {
       // Unprofiled, empty CI transports cannot be upgraded by cold-loading or
       // replacing them. Preserve the exact transport while CI setup is gated.
       if (!ci) this.pendingNative.delete(sessionId);
+      const owner = ci ? { profile: this.pendingCiProfiles.get(sessionId), command: this.ciRunnerCommand,
+        check: () => { if (this.ciClosing || this.pendingNative.get(sessionId) !== acp ||
+          this.pendingCiProfiles.get(sessionId) !== owner.profile || !nativeLive(acp)) fail('CI_HELD_PROFILE_REQUIRED', 'Original held CI ownership is unavailable'); } } : undefined;
       const work = withFileLock(jobFile + '.worker.lock', () => runWorker(this.sessionFile(sessionId), jobFile, acp,
-        ci ? () => openCiClient(process.pid) : undefined));
-      this.ownedTurns.set(jobFile, { acp, work });
-      void work.catch(() => {}).finally(() => this.ownedTurns.delete(jobFile));
+        ci ? () => openCiClient(process.pid) : undefined, owner));
+      this.ownedTurns.set(jobFile, { acp, work, owner });
+      void work.catch(() => {}).finally(() => { if (!owner?.unconfirmed) this.ownedTurns.delete(jobFile); });
       return;
     }
     const worker = spawn(process.execPath, [ownFile, '--worker', this.sessionFile(sessionId), jobFile], {
@@ -482,7 +534,53 @@ export class CursorRuntime {
   }
 }
 
-async function runWorker(file, jobFile, heldAcp, openCiClient) {
+async function prepareHeldCiHost({ config, client, context, prepared, owner }) {
+  if (!owner?.profile || typeof owner.check !== 'function' || typeof client.commit !== 'function') {
+    fail('CI_HELD_PROFILE_REQUIRED', 'Original held CI ownership is required for host preparation');
+  }
+  if (!/^[a-f0-9]{64}$/.test(config.ciRunnerPolicySha256 || '')) fail('CI_RUNNER_POLICY_CHANGED', 'Use the original host-pinned Runner policy');
+  const scope = canonical(context), authorization = canonical(prepared);
+  let record;
+  const check = async (options = {}) => {
+    owner.check();
+    const profile = await owner.profile.verify(); owner.check();
+    if (profile.sessionId !== context.tester.sessionId || profile.nativeSessionId !== context.tester.nativeSessionId ||
+        profile.worktreeRoot !== config.root || record && canonical(profile) !== canonical(record) ||
+        context.tester.workerPid !== process.pid || client.signal.aborted) fail('CI_NATIVE_MISMATCH', 'Preserve original CI preparation ownership');
+    record ||= profile;
+    const current = await client.context(options); owner.check();
+    if (canonical(current) !== scope) fail('CI_TASK_CHANGED', 'Original CI preparation scope changed');
+    const pinned = await readRunnerPolicy(config.ciRunnerPolicyFile, config.ciRunnerPolicySha256); owner.check();
+    await owner.profile.verify(); owner.check();
+    return { context: current, policy: pinned.policy };
+  };
+  const initial = await check();
+  if (canonical(await client.hostContext()) !== authorization) fail('CI_TASK_CHANGED', 'Original approved preparation changed');
+  await check();
+  const parent = path.join(record.profileRoot, 'host');
+  await fs.mkdir(parent, { mode: 0o700 }); await check();
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(parent, 'delivery-'))); await check();
+  const source = await exportCursorCiSource({ root: config.root, sourceSha: context.sourceSha,
+    paths: prepared.approvedPlan.paths, directory }); await check();
+  const runner = new CursorCiDockerRunner({ directory, policy: initial.policy, source, context,
+    ciTodo: prepared.ciTodo, authorize: async options => (await check(options)).context,
+    ...(owner.command ? { command: owner.command } : {}) });
+  owner.runner = runner; // Original owning turn retains cleanup responsibility even when metadata rejects.
+  const proof = createCursorCiHostProof({ runner, approvedPlan: prepared.approvedPlan, ciTodo: prepared.ciTodo,
+    commit: (message, options) => client.commit(message, options) });
+  owner.proof = proof; // Never placed in JSON, IPC payload or model context.
+  await runner.check();
+  await runner.verifyEnvironment();
+  await runner.check(); // Metadata awaits cannot bless changed snapshot bytes/modes.
+  return { authorization: 'preparation-only', taskId: context.taskId, sourceSha: context.sourceSha,
+    planRef: prepared.approvedPlan.ref, planVersion: prepared.approvedPlan.version,
+    planSourceSha: prepared.approvedPlan.sourceSha, approvalReceiptId: prepared.approvedPlan.approvalReceiptId,
+    ciTodoRef: context.ciTodoRef, ciTodoVersion: prepared.ciTodo.version,
+    deliveryId: context.tester.deliveryId, workerPid: process.pid, policySha256: config.ciRunnerPolicySha256,
+    manifestSha256: source.manifestSha256, fileCount: source.manifest.fileCount };
+}
+
+async function runWorker(file, jobFile, heldAcp, openCiClient, ciOwner) {
   const session = await readJSON(file), config = session.config, job = await readJSON(jobFile);
   if (job.state !== 'starting') return;
   const update = async fields => { Object.assign(job, fields, { updatedAt: new Date().toISOString() }); await atomicWrite(jobFile, encode(job)); };
@@ -495,6 +593,11 @@ async function runWorker(file, jobFile, heldAcp, openCiClient) {
   };
   let acp = heldAcp, log, ready = false, bytes = 0, text = '', stopping = false, ciClient;
   const preserveHeldCi = config.role === 'ci' && !!heldAcp;
+  let cleanup;
+  const closeCiHost = () => cleanup ||= Promise.resolve().then(async () => {
+    try { await ciOwner?.runner?.close(); }
+    catch { ciOwner.unconfirmed = true; fail('CI_STOP_UNCONFIRMED', 'The original CI host stop is unconfirmed'); }
+  });
   const stop = () => { stopping = true; void acp?.close(); };
   process.once('SIGTERM', stop); process.once('SIGINT', stop);
   await update({ workerPid: process.pid, state: 'connecting' });
@@ -516,11 +619,16 @@ async function runWorker(file, jobFile, heldAcp, openCiClient) {
     if (config.role === 'ci') {
       ciClient = openCiClient ? await openCiClient() : connectCursorCiWorkerClient();
       ciClient.signal.addEventListener('abort', () => { if (ready) stop(); }, { once: true });
-      await ciClient.context(); // Original task/role checked before a paid/native prompt.
-      await ciClient.hostContext(); // Original approved Plan/receipt and fixed TODO, host-only preparation.
-      // Discovery/runner primitives are verified, but the production private
-      // profile and immutable proof gate are not connected yet. Never wake an
-      // unisolated native Tester just because host IPC authorization succeeded.
+      const context = await ciClient.context(); // Original task/role checked before a paid/native prompt.
+      const prepared = await ciClient.hostContext(); // Original approved Plan/receipt and fixed TODO, host-only preparation.
+      if (config.ciRunnerPolicyFile) {
+        const ciPreparation = await prepareHeldCiHost({ config, client: ciClient, context, prepared, owner: ciOwner });
+        await update({ ciPreparation });
+        ciOwner.check();
+      }
+      // Preparation may assemble the original host proof, but cannot prove
+      // native tools/Task isolation. Never activate discovery or prompt an
+      // unisolated Tester just because metadata and host authorization succeed.
       fail('CI_NATIVE_ISOLATION_REQUIRED', 'The assigned native CI isolation must be verified before prompting');
     }
     if (!acp) acp = new CursorAcp({ command: config.command, cwd: config.root, args: config.model ? ['--model', config.model] : [],
@@ -541,6 +649,8 @@ async function runWorker(file, jobFile, heldAcp, openCiClient) {
     await finish({ state: result.stopReason === 'end_turn' ? 'finished' : 'interrupted',
       result: { stopReason: result.stopReason, text }, error: result.stopReason === 'end_turn' ? null : 'CURSOR_TURN_STOPPED' });
   } catch (cause) {
+    try { await closeCiHost(); }
+    catch (stopFailure) { await update({ state: 'unknown', error: stopFailure.code }); throw stopFailure; }
     if (!preserveHeldCi) await acp?.close();
     await finish({ state: job.state === 'running' ? 'interrupted' : 'failed', ...(text ? { result: { stopReason: null, text } } : {}), error: String(cause.code || 'CURSOR_FAILED').slice(0, 100) });
   } finally {

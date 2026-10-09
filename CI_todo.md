@@ -50,6 +50,8 @@
 
 ### CURSOR-WORKBENCH-01 · 安装后的 Cursor
 
+- [ ] 原 held CI 的管理员 Runner 策略、完整 Plan.paths 快照与同一 HostProof 已在 preparation-only 路径组装；从准确安装版本核验私有策略、真实 daemon/镜像和原 Task 归属。正式 Runtime/profile 回归中的厂商 ACP、Docker 元数据及批准为合成；零激活/模型/容器执行仅证明硬停保留，不代表独立 Tester 闭环。关闭未确认的原 active job/ownership 必须保留，真实原生与准确 CID 的停止仍须另验。
+
 - [ ] 原 Runtime 关闭的单次操作、全部自有资源收拢及准备失败私有确认，在准确安装版本和 owning 后端验证；未确认停止保留归属，不将模块替身或原 Node 退出用例推广为实际 Runner/CID 停止。业务原生硬停保持，生产 worker 到 Runner 的停止链仍须验收。
 - [ ] 原 Discovery 的完整宿主证明回调与无回调只读模式，在准确安装版本和原 owning worker 验证。正式 HTTP/HostProof/Runner/Core 组合覆盖原编号失 ACK、单次执行、撤权及初始期限；Docker/批准为合成依赖，不代替真实模型、实际容器或生产任务验收，原执行硬停保留。
 - [ ] 新 CI profile 的严格默认配置兼容与格式 2，在准确安装版本及官方 CLI 验证原 native ID、MCP、默认模型路由和首次期限不变；补充默认值不重新学习权限，未知配置和隐私降级拒绝。正式 profile/Runtime 回归与原生机制实验分别记录，不代替 Task 隔离、真实业务任务和三路径验收。
