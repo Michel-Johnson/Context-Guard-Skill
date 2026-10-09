@@ -23,7 +23,7 @@ from context_guard import context_dir as context_folder
 from context_guard import configure_stdio, ensure_session_file, folder_root, init_context, is_context_guard_skill_path
 from context_guard import hook_runtime_lock, read_hook_runtime, read_json, require_human_work_review, start_workbench, utc_now
 from context_guard import safe_identifier, session_records, write_hook_runtime, write_json
-from context_guard import run_node_workbench
+from context_guard import run_node_workbench, resolve_cursor_session_id
 
 WINDOWS_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -529,6 +529,8 @@ def session_id(payload: object, platform: str, ctx: Path, event: str) -> str:
     if not value:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         value = f"{platform}-{stamp}-{os.getpid()}"
+    if platform in {"cursor", "claude"}:
+        value = resolve_cursor_session_id(ctx.parent.parent, value)
     if state.get(platform) != value:
         state[platform] = value
         write_json(state_path, state)

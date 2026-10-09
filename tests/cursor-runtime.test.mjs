@@ -5,10 +5,50 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { CursorRuntime, cursorEnvironment } from '../scripts/workbench/cursor-runtime.mjs';
 import { ProtocolDelivery } from '../scripts/workbench/protocol-delivery.mjs';
 import { readJSON, atomicWrite, encode, hash, pause } from '../scripts/shared/io.mjs';
 import { canonical, validateMessage } from '../scripts/shared/protocol.mjs';
+import { resolveProject } from '../scripts/workbench/project.mjs';
+import { pythonCommand } from '../.github/scripts/python-command.mjs';
+import { fileURLToPath } from 'node:url';
+import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
+import { registeredExecutorCreation } from '../scripts/workbench/server.mjs';
+
+test('Cursor Tester retains its independent role and checks the exact Executor handoff without granting direct prompts', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-ci-role-'));
+  const execute = promisify(execFile), root = path.join(directory, 'executor'), ciRoot = path.join(directory, 'tester');
+  await fs.mkdir(root);
+  const git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+  await git('init', '-b', 'main');
+  await fs.writeFile(path.join(root, 'calculation.txt'), '12 / 3 = 4\n');
+  await git('add', 'calculation.txt');
+  await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'isolated source');
+  const sha = await git('rev-parse', 'HEAD');
+  await git('worktree', 'add', '--detach', ciRoot, sha);
+  const runtime = new CursorRuntime(path.join(directory, 'runtime')), executor = randomUUID(), tester = randomUUID();
+  runtime.wake = async () => {}; // Only the durable role boundary; no vendor/model replacement claim.
+  await runtime.configure(executor, { command: process.execPath, root, name: '开发', role: 'executor' });
+  const config = { command: process.execPath, root: ciRoot, name: '独立测试', role: 'ci', executorSessionId: executor, ciCommands: ['node --test'] };
+  await assert.rejects(runtime.configure(tester, { ...config, executorSessionId: tester }), { code: 'INVALID_RUNTIME' });
+  await assert.rejects(runtime.configure(tester, { ...config, root }), { code: 'INVALID_RUNTIME' });
+  await assert.rejects(runtime.configure(tester, { ...config, nativeSessionId: executor }), { code: 'INVALID_RUNTIME' });
+  await runtime.configure(tester, config);
+  assert.equal((await runtime.status(tester)).role, 'ci');
+  assert.deepEqual(await runtime.ciReceiver(executor), { sessionId: tester, root: await fs.realpath(ciRoot) });
+  const input = { id: 'exact-handoff', sessionId: tester, root: ciRoot, message: '核对指定提交', execution: {
+    session: { id: executor, generation: 1 }, taskId: 'approved-task', sourceSha: sha, ciTodoRef: 'checks', references: {},
+  } };
+  await assert.rejects(runtime.deliver({ ...input, execution: undefined }), { code: 'CI_ASSIGNMENT_MISMATCH' });
+  await assert.rejects(runtime.deliver({ ...input, execution: { ...input.execution, session: { id: randomUUID(), generation: 1 } } }), { code: 'CI_ASSIGNMENT_MISMATCH' });
+  await runtime.deliver(input);
+  assert.deepEqual(await runtime.ciContext(tester, { verifySource: true }), { ...input.execution, mode: 'ci', commands: ['node --test'] });
+  await fs.writeFile(path.join(ciRoot, 'calculation.txt'), 'unverified change\n');
+  await assert.rejects(runtime.ciContext(tester, { verifySource: true }), { code: 'CI_SOURCE_CHANGED' });
+  assert.equal(await runtime.ciContext(executor), null, 'Executor cannot acquire CI scope by asking for it');
+});
 
 test('Cursor environment includes scoped credentials but excludes unrelated parent secrets', () => {
   const env = cursorEnvironment({ CURSOR_API_KEY: 'fixture-key' }, { HOME: '/fixture', PATH: '/bin', CURSOR_API_KEY: 'parent-key', OPENAI_API_KEY: 'unrelated', ANTHROPIC_AUTH_TOKEN: 'unrelated' });
@@ -127,6 +167,114 @@ test('Cursor newly provisioned Session keeps its original transport for the firs
   const view = await runtime.conversation(sessionId);
   assert.equal(clients, 1); assert.equal(prompts, 1); assert.equal(native.closed, true);
   assert.equal(view.nativeSessionId, sessionId); assert.equal(view.messages[1].text, 'Native fixture: Actual first task');
+  await runtime.close();
+});
+
+test('Coordinator reserved Cursor identity stays separate from the native identity and survives restart', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-coordinator-identity-'));
+  const sessionId = randomUUID(), nativeSessionId = randomUUID(); let connects = 0;
+  const native = { async connect() { connects++; return { sessionId: nativeSessionId }; }, async close() {} };
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: () => native });
+  const config = { command: process.execPath, root: await fs.realpath(directory), name: 'Coordinator Executor' };
+  const created = await runtime.provision({ operationId: 'coordinator-request', sessionId, config });
+  assert.equal(created.sessionId, sessionId);
+  assert.equal((await runtime.status(sessionId)).nativeSessionId, nativeSessionId);
+  assert.ok(runtime.pendingNative.has(sessionId), 'first native transport is indexed by the Coordinator identity');
+  assert.equal(runtime.pendingNative.has(nativeSessionId), false);
+  assert.deepEqual(await runtime.resolveSessionId(nativeSessionId, directory), { sessionId, mapped: true });
+  assert.deepEqual(await runtime.resolveSessionId(sessionId, directory), { sessionId, mapped: true });
+  const restarted = new CursorRuntime(runtime.directory);
+  assert.deepEqual(await restarted.provision({ operationId: 'coordinator-request', sessionId, config }), created);
+  assert.deepEqual(await restarted.resolveSessionId(nativeSessionId, directory), { sessionId, mapped: true });
+  await assert.rejects(runtime.provision({ operationId: 'coordinator-request', sessionId: randomUUID(), config }), { code: 'ID_REUSED' });
+  await assert.rejects(restarted.resolveSessionId(nativeSessionId, os.tmpdir()), { code: 'WORKTREE_MISMATCH' });
+  await assert.rejects(runtime.configure(randomUUID(), { ...config, nativeSessionId }), { code: 'NATIVE_SESSION_CONFLICT' });
+  assert.deepEqual(await restarted.resolveSessionId('unmanaged-native', directory), { sessionId: 'unmanaged-native', mapped: false });
+  assert.equal(connects, 1, 'restart or repeated creation cannot create a replacement native conversation');
+  const records = (await fs.readFile(path.join(directory, '.codex/context/sessions.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(records.length, 1); assert.equal(records[0].session_id, sessionId);
+  await runtime.close();
+});
+
+test('Cursor templates create independent worktrees for Coordinator requests and retain the exact creation receipt', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-template-'));
+  const execute = promisify(execFile), root = path.join(directory, 'source'); await fs.mkdir(root);
+  const git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+  await git('init', '-b', 'main');
+  await fs.writeFile(path.join(root, 'README.md'), 'Coordinator fixture\n');
+  await git('add', 'README.md');
+  await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'main fixture');
+  const sha = await git('rev-parse', 'HEAD'), templateSessionId = randomUUID(), sessionId = randomUUID(), nativeSessionId = randomUUID(); let connects = 0;
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: () => ({ async connect() { connects++; return { sessionId: nativeSessionId }; }, async close() {} }) });
+  await runtime.configure(templateSessionId, { command: process.execPath, root, name: 'Template', allowSessionCreation: true });
+  const request = { id: hash('coordinator-creation'), templateSessionId, sessionId, name: 'Assigned Executor' };
+  const created = await runtime.provisionAssigned(request, { baseRef: 'refs/heads/main' });
+  assert.equal(created.sessionId, sessionId); assert.notEqual(created.root, root);
+  assert.equal((await execute('git', ['rev-parse', 'HEAD'], { cwd: created.root, windowsHide: true })).stdout.trim(), sha);
+  assert.equal((await runtime.status(sessionId)).nativeSessionId, nativeSessionId);
+  const receipt = await readJSON(path.join(path.dirname(runtime.sessionFile(sessionId)), 'creation.json'));
+  assert.equal(receipt.templateSessionId, templateSessionId); assert.equal(receipt.sha, sha);
+  assert.equal((await readJSON(runtime.sessionFile(sessionId))).config.allowSessionCreation, false);
+  assert.deepEqual(await runtime.provisionAssigned(request, { baseRef: 'refs/heads/main' }), created);
+  await assert.rejects(runtime.provisionAssigned({ ...request, name: 'Different request' }, { baseRef: 'refs/heads/main' }), { code: 'ID_REUSED' });
+  await assert.rejects(runtime.provisionAssigned({ ...request, id: hash('other'), sessionId: randomUUID(), templateSessionId: sessionId }, { baseRef: 'refs/heads/main' }), { code: 'CREATION_NOT_ENABLED' });
+  assert.equal(connects, 1);
+  const ciRoot = path.join(directory, 'independent-tester'); await git('worktree', 'add', '--detach', ciRoot, sha);
+  const bindings = new Map([[sessionId, { worktreeRoot: created.root }]]);
+  const claude = new ClaudeRuntime(path.join(directory, 'claude-runtime'), {
+    executorCreation: id => registeredExecutorCreation([runtime, claude], id, bindings.get(id)),
+  });
+  const testerId = randomUUID();
+  await claude.configure(testerId, { command: process.execPath, root: ciRoot, configDir: path.join(directory, 'tester-profile'),
+    environmentFile: path.join(directory, 'provider.json'), name: 'Independent Claude Tester', model: 'fixture',
+    role: 'ci', executorSessionId: templateSessionId, ciCommands: ['node --test'] });
+  assert.deepEqual(await claude.ciReceiver(sessionId), { sessionId: testerId, root: await fs.realpath(ciRoot) });
+  assert.equal(await claude.acceptsCiExecutor((await readJSON(claude.sessionFile(testerId))).config, sessionId), true,
+    'a registered Cursor child can use the configured independent Claude Tester');
+  bindings.set(sessionId, { worktreeRoot: root });
+  await assert.rejects(claude.ciReceiver(sessionId), { code: 'FORBIDDEN' });
+  await runtime.close();
+});
+
+test('CLI and imported Claude Hook resolve only the saved Cursor native/worktree mapping', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-hook-identity-'));
+  const project = await resolveProject(directory), sessionId = randomUUID(), nativeSessionId = randomUUID();
+  const runtime = new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime'), { acpFactory: () => ({ async connect() { return { sessionId: nativeSessionId }; }, async close() {} }) });
+  await runtime.provision({ operationId: 'coordinator-hook', sessionId, config: { command: process.execPath, root: directory, name: 'Imported Hook Executor' } });
+  const execute = promisify(execFile), scripts = fileURLToPath(new URL('../scripts/', import.meta.url));
+  const lookup = await execute(process.execPath, [path.join(scripts, 'workbench/cli.mjs'), 'workbench', 'cursor', '--resolve-native', '--root', directory, '--session', nativeSessionId], { windowsHide: true });
+  assert.deepEqual(JSON.parse(lookup.stdout), { sessionId, mapped: true });
+  const code = `import sys, json\nfrom pathlib import Path\nsys.path.insert(0, sys.argv[1])\nimport context_guard_hook as hook\nctx = Path(sys.argv[2]) / '.codex/context'\npayload = {'session_id': sys.argv[3], 'context_guard_session_id': 'forged', 'role': 'coordinator'}\nprint(json.dumps({'sessionId': hook.session_id(payload, 'claude', ctx, 'session-start')}))`;
+  const normalized = await execute(pythonCommand(), ['-c', code, scripts, directory, nativeSessionId], { windowsHide: true, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+  assert.deepEqual(JSON.parse(normalized.stdout), { sessionId });
+  const stored = await readJSON(path.join(directory, '.codex/context/private/hook-sessions.json'));
+  assert.equal(stored.claude, sessionId);
+  // A duplicate mapping is corruption, not permission to pick the first match.
+  const duplicateId = randomUUID();
+  await atomicWrite(runtime.sessionFile(duplicateId), encode({ sessionId: duplicateId, nativeSessionId, config: { command: process.execPath, root: project.worktreeRoot, name: 'Corrupt duplicate' } }));
+  await assert.rejects(execute(process.execPath, [path.join(scripts, 'workbench/cli.mjs'), 'workbench', 'cursor', '--resolve-native', '--root', directory, '--session', nativeSessionId], { windowsHide: true }), cause => cause.code === 1 && JSON.parse(cause.stdout).error.code === 'NATIVE_SESSION_CONFLICT');
+  await runtime.close();
+});
+
+test('Two creation operations cannot replace the native transport owned by one Coordinator Session', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-creation-owner-')), sessionId = randomUUID();
+  let connects = 0, closes = 0;
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: () => ({
+    async connect() { connects++; return { sessionId: randomUUID() }; }, async close() { closes++; },
+  }) });
+  const config = { command: process.execPath, root: directory, name: 'One owned Executor' };
+  const first = await runtime.provision({ operationId: 'first-owner', sessionId, config });
+  const original = runtime.pendingNative.get(sessionId), nativeId = (await runtime.status(sessionId)).nativeSessionId;
+  await assert.rejects(runtime.provision({ operationId: 'second-owner', sessionId, config }), { code: 'ID_REUSED' });
+  assert.equal(connects, 1, 'reject a second owner before contacting Cursor');
+  assert.equal(runtime.pendingNative.get(sessionId), original);
+  assert.equal((await runtime.status(sessionId)).nativeSessionId, nativeId);
+  assert.deepEqual(await runtime.provision({ operationId: 'first-owner', sessionId, config }), first);
+  assert.equal(closes, 0, 'a rejected creation must not close the original transport');
+  const raced = randomUUID(), results = await Promise.allSettled(['race-a', 'race-b'].map(operationId => runtime.provision({ operationId, sessionId: raced, config })));
+  assert.equal(results.filter(item => item.status === 'fulfilled').length, 1);
+  assert.equal(results.filter(item => item.status === 'rejected' && item.reason.code === 'ID_REUSED').length, 1);
+  assert.equal(connects, 2, 'concurrent requests may create only one native conversation per logical identity');
   await runtime.close();
 });
 

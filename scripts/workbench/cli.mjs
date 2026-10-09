@@ -23,6 +23,7 @@ import { DeviceConnection } from './protocol-device.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
 import { browserLogin } from './browser-login.mjs';
 import { executorContext, contextFailure, hasExecutorContext } from './context.mjs';
+import { CursorRuntime } from './cursor-runtime.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function documentHasBug(doc, bugId) {
   const pending = doc?.root ? [doc.root] : [];
@@ -719,6 +720,17 @@ async function main(args) {
     return;
   }
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  if (command === 'workbench' && opt._[0] === 'cursor' && opt['resolve-native']) {
+    if (typeof opt.session !== 'string' || !opt.session.trim()) throw new MapError('SESSION_REQUIRED', 'Pass the native Session identity');
+    const project = await resolveProject(root);
+    return new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime')).resolveSessionId(opt.session, project.worktreeRoot);
+  }
+  const candidateSession = opt.session || (command !== 'workbench' && (process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID));
+  if (candidateSession && /^[0-9a-f-]{36}$/i.test(candidateSession)) {
+    const project = await resolveProject(root);
+    const identity = await new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime')).resolveSessionId(candidateSession, project.worktreeRoot);
+    if (identity.mapped) opt.session = identity.sessionId;
+  }
   if (command === 'sync') {
     const { sessionSync, syncStatus } = await import('./sync.mjs');
     const session = String(opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '');

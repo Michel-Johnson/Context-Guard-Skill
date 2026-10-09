@@ -10,7 +10,7 @@ export const installedFiles = [
   "scripts/workbench/claude-runtime.mjs",
   "scripts/workbench/cursor-acp.mjs",
   "scripts/workbench/cursor-runtime.mjs",
-  "references/design/design-cursor-workbench-v0.1.0.md",
+  "references/design/design-cursor-workbench-v0.2.0.md",
   "roles.md",
   "Coordinator.md",
   "Executor.md",

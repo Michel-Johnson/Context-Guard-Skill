@@ -9,6 +9,11 @@
 
 ## CURSOR-WORKBENCH-01 · 分阶段接入（进行中）
 
+- [x] Cloud 自有角色通讯模块已按 0.2.0 设计开发：单任务短期凭据、MCP 窄工具、事务内批准版本与可信证据版本校验。Cloud 完整492项/490通过/2既有跳过、安全39项及独立17项阶段审查通过；不编辑 Cloud 共享生成物。生产接线与三路径 Coordinator 真实闭环仍未完成。
+
+- [ ] 已实现 Cursor Tester 配置、准确交接 SHA 校验与跨厂商 CI 路由。模块与公共 HTTP 已覆盖角色隔离、禁止普通通道写 Plan、自己的证据命名空间、任务/SHA 错配及源码变化；真实 Cloud CI 成功回执、原生 Tester 测试命令范围与完整角色闭环仍待验收。
+- [ ] 已实现 Coordinator 保留逻辑 Session、原生 ID 映射与模板工作树工厂；正式测试覆盖 Hook/CLI 映射、错根、重复身份、两个创建操作争同身份、并发与跨厂商模板来源。原生入口、后端退出后的空会话与完整跨进程创建恢复仍待验收。历史独立聊天结果不替代 Coordinator 角色验收。
+
 - [x] Skill #466/#467 已按准确 Required 合入 main `cee8e4e`，三平台官方 no-hooks 安装各100文件与该main一致，原安装完整副本保留、Hook/config字节不变。Doctor 不再崩溃，但本任务项目缺有效Map/Session/绑定仍未就绪；未重建项目。Cloud #33 当前准确组合完整468项/466pass/0fail/2skip及独立2/2、Required通过并正常合并，不代表生产部署或厂商验收。
 - [x] 安装0.8.2后恢复原Session再次实际403：Cursor加载用户Claude兼容Hook，pre/post-tool-use带platform:claude覆盖真实Cursor身份。官方第三方Hook契约与本地现场一致，未禁用或修改用户Hook。正式注册表及公共HTTP两目标先实际失败；创建来源/宿主/根路径匹配时固定原生平台，冲突创建来源显示unknown，CLI-only与普通Hook不伪造身份；保留活动、停止、时间。候选Skill0.8.3，core/UI与依赖不变；准确回归、独立Review、Required、安装后原Session恢复待完成。
 - 保留候选首轮失败：注册表通过，公共HTTP夹具写入 /var 路径别名，而真实原生创建写 fs.realpath 后 /private/var；源根匹配拒绝该错配，完整回归实际517项/514pass/1fail/2skip、exit1。夹具改成真实创建入口的规范根，不放宽生产校验。原厂商进程实际finished、父子PID均退出、回复已落盘；不是重启理由。
