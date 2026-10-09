@@ -18,7 +18,9 @@ function rejectedBindingReason(record, sessionId) {
 }
 // A single project host owns this connection. Agents never receive its credential.
 export class DeviceConnection {
-  constructor({ directory, origin, transport = sendMessage, allowLoopback = false }) {
+  constructor({ directory, origin, transport = sendMessage, allowLoopback = false, revalidateOutcomes = false }) {
+    if (typeof revalidateOutcomes !== 'boolean') fail('INVALID_ARGUMENT', 'Invalid outcome policy');
+    this.revalidateOutcomes = revalidateOutcomes;
     this.directory = directory; this.origin = origin; this.transport = transport; this.allowLoopback = allowLoopback;
     this.file = path.join(directory, 'device-connection.json'); this.outbox = path.join(directory, 'outbox'); this.inflight = new Map();
   }
@@ -257,15 +259,22 @@ export class DeviceConnection {
   async deliver(message, prepare) {
     const file = path.join(this.outbox, `${hash(message.id)}.json`), fingerprint = canonical(message);
     const outcomeFile = path.join(this.directory, 'outcomes', `${hash(message.id)}.json`);
-    const outcome = record => {
+    const outcome = async record => {
+      if (canonical(record.message) !== fingerprint) fail('ID_REUSED', 'Request ID differs from durable outcome');
       if (record.state === 'rejected') throw new ProtocolError(record.error.code, record.error.message, record.error.details);
+      if (this.revalidateOutcomes) {
+        // The authoritative transport checks the frozen scope before its
+        // original receipt. Do not trust a local success or resubmit rejection.
+        const result = await this.transmit(record.wire || record.message);
+        if (canonical(result) !== canonical(record.result)) fail('UNAVAILABLE', 'Original receipt changed during authorization');
+      }
       return record.result;
     };
     const prior = await withFileLock(`${file}.lock`, async () => {
       const completed = await readJSON(outcomeFile, null);
       if (completed) {
         if (canonical(completed.message) !== fingerprint) fail('ID_REUSED', 'Request ID differs from durable outcome');
-        await fs.unlink(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
+        if (!this.revalidateOutcomes) await fs.unlink(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
         return completed;
       }
       const existing = await readJSON(file, null);
@@ -289,7 +298,7 @@ export class DeviceConnection {
       const completed = await readJSON(outcomeFile, null);
       if (completed) return outcome(completed);
       const current = await readJSON(file);
-      if (current.state === 'done') return current.result;
+      if (current.state === 'done') return outcome(current);
       // A fresh write must not overtake an older uncertain write in this Session.
       for (const name of await fs.readdir(this.outbox)) {
         if (!/^[a-f0-9]{64}\.json$/.test(name)) continue;

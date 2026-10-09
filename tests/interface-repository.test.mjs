@@ -8,6 +8,127 @@ import { lookupRepository } from '../scripts/workbench/protocol-repository.mjs';
 import { DeviceConnection } from '../scripts/workbench/protocol-device.mjs';
 import { atomicWrite, encode, hash, readJSON } from '../scripts/shared/io.mjs';
 import { ProtocolError } from '../scripts/shared/protocol.mjs';
+import { sendMessage } from '../scripts/workbench/protocol-client.mjs';
+
+test('host CI transport encodes a fixed task expectation without accepting model claims or expanding methods', async () => {
+  const tuple = { taskId: 'original', planRef: 'plan', planVersion: 'pv', planSourceSha: 'a'.repeat(40),
+    approvalReceiptId: 'approval', sourceSha: 'b'.repeat(40), ciTodoRef: 'checks', ciTodoVersion: 'tv' };
+  const message = { v: 2, id: 'read', type: 'object.read', session: { id: 'executor', generation: 1 }, payload: { ref: 'checks', version: 'tv' } };
+  const seen = [], fetcher = async (url, options) => {
+    seen.push({ url: String(url), options });
+    return new Response(JSON.stringify({ id: message.id, ok: true, data: { ref: 'checks', version: 'tv' } }), { headers: {
+      'content-type': 'application/json', 'X-Context-Guard-CI-Task-Authorized': hash(Buffer.from(options.headers['X-Context-Guard-CI-Task'], 'base64url')) } });
+  };
+  await sendMessage('https://original.invalid', 'synthetic-host-credential', message, { fetcher, ciSessionId: 'tester', ciTaskExpectation: tuple });
+  assert.equal(seen.length, 1); assert.equal(seen[0].url, 'https://original.invalid/api/v2/messages');
+  assert.deepEqual(JSON.parse(seen[0].options.body), message);
+  assert.deepEqual(JSON.parse(Buffer.from(seen[0].options.headers['X-Context-Guard-CI-Task'], 'base64url')), tuple);
+  assert.equal(seen[0].options.headers['X-Context-Guard-CI-Session'], 'tester');
+  for (const expectation of [{ ...tuple, verified: true }, { ...tuple, taskId: '' }, { ...tuple, sourceSha: 'main' }]) {
+    await assert.rejects(sendMessage('https://original.invalid', 'synthetic', message, { fetcher, ciSessionId: 'tester', ciTaskExpectation: expectation }), { code: 'INVALID_ARGUMENT' });
+  }
+  await assert.rejects(sendMessage('https://original.invalid', 'synthetic', message, { fetcher, ciTaskExpectation: tuple }), { code: 'INVALID_ARGUMENT' });
+  await assert.rejects(sendMessage('https://original.invalid', 'synthetic', { ...message, ciTaskExpectation: tuple }, { fetcher }), { code: 'INVALID_ARGUMENT' });
+  assert.equal(seen.length, 1, 'all invalid host/model input is rejected before network access');
+});
+
+test('scoped host transport rejects legacy success or wrong task authorization ACK without changing ordinary CI receipts', async () => {
+  const tuple = { taskId: 'original', planRef: 'plan', planVersion: 'pv', planSourceSha: 'a'.repeat(40),
+    approvalReceiptId: 'approval', sourceSha: 'b'.repeat(40), ciTodoRef: 'checks', ciTodoVersion: 'tv' };
+  const message = { v: 2, id: 'read', type: 'object.read', session: { id: 'executor', generation: 1 }, payload: { ref: 'checks', version: 'tv' } };
+  const response = ack => new Response(JSON.stringify({ id: message.id, ok: true, data: { ref: 'checks', version: 'tv' } }),
+    { headers: { 'content-type': 'application/json', ...(ack ? { 'X-Context-Guard-CI-Task-Authorized': ack } : {}) } });
+  for (const ack of [null, 'c'.repeat(64), 'c'.repeat(64) + ', ' + 'c'.repeat(64)]) {
+    await assert.rejects(sendMessage('https://original.invalid', 'synthetic', message, {
+      ciSessionId: 'tester', ciTaskExpectation: tuple, fetcher: async () => response(ack) }), error => {
+      assert.equal(error.code, 'UNAVAILABLE'); assert.notEqual(error.confirmedRejection, true); return true;
+    });
+  }
+  assert.deepEqual(await sendMessage('https://original.invalid', 'synthetic', message, { ciSessionId: 'tester', fetcher: async () => response(null) }), { ref: 'checks', version: 'tv' });
+  const fixed = { ...tuple };
+  assert.deepEqual(await sendMessage('https://original.invalid', 'synthetic', message, { ciSessionId: 'tester', ciTaskExpectation: fixed,
+    fetcher: async (_url, options) => {
+      const ack = hash(Buffer.from(options.headers['X-Context-Guard-CI-Task'], 'base64url'));
+      fixed.taskId = 'later-mutable-caller-input'; return response(ack);
+    } }), { ref: 'checks', version: 'tv' }, 'ACK matches immutable transmitted scope, not a caller object mutated during await');
+});
+
+test('missing task ACK preserves an uncertain original write and same-ID recovery never rebuilds its durable wire', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-ci-missing-ack-'));
+  const tuple = { taskId: 'original', planRef: 'plan', planVersion: 'pv', planSourceSha: 'a'.repeat(40),
+    approvalReceiptId: 'approval', sourceSha: 'b'.repeat(40), ciTodoRef: 'checks', ciTodoVersion: 'tv' };
+  let acknowledge = false;
+  const seen = [], device = new DeviceConnection({ directory, origin: 'https://original.invalid', revalidateOutcomes: true,
+    transport: (origin, credential, message, options) => sendMessage(origin, credential, message, { ...options,
+      ciSessionId: 'tester', ciTaskExpectation: tuple, fetcher: async (_url, input) => {
+        const wire = JSON.parse(input.body); seen.push(wire);
+        return new Response(JSON.stringify({ id: wire.id, ok: true, data: { ref: wire.payload.ref, version: 'original-server-receipt' } }), {
+          headers: { 'content-type': 'application/json', ...(acknowledge ? {
+            'X-Context-Guard-CI-Task-Authorized': hash(Buffer.from(input.headers['X-Context-Guard-CI-Task'], 'base64url')) } : {}) } });
+      } }) });
+  t.after(() => device.close());
+  await atomicWrite(device.file, encode({ origin: device.origin, credential: 'synthetic-only' }));
+  const message = { v: 2, id: 'fixed-write', type: 'object.put', session: { id: 'executor', generation: 1 },
+    payload: { ref: 'ci:tester:result', kind: 'evidence', baseVersion: '', content: { synthetic: true } } };
+  await assert.rejects(device.send(message), { code: 'UNAVAILABLE' });
+  const pendingFile = path.join(device.outbox, `${hash(message.id)}.json`), outcomeFile = path.join(directory, 'outcomes', `${hash(message.id)}.json`);
+  const pending = await readJSON(pendingFile);
+  assert.equal(pending.state, 'pending'); assert.equal(pending.uncertain, true); assert.deepEqual(pending.wire, message);
+  await assert.rejects(fs.stat(outcomeFile), { code: 'ENOENT' });
+  acknowledge = true;
+  assert.deepEqual(await device.send(message, () => assert.fail('same-ID recovery keeps original wire')), { ref: message.payload.ref, version: 'original-server-receipt' });
+  assert.equal(seen.length, 2); assert.deepEqual(seen[0], seen[1]);
+  const accepted = await fs.readFile(outcomeFile, 'utf8');
+  acknowledge = false;
+  await assert.rejects(device.send(message), { code: 'UNAVAILABLE' });
+  assert.equal(await fs.readFile(outcomeFile, 'utf8'), accepted, 'a cache replay missing ACK cannot overwrite the original historical receipt');
+});
+
+test('host-scoped DeviceConnection revalidates a cached success using its original durable wire before returning it', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-ci-cached-scope-'));
+  const seen = [], message = { v: 2, id: 'original-write', type: 'object.put', session: { id: 'executor', generation: 1 },
+    payload: { ref: 'ci:tester:observation', kind: 'evidence', baseVersion: '', content: { observation: 'original' } } };
+  let denied = false, different = false;
+  const device = new DeviceConnection({ directory, origin: 'https://original.invalid', revalidateOutcomes: true,
+    transport: async (_origin, _credential, wire) => {
+      seen.push(structuredClone(wire));
+      if (denied) throw new ProtocolError('FORBIDDEN', 'Current task revoked');
+      return { ref: wire.payload.ref, version: different ? 'different-receipt' : 'fixed-receipt' };
+    } });
+  t.after(() => device.close());
+  await atomicWrite(device.file, encode({ origin: device.origin, credential: 'synthetic-only' }));
+  const prepare = value => ({ ...value, payload: { ...value.payload, content: { observation: 'host-fixed-wire' } } });
+  const result = await device.send(message, prepare);
+  const receiptFile = path.join(directory, 'outcomes', `${hash(message.id)}.json`), receipt = await fs.readFile(receiptFile, 'utf8');
+  assert.deepEqual(await device.send(message, () => assert.fail('cached wire must not be rebuilt')), result);
+  assert.equal(seen.length, 2); assert.deepEqual(seen[0], seen[1]); assert.equal(seen[1].payload.content.observation, 'host-fixed-wire');
+  denied = true; await assert.rejects(device.send(message), { code: 'FORBIDDEN' });
+  assert.equal(seen.length, 3); assert.equal(await fs.readFile(receiptFile, 'utf8'), receipt);
+  denied = false; different = true; await assert.rejects(device.send(message), { code: 'UNAVAILABLE' });
+  assert.equal(await fs.readFile(receiptFile, 'utf8'), receipt, 'changed authority cannot overwrite historical success');
+  await assert.rejects(device.send({ ...message, payload: { ...message.payload, content: { changed: true } } }), { code: 'ID_REUSED' });
+  assert.equal(seen.length, 4);
+});
+
+test('host-scoped cache does not retransmit a definitive rejection or change ordinary device cache behavior', async t => {
+  for (const revalidateOutcomes of [false, true]) {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-ci-rejected-cache-'));
+    let sends = 0, reject = true;
+    const device = new DeviceConnection({ directory, origin: 'https://original.invalid', revalidateOutcomes,
+      transport: async () => { sends++; if (reject) { const error = new ProtocolError('CONFLICT', 'Definitive rejection'); error.confirmedRejection = true; throw error; }
+        return { ref: 'ci:tester:result', version: 'original' }; } });
+    t.after(() => device.close());
+    await atomicWrite(device.file, encode({ origin: device.origin, credential: 'synthetic-only' }));
+    const message = { v: 2, id: 'rejected', type: 'object.put', session: { id: 'executor', generation: 1 },
+      payload: { ref: 'ci:tester:result', kind: 'evidence', baseVersion: '', content: {} } };
+    await assert.rejects(device.send(message), { code: 'CONFLICT' }); reject = false;
+    await assert.rejects(device.send(message), { code: 'CONFLICT' }); assert.equal(sends, 1, 'a known rejection must never be upgraded by a fresh write');
+    if (!revalidateOutcomes) {
+      const accepted = { ...message, id: 'accepted' }; await device.send(accepted); await device.send(accepted);
+      assert.equal(sends, 2, 'the existing ordinary device success cache is unchanged');
+    }
+  }
+});
 
 test('IF-039: GitHub supplies repository identity, follows only GitHub redirects and rejects mismatched Cloud identity', async t => {
   const requests = [];

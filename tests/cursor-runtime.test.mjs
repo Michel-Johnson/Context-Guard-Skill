@@ -151,18 +151,32 @@ console.log(JSON.stringify({ ownExit: own.exitCode, connected: own.connected, st
   assert.equal(await fs.readFile(path.join(root, 'source.txt'), 'utf8'), 'unchanged\n');
 });
 
-test('owning CI Node worker uses private original-task IPC but cannot prompt before native isolation', async t => {
+for (const authorized of [true, false, 'legacy']) test(`owning CI Node worker uses private original-task IPC but cannot prompt before ${authorized === true ? 'native isolation' : authorized === false ? 'remote task authorization' : 'task acknowledgement from legacy Cloud'}`, async t => {
   const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-ci-preflight-')));
   const root = path.join(directory, 'tester'); await fs.mkdir(root);
   const execute = promisify(execFile), git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
   await git('init', '-b', 'main'); await fs.writeFile(path.join(root, 'source.txt'), 'unchanged\n'); await git('add', 'source.txt');
   await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'exact source');
-  const sourceSha = await git('rev-parse', 'HEAD'), tester = randomUUID(), executor = randomUUID(), calls = [], objectReads = [];
+  const sourceSha = await git('rev-parse', 'HEAD'), tester = randomUUID(), executor = randomUUID(), calls = [], objectReads = [], taskChecks = [], scopedMessages = [];
   const secret = `SYNTHETIC_HOST_ONLY_${randomUUID()}`;
   const runtime = new CursorRuntime(path.join(directory, 'runtime'), { ciClientFactory: async identity => {
     calls.push(identity);
     const client = { credential: secret, context: () => runtime.ciContext(tester), exchange: async () => { throw new Error('No exchange requested'); } };
     return bindCursorCiClient({ client, ...identity, testerSessionId: tester,
+      authorizeTask: async (context, prepared) => {
+        taskChecks.push({ context, prepared });
+        if (authorized === false) throw Object.assign(new Error('Synthetic current Cloud task revoked'), { code: 'FORBIDDEN' });
+        if (authorized === 'legacy') {
+          const { sendMessage } = await import('../scripts/workbench/protocol-client.mjs');
+          await sendMessage('https://synthetic-legacy.invalid', secret, { v: 2, id: 'fixed-task-read', type: 'object.read', session: context.session,
+            payload: { ref: context.ciTodoRef, version: prepared.ciTodo.version } }, { ciSessionId: tester, ciTaskExpectation: {
+            taskId: context.taskId, planRef: prepared.approvedPlan.ref, planVersion: prepared.approvedPlan.version,
+            planSourceSha: prepared.approvedPlan.sourceSha, approvalReceiptId: prepared.approvedPlan.approvalReceiptId,
+            sourceSha: context.sourceSha, ciTodoRef: context.ciTodoRef, ciTodoVersion: prepared.ciTodo.version },
+            fetcher: async (_url, options) => { const wire = JSON.parse(options.body); scopedMessages.push(wire);
+              return new Response(JSON.stringify({ id: wire.id, ok: true, data: prepared.ciTodo }), { headers: { 'content-type': 'application/json' } }); } });
+        }
+      },
       readHostContext: context => readCursorCiHostContext({ context,
         readExecution: async () => ({ taskId: 'original-task', mode: 'reviewed', closed: false, approval: 'fixed-approval',
           plan: { ref: 'fixed-plan', version: 'plan-v1', sourceSha } }),
@@ -190,7 +204,7 @@ test('owning CI Node worker uses private original-task IPC but cannot prompt bef
     assert.ok(Date.now() < deadline, 'own CI worker must report its preflight outcome'); await pause(10);
   }
   const job = await readJSON(file);
-  assert.equal(job.state, 'failed'); assert.equal(job.error, 'CI_NATIVE_ISOLATION_REQUIRED');
+  assert.equal(job.state, 'failed'); assert.equal(job.error, authorized === true ? 'CI_NATIVE_ISOLATION_REQUIRED' : 'CI_CHANNEL_CLOSED');
   assert.equal(job.childPid, undefined, 'no unisolated Cursor CLI is spawned');
   assert.equal(calls.length, 1); assert.equal(calls[0].workerPid, job.workerPid);
   assert.notEqual(calls[0].workerPid, process.pid, 'this exercises the actual separate Node IPC path');
@@ -198,6 +212,10 @@ test('owning CI Node worker uses private original-task IPC but cannot prompt bef
   assert.equal(calls[0].sessionId, tester); assert.equal(calls[0].nativeSessionId, tester);
   assert.deepEqual(objectReads, [{ ref: 'fixed-plan', version: 'plan-v1' }, { ref: 'fixed-approval', version: 'fixed-approval' },
     { ref: 'assigned-todo', version: 'todo-v1' }], 'actual separate worker requests the original preparation before the isolation gate');
+  assert.equal(taskChecks.length, 1); assert.equal(taskChecks[0].context.taskId, execution.taskId);
+  assert.equal(taskChecks[0].prepared.approvedPlan.approvalReceiptId, 'fixed-approval');
+  assert.equal(scopedMessages.length, authorized === 'legacy' ? 1 : 0);
+  assert.ok(scopedMessages.every(message => message.type === 'object.read'), 'a legacy server cannot authorize a prepared write or native prompt');
   assert.equal((await fs.readFile(file, 'utf8')).includes(secret), false);
   assert.equal((await fs.readFile(file + '.jsonl', 'utf8')).includes(secret), false);
   assert.equal((await fs.readFile(runtime.sessionFile(tester), 'utf8')).includes(secret), false);

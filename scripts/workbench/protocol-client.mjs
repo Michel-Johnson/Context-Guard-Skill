@@ -1,10 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import { errorReply, fail, MAX_MESSAGE_BYTES, ProtocolError, validateMessage } from '../shared/protocol.mjs';
+import { canonical, errorReply, fail, MAX_MESSAGE_BYTES, ProtocolError, validateMessage } from '../shared/protocol.mjs';
+import { hash } from '../shared/io.mjs';
+
+// Host transport option only. Never read task expectations from model JSON.
+export function encodeCiTaskExpectation(tuple) {
+  const fields = ['taskId', 'planRef', 'planVersion', 'planSourceSha', 'approvalReceiptId', 'sourceSha', 'ciTodoRef', 'ciTodoVersion'];
+  if (!tuple || typeof tuple !== 'object' || Array.isArray(tuple) || Object.keys(tuple).length !== fields.length ||
+      fields.some(field => !Object.hasOwn(tuple, field) || typeof tuple[field] !== 'string' || !tuple[field].length ||
+        tuple[field].length > (field.endsWith('Version') ? 4096 : 128) || /[\x00-\x1f\x7f]/.test(tuple[field])) ||
+      !['sourceSha', 'planSourceSha'].every(field => /^[a-f0-9]{40}$/.test(tuple[field]))) fail('INVALID_ARGUMENT', 'Invalid CI task expectation');
+  const encoded = Buffer.from(canonical(tuple)).toString('base64url');
+  if (encoded.length > 8192) fail('INVALID_ARGUMENT', 'CI task expectation is too large');
+  return encoded;
+}
 
 // Never interpret a legacy HTML/JSON response as successful v2 delivery.
-export async function sendMessage(origin, credential, message, { fetcher = fetch, timeoutMs = 10000, allowLoopback = false, receiveCredential, ciSessionId } = {}) {
+export async function sendMessage(origin, credential, message, { fetcher = fetch, timeoutMs = 10000, allowLoopback = false, receiveCredential, ciSessionId, ciTaskExpectation } = {}) {
   validateMessage(message);
   if (ciSessionId && (typeof ciSessionId !== 'string' || !/^[a-zA-Z0-9._:-]{1,128}$/.test(ciSessionId))) fail('INVALID_ARGUMENT', 'Invalid CI Session identity');
+  if (ciTaskExpectation !== undefined && (!ciSessionId || !['object.read', 'object.put', 'ci.result'].includes(message.type))) fail('INVALID_ARGUMENT', 'Task expectation requires delegated CI');
+  const ciTaskHeader = ciTaskExpectation === undefined ? undefined : encodeCiTaskExpectation(ciTaskExpectation);
   const base = new URL(origin);
   if (base.protocol !== 'https:' && !(allowLoopback && base.protocol === 'http:' && ['127.0.0.1', '[::1]', 'localhost'].includes(base.hostname))) fail('FORBIDDEN', 'Cloud transport requires HTTPS');
   if (base.username || base.password) fail('INVALID_ARGUMENT', 'Credentials must not be part of the URL');
@@ -12,7 +27,8 @@ export async function sendMessage(origin, credential, message, { fetcher = fetch
   try {
     response = await fetcher(new URL('/api/v2/messages', base), {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${credential}`, ...(ciSessionId ? { 'X-Context-Guard-CI-Session': ciSessionId } : {}) }, body: JSON.stringify(message),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${credential}`, ...(ciSessionId ? { 'X-Context-Guard-CI-Session': ciSessionId } : {}),
+        ...(ciTaskHeader ? { 'X-Context-Guard-CI-Task': ciTaskHeader } : {}) }, body: JSON.stringify(message),
     });
   } catch { fail('UNAVAILABLE', 'Connection failed; keep the pending message and retry with the same ID'); }
   const possibleLegacy = [404, 405, 426].includes(response.status);
@@ -37,6 +53,11 @@ export async function sendMessage(origin, credential, message, { fetcher = fetch
     const error = new ProtocolError(result.error.code, result.error.message, result.error.details);
     error.confirmedRejection = result.error.retryable === false && !['UNAUTHORIZED', 'FORBIDDEN', 'UNAVAILABLE'].includes(error.code);
     throw error;
+  }
+  if (ciTaskHeader && response.headers.get('x-context-guard-ci-task-authorized') !== hash(Buffer.from(ciTaskHeader, 'base64url'))) {
+    // Older servers ignore unknown headers. A valid generic receipt cannot
+    // prove the new scope was authorized; preserve any uncertain original ID.
+    fail('UNAVAILABLE', 'Server did not confirm current CI task authorization');
   }
   if (message.type === 'auth.open' && receiveCredential) {
     const issued = response.headers.get('x-context-guard-credential');

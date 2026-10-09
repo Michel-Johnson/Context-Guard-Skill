@@ -828,7 +828,36 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         access: access.accessRecord(sessionId), fingerprint, authorityVersion })), worktreeId: current.worktreeId, generation: registered.generation,
         sessionId, nativeSessionId, root: ciRoot };
     };
-    return bindCursorCiClient({ client: new OriginalCursorCiClient({ origin: base, credential }), readBinding,
+    const original = new OriginalCursorCiClient({ origin: base, credential });
+    let scopedConnection, scopeFingerprint;
+    const authorizeTask = async (context, prepared) => {
+      const tuple = { taskId: context.taskId, planRef: prepared.approvedPlan.ref, planVersion: prepared.approvedPlan.version,
+        planSourceSha: prepared.approvedPlan.sourceSha, approvalReceiptId: prepared.approvedPlan.approvalReceiptId,
+        sourceSha: context.sourceSha, ciTodoRef: context.ciTodoRef, ciTodoVersion: prepared.ciTodo.version };
+      const current = canonical(tuple);
+      if (scopeFingerprint !== undefined && scopeFingerprint !== current) protocolFail('FORBIDDEN', 'Original CI task scope changed');
+      if (!scopedConnection) {
+        const fixed = structuredClone(tuple), binding = await readBinding();
+        scopeFingerprint = current;
+        scopedConnection = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2', 'ci', sessionId,
+          'tasks', hash(canonical({ deliveryId, fingerprint, tuple: fixed, binding }))), origin: connection.origin, allowLoopback: true,
+          revalidateOutcomes: true,
+          transport: async (origin, connectionCredential, message, options) => {
+            await readBinding();
+            const result = await sendMessage(origin, connectionCredential, message, { ...options, ciSessionId: sessionId, ciTaskExpectation: fixed });
+            await readBinding();
+            return result;
+          } });
+        scopedConnection.file = connection.file; // Original authority only; no credential copy or new login.
+      }
+      await scopedConnection.send({ v: 2, id: randomUUID(), type: 'object.read', session: context.session,
+        payload: { ref: tuple.ciTodoRef, version: tuple.ciTodoVersion } });
+    };
+    return bindCursorCiClient({ client: { context: () => original.context(),
+      exchange: message => {
+        if (!scopedConnection) protocolFail('FORBIDDEN', 'Original CI task preparation is required');
+        return scopedConnection.send(message);
+      } }, readBinding, authorizeTask,
       readHostContext: context => readCursorCiHostContext({ context,
         readExecution: async () => {
           await readBinding();

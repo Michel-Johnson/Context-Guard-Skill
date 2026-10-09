@@ -82,9 +82,10 @@ export async function readCursorCiHostContext({ context, readExecution, readObje
 
 // The original HTTP client and its full Agent credential remain in the host.
 // Both held-native callbacks and the owning Node worker use this fixed scope.
-export async function bindCursorCiClient({ client, readBinding, readHostContext, testerSessionId, nativeSessionId, deliveryId, workerPid,
+export async function bindCursorCiClient({ client, readBinding, readHostContext, authorizeTask, testerSessionId, nativeSessionId, deliveryId, workerPid,
   root, ttlMs = 1800000, now = Date.now } = {}) {
   if (typeof client?.context !== 'function' || typeof client?.exchange !== 'function' || typeof readBinding !== 'function' ||
+      authorizeTask !== undefined && typeof authorizeTask !== 'function' ||
       !uuid.test(testerSessionId || '') || !bounded(nativeSessionId) || !bounded(deliveryId) || !path.isAbsolute(root || '') ||
       path.resolve(root) !== root || !Number.isSafeInteger(workerPid) || workerPid <= 0 || typeof now !== 'function' ||
       !Number.isSafeInteger(ttlMs) || ttlMs < 100 || ttlMs > 1800000) fail('CI_CHANNEL_CONFIG_INVALID');
@@ -93,7 +94,7 @@ export async function bindCursorCiClient({ client, readBinding, readHostContext,
   const close = () => { closed = true; clearTimeout(expiry); abort.abort(); };
   const expiry = setTimeout(close, ttlMs); expiry.unref?.();
   const available = () => { if (closed || now() >= expiresAt) { close(); fail('CI_CAPABILITY_EXPIRED'); } };
-  let fingerprint, hostFingerprint;
+  let fingerprint, hostFingerprint, hostPrepared;
   const fresh = async () => {
     try {
       available();
@@ -119,6 +120,12 @@ export async function bindCursorCiClient({ client, readBinding, readHostContext,
       const context = scopeOf(current), currentFingerprint = canonical({ binding, context });
       if (fingerprint !== undefined && currentFingerprint !== fingerprint) fail('CI_TASK_CHANGED');
       fingerprint = currentFingerprint;
+      if (hostPrepared && authorizeTask) {
+        await authorizeTask(context, structuredClone(hostPrepared));
+        available();
+        if (canonical(await readBinding()) !== canonical(binding)) fail('CI_TASK_CHANGED');
+        available();
+      }
       return context;
     } catch (cause) { close(); throw cause; }
   };
@@ -148,10 +155,13 @@ export async function bindCursorCiClient({ client, readBinding, readHostContext,
         const current = canonical(result);
         if (hostFingerprint !== undefined && hostFingerprint !== current) fail('CI_TASK_CHANGED');
         hostFingerprint = current;
+        hostPrepared = structuredClone(result);
+        await fresh(); // Current Cloud Task, not merely the local downlink projection.
         return structuredClone(result);
       } catch (cause) { close(); throw cause; }
     },
     async exchange(input) {
+      if (authorizeTask && !hostPrepared) fail('CI_HOST_CONTEXT_REQUIRED');
       const context = await fresh(), message = validateMessage(input);
       if (canonical(message.session) !== canonical(context.session)) fail('CI_MESSAGE_FORBIDDEN');
       const own = message.payload.ref?.startsWith(`ci:${testerSessionId}:`);

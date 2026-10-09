@@ -31,6 +31,28 @@ async function fixture(pid = process.pid) {
   return { root, state, options };
 }
 
+test('prepared private CI channel rechecks current remote Task before and after every exchange and closes on revocation', async () => {
+  const f = await fixture(), host = hostFixture(), checks = [];
+  let revoked = false;
+  const bound = await required().bindCursorCiClient({ ...f.options,
+    readHostContext: context => required().readCursorCiHostContext({ ...host.options, context }),
+    authorizeTask: async (context, prepared) => {
+      checks.push({ context, prepared });
+      assert.equal(prepared.approvedPlan.approvalReceiptId, 'approved-receipt');
+      if (revoked) throw Object.assign(new Error('Synthetic current task revoked'), { code: 'FORBIDDEN' });
+    } });
+  try {
+    await assert.rejects(bound.exchange(message(`ci:${tester}:early`)), { code: 'CI_HOST_CONTEXT_REQUIRED' });
+    assert.equal(f.state.exchanges.length, 0, 'private exchange cannot skip preparation');
+    await bound.hostContext(); assert.equal(checks.length, 1, 'preparation is not exposed before remote current-task authorization');
+    await bound.exchange(message(`ci:${tester}:observation`)); assert.equal(checks.length, 3);
+    f.options.client.exchange = async input => { f.state.exchanges.push(input); revoked = true; return { received: input.id }; };
+    await assert.rejects(bound.exchange(message(`ci:${tester}:late`)), { code: 'FORBIDDEN' });
+    assert.equal(checks.length, 5); assert.equal(bound.signal.aborted, true);
+    revoked = false; await assert.rejects(bound.context(), { code: 'CI_CAPABILITY_EXPIRED' });
+  } finally { bound.close(); }
+});
+
 function hostFixture() {
   const active = { taskId: 'original-task', mode: 'reviewed', closed: false,
     plan: { ref: 'approved-plan', version: 'plan-v2', sourceSha: 'd'.repeat(40) }, approval: 'approved-receipt' };
