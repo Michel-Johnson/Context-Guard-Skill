@@ -66,7 +66,7 @@ CLI 与网页直接发消息共用 `native.prompt` 检查和投递编号；管�
 
 用户已批准 CI 专用 MCP 窄工具调整。实现与验收仍进行中；原生 ACP 保持唯一模型循环，原任务协议保持唯一业务权威。
 
-原 CI 的完整 Agent 凭据只留后端。保留的首次原生连接使用宿主内存 callback；后续自有 Node worker 使用私有 IPC，只能读取固定上下文和交换受限消息，不提供 URL、凭据、任意方法或自行声明的身份。父端以自己创建的 ChildProcess PID 固定归属，子端不报告身份。
+原 CI 的完整 Agent 凭据只留后端。保留的首次原生连接使用宿主内存 callback；后续自有 Node worker 使用私有 IPC，只能读取固定上下文、交换受限消息及调用宿主专用 commit，不提供 URL、凭据、任意方法或自行声明的身份。父端以自己创建的 ChildProcess PID 固定归属，子端不报告身份；Cursor 模型不能访问此 IPC。
 
 绑定固定原投递指纹、逻辑/原生 Session、工作树、任务与源码、引用版本、实际 owning PID、Tester 绑定版本和后端 epoch。初始期限不可续期；每次原授权返回后再次核对绑定，旧回执、晚回复、关闭、到期和重绑不能恢复权限。IPC 的重复、越界、过大或并发超限请求关闭本通道，不重签或重投模型。
 
@@ -160,7 +160,13 @@ MCP 用私有 `submitVerifiedResult` callback 发布经核验的结果，不增�
 
 原事务将 evidenceHash 与 Task 范围、原结果回执共同提交。既有编号不能升级、省略或修改 proof；终态同编号也继续核原证据 latest/内容。成功才返回 `X-Context-Guard-CI-Evidence-Authorized`，发送器须同时确认 Task 与 Evidence 两个准确摘要。缺失、错误或旧服务忽略 proof header 时保持未知，不换编号或改正文。两个新增 header 的编码长度合计至多 12288 字节，各自至多 8192 字节。
 
-上述发送/接收模块已接线，owning worker 的私有 commit callback、原生激活及安装组合仍待完成。期望不进入模型消息，不改变原编号/载荷；公开模型结果拒绝和原生执行硬停继续保留，不能由独立 sender/HTTP 测试推断真实任务闭环。
+上述发送/接收模块已接线，owning 后端增加私有 commit callback；原生证明发布器调用、激活及安装组合仍待完成。期望不进入模型消息，不改变原编号/载荷；公开模型结果拒绝和原生执行硬停继续保留，不能由独立 sender/HTTP 测试推断真实任务闭环。
+
+私有 commit 只接受当前 Task/source/session 的本 Tester host evidence 或带 mandatory expectedEvidence 的原 ci.result，普通 exchange 仍拒这两种提交。准备及 callback 缺失时不开放结果上下文；context({ciResult:true}) 只免旧 testing 读取，仍核原身份、owning PID、投递、绑定、指纹和最初期限，不产生写权。
+
+原 Task 的 DeviceConnection 在发送结果前保存完整消息指纹、固定作用域及原 proof 元数据，每次实际传输和缓存重验都读取同一私有记录；缺记录、损坏、链接、换 proof 或借旧 durable wire 补造记录均拒绝。记录锁在 send 前释放，不形成传输取锁自死锁。未知 ACK 保留原编号、正文与 proof，后端不借此调用新模型或重跑测试。
+
+证据写仍在普通 testing 授权前后检查；结果提交由 Cloud 原 ci.result 事务鉴权，回执后只核本地固定身份，不再读旧 testing TODO。晚到响应时重绑或撤权仍永久关闭；本地未确认不能解释为远端没有效果。该私有路由不是 Runner 真实性证明，原生 producer 未接入前不解除硬停。
 
 已持久保存的终态回执只确认当次 Core 接受的历史事实；先核当前身份/授权/固定快照，不产生新业务写入，也不证明后来 evidence latest 未变。没有本地确认回执的失 ACK 重放仍走同一原事务与原证据期望。原 ciResult 已保存的引用版本不会随 evidence 新版改写。
 

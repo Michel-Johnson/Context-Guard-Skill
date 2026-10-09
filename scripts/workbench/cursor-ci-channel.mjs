@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { canonical, MAX_MESSAGE_BYTES, validateMessage } from '../shared/protocol.mjs';
 import { hash } from '../shared/io.mjs';
 import { cursorCiSourcePath } from './cursor-ci-source.mjs';
+import { encodeCiHostEvidence } from './protocol-client.mjs';
 
 const channel = 'context-guard-cursor-ci';
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -95,7 +96,7 @@ export async function bindCursorCiClient({ client, readBinding, readHostContext,
   const expiry = setTimeout(close, ttlMs); expiry.unref?.();
   const available = () => { if (closed || now() >= expiresAt) { close(); fail('CI_CAPABILITY_EXPIRED'); } };
   let fingerprint, hostFingerprint, hostPrepared;
-  const fresh = async () => {
+  const fresh = async ({ ciResult = false } = {}) => {
     try {
       available();
       const binding = await readBinding();
@@ -104,7 +105,7 @@ export async function bindCursorCiClient({ client, readBinding, readHostContext,
           !['epoch', 'bindingVersion', 'worktreeId'].every(key => bounded(binding[key])) ||
           !Number.isSafeInteger(binding.generation) || binding.generation < 1 || binding.root !== root ||
           binding.sessionId !== testerSessionId || binding.nativeSessionId !== nativeSessionId) fail('CI_NATIVE_MISMATCH');
-      const current = await client.context(); // Original object.read rechecks task/role authority.
+      const current = await client.context({ ciResult }); // A proved result is authorized by its own Core transaction.
       available();
       const confirmedBinding = await readBinding();
       available();
@@ -120,7 +121,7 @@ export async function bindCursorCiClient({ client, readBinding, readHostContext,
       const context = scopeOf(current), currentFingerprint = canonical({ binding, context });
       if (fingerprint !== undefined && currentFingerprint !== fingerprint) fail('CI_TASK_CHANGED');
       fingerprint = currentFingerprint;
-      if (hostPrepared && authorizeTask) {
+      if (hostPrepared && authorizeTask && !ciResult) {
         await authorizeTask(context, structuredClone(hostPrepared));
         available();
         if (canonical(await readBinding()) !== canonical(binding)) fail('CI_TASK_CHANGED');
@@ -134,8 +135,9 @@ export async function bindCursorCiClient({ client, readBinding, readHostContext,
     signal: abort.signal, close,
     async context(options = {}) {
       if (!only(options, ['ciResult'])) fail('CI_ARGUMENT_INVALID');
-      if (options.ciResult !== undefined && options.ciResult !== false) fail('CI_TEST_PROOF_REQUIRED');
-      return fresh();
+      if (options.ciResult !== undefined && typeof options.ciResult !== 'boolean') fail('CI_ARGUMENT_INVALID');
+      if (options.ciResult && (!hostPrepared || typeof client.commit !== 'function')) fail('CI_TEST_PROOF_REQUIRED');
+      return fresh(options);
     },
     async hostContext(options = {}) {
       if (!only(options, []) || typeof readHostContext !== 'function') fail('CI_HOST_CONTEXT_REQUIRED');
@@ -172,6 +174,25 @@ export async function bindCursorCiClient({ client, readBinding, readHostContext,
           message.type === 'object.put' && (!own || reserved || message.payload.kind !== 'evidence')) fail('CI_MESSAGE_FORBIDDEN');
       const result = await client.exchange(message);
       await fresh(); // A late response or old receipt cannot restore revoked scope.
+      return result;
+    },
+    async commit(input, options = {}) {
+      if (!hostPrepared || typeof client.commit !== 'function') fail('CI_TEST_PROOF_REQUIRED');
+      if (!only(options, ['expectedEvidence'])) fail('CI_ARGUMENT_INVALID');
+      const message = structuredClone(validateMessage(input)), fixedOptions = structuredClone(options);
+      const ciResult = message.type === 'ci.result';
+      if (!ciResult && message.type !== 'object.put') fail('CI_MESSAGE_FORBIDDEN');
+      if (ciResult) encodeCiHostEvidence(fixedOptions.expectedEvidence, message, testerSessionId);
+      else if (fixedOptions.expectedEvidence !== undefined) fail('CI_MESSAGE_FORBIDDEN');
+      const context = await fresh({ ciResult });
+      if (canonical(message.session) !== canonical(context.session)) fail('CI_MESSAGE_FORBIDDEN');
+      if (ciResult) {
+        if (message.payload.taskId !== context.taskId || message.payload.sourceSha !== context.sourceSha) fail('CI_MESSAGE_FORBIDDEN');
+      } else if (message.type !== 'object.put' || fixedOptions.expectedEvidence !== undefined || message.payload.kind !== 'evidence' ||
+          !message.payload.ref.startsWith(`ci:${testerSessionId}:host:`) || message.payload.content?.taskId !== context.taskId ||
+          message.payload.content.sourceSha !== context.sourceSha) fail('CI_MESSAGE_FORBIDDEN');
+      const result = await client.commit(message, fixedOptions);
+      await fresh({ ciResult }); // Terminal receipt does not grant ordinary testing reads.
       return result;
     },
   };
@@ -211,9 +232,10 @@ export function serveCursorCiWorker({ worker, openClient, timeoutMs = 10000 } = 
   const receive = input => {
     if (closed) return;
     if (!only(input, ['channel', 'v', 'id', 'type', 'payload']) || input.channel !== channel || input.v !== 1 || !uuid.test(input.id || '') ||
-        !['context', 'hostContext', 'exchange'].includes(input.type) || !record(input.payload) || size(input) > MAX_MESSAGE_BYTES ||
-        input.type === 'context' && (!only(input.payload, ['ciResult']) || ![undefined, false].includes(input.payload.ciResult)) ||
+        !['context', 'hostContext', 'exchange', 'commit'].includes(input.type) || !record(input.payload) || size(input) > MAX_MESSAGE_BYTES ||
+        input.type === 'context' && (!only(input.payload, ['ciResult']) || ![undefined, false, true].includes(input.payload.ciResult)) ||
         input.type === 'hostContext' && !only(input.payload, []) ||
+        input.type === 'commit' && (!only(input.payload, ['message', 'expectedEvidence']) || !record(input.payload.message)) ||
         seen.has(input.id) || seen.size >= 256 || pending >= 4) { close(); return; }
     seen.add(input.id); pending++;
     const timer = setTimeout(close, timeoutMs); timers.add(timer); timer.unref?.();
@@ -221,7 +243,9 @@ export function serveCursorCiWorker({ worker, openClient, timeoutMs = 10000 } = 
       try {
         const current = await open();
         if (closed) fail('CI_CHANNEL_CLOSED');
-        const result = await current[input.type](input.payload);
+        if (input.type === 'commit' && typeof current.commit !== 'function') fail('CI_TEST_PROOF_REQUIRED');
+        const result = input.type === 'commit' ? await current.commit(input.payload.message,
+          Object.hasOwn(input.payload, 'expectedEvidence') ? { expectedEvidence: input.payload.expectedEvidence } : {}) : await current[input.type](input.payload);
         if (closed) fail('CI_CHANNEL_CLOSED');
         await send({ channel, v: 1, id: input.id, result });
       } catch (cause) {
@@ -272,5 +296,9 @@ export function connectCursorCiWorkerClient({ peer = process, timeoutMs = 10000 
     peer.send(input, cause => { if (cause) close(); });
   });
   return { signal: abort.signal, close: () => close(), context: (options = {}) => request('context', options),
-    hostContext: (options = {}) => request('hostContext', options), exchange: input => request('exchange', input) };
+    hostContext: (options = {}) => request('hostContext', options), exchange: input => request('exchange', input),
+    commit: (message, options = {}) => {
+      if (!only(options, ['expectedEvidence'])) return Promise.reject(Object.assign(new Error('Invalid private commit options'), { code: 'CI_ARGUMENT_INVALID' }));
+      return request('commit', { message, ...options });
+    } };
 }

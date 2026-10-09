@@ -15,7 +15,7 @@ export function encodeCiTaskExpectation(tuple) {
 }
 
 // This is supplied by the owning proof publisher, not the model message.
-function encodeCiHostEvidence(expectations, message, ciSessionId) {
+export function encodeCiHostEvidence(expectations, message, ciSessionId) {
   const fields = ['ref', 'version', 'contentHash'];
   const checks = message.payload.checks;
   if (!Array.isArray(expectations) || !expectations.length || expectations.length > 20 ||

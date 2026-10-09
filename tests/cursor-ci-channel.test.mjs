@@ -68,6 +68,85 @@ function hostFixture() {
   return { active, objects, reads, options };
 }
 
+const hostMessage = () => ({ ...message(`ci:${tester}:host:observed`),
+  payload: { kind: 'evidence', ref: `ci:${tester}:host:observed`, baseVersion: '', content: { taskId: 'original-task', sourceSha: 'c'.repeat(40) } } });
+const hostResult = () => ({ v: 2, id: 'original-host-result', type: 'ci.result', session: scope(1).session,
+  payload: { taskId: 'original-task', sourceSha: 'c'.repeat(40), verdict: 'passed',
+    checks: [{ testId: 'approved-test', todoId: 'one', status: 'passed', evidenceRef: `ci:${tester}:host:observed` }] } });
+const hostProof = () => [{ ref: `ci:${tester}:host:observed`, version: 'ev', contentHash: 'd'.repeat(64) }];
+
+test('private host commit uses proved result context without reopening ordinary testing reads after terminal acceptance', async t => {
+  const api = required(), f = await fixture(), h = hostFixture(), seen = [], reads = [], taskChecks = [];
+  let terminal = false;
+  f.options.client.context = async options => {
+    reads.push(options.ciResult);
+    if (terminal && !options.ciResult) throw Object.assign(new Error('Synthetic old testing read denied'), { code: 'FORBIDDEN' });
+    return structuredClone(f.state.context);
+  };
+  f.options.client.commit = async (input, options) => { seen.push({ input, options }); if (input.type === 'ci.result') terminal = true; return { received: input.id }; };
+  const client = await api.bindCursorCiClient({ ...f.options,
+    readHostContext: context => api.readCursorCiHostContext({ ...h.options, context }), authorizeTask: async () => { taskChecks.push('testing'); } });
+  t.after(() => client.close());
+  await assert.rejects(client.context({ ciResult: true }), { code: 'CI_TEST_PROOF_REQUIRED' });
+  await client.hostContext();
+  await assert.rejects(client.exchange(hostMessage()), { code: 'CI_MESSAGE_FORBIDDEN' });
+  await assert.rejects(client.exchange(hostResult()), { code: 'CI_TEST_PROOF_REQUIRED' });
+  await client.commit(hostMessage());
+  const before = taskChecks.length, result = hostResult(), options = { expectedEvidence: hostProof() };
+  assert.deepEqual(await client.commit(result, options), { received: result.id });
+  assert.equal(taskChecks.length, before, 'ci.result is checked by its original result transaction, never a separate old testing read');
+  assert.deepEqual(seen[1], { input: result, options }); assert.equal(reads.at(-1), true);
+  assert.deepEqual(await client.context({ ciResult: true }), scope(process.pid));
+  await assert.rejects(client.context(), { code: 'FORBIDDEN' }); assert.equal(client.signal.aborted, true);
+});
+
+test('private host commit requires prepared callback, mandatory proof and the original task/source/session', async t => {
+  const api = required(), f = await fixture(), h = hostFixture(), seen = [];
+  f.options.client.commit = async (...input) => { seen.push(input); return {}; };
+  const client = await api.bindCursorCiClient({ ...f.options,
+    readHostContext: context => api.readCursorCiHostContext({ ...h.options, context }) });
+  t.after(() => client.close());
+  await assert.rejects(client.commit(hostResult(), { expectedEvidence: hostProof() }), { code: 'CI_TEST_PROOF_REQUIRED' });
+  await client.hostContext();
+  await assert.rejects(client.commit(hostResult()), { code: 'INVALID_ARGUMENT' });
+  await assert.rejects(client.commit(hostMessage(), { expectedEvidence: hostProof() }), { code: 'CI_MESSAGE_FORBIDDEN' });
+  for (const input of [{ ...hostResult(), session: { ...scope(1).session, generation: 3 } },
+    { ...hostResult(), payload: { ...hostResult().payload, taskId: 'foreign' } },
+    { ...hostResult(), payload: { ...hostResult().payload, sourceSha: 'e'.repeat(40) } }]) {
+    await assert.rejects(client.commit(input, { expectedEvidence: hostProof() }), { code: 'CI_MESSAGE_FORBIDDEN' });
+  }
+  assert.equal(seen.length, 0);
+  const old = await fixture(), legacy = await api.bindCursorCiClient({ ...old.options,
+    readHostContext: context => api.readCursorCiHostContext({ ...h.options, context }) });
+  t.after(() => legacy.close()); await legacy.hostContext();
+  await assert.rejects(legacy.context({ ciResult: true }), { code: 'CI_TEST_PROOF_REQUIRED' });
+  await assert.rejects(legacy.commit(hostResult(), { expectedEvidence: hostProof() }), { code: 'CI_TEST_PROOF_REQUIRED' });
+});
+
+test('private result unknown ACK retains its original proposal; a late binding change cannot report local success', async t => {
+  const api = required(), f = await fixture(), h = hostFixture(), seen = [];
+  let terminal = false, lose = true;
+  f.options.client.context = async options => {
+    if (terminal && !options.ciResult) throw Object.assign(new Error('Synthetic old testing denied'), { code: 'FORBIDDEN' });
+    return structuredClone(f.state.context);
+  };
+  f.options.client.commit = async (input, options) => {
+    seen.push({ input, options }); terminal = true;
+    if (lose) throw Object.assign(new Error('Synthetic accepted result lost ACK'), { code: 'UNAVAILABLE' });
+    return { received: input.id };
+  };
+  const client = await api.bindCursorCiClient({ ...f.options,
+    readHostContext: context => api.readCursorCiHostContext({ ...h.options, context }) });
+  t.after(() => client.close()); await client.hostContext();
+  const result = hostResult(), options = { expectedEvidence: hostProof() };
+  await assert.rejects(client.commit(result, options), { code: 'UNAVAILABLE' });
+  lose = false; assert.deepEqual(await client.commit(result, options), { received: result.id });
+  assert.deepEqual(seen[0], seen[1]);
+  f.options.client.commit = async () => { f.state.binding.epoch = 'replacement'; return { received: result.id }; };
+  await assert.rejects(client.commit(result, options), { code: 'CI_TASK_CHANGED' });
+  assert.equal(client.signal.aborted, true, 'late local rejection does not mean the preceding remote effect was rolled back');
+});
+
 test('host preparation reads the exact original Plan, immutable approval receipt and handed-off TODO', async () => {
   const f = hostFixture(), result = await required().readCursorCiHostContext(f.options);
   assert.deepEqual(f.reads, [{ ref: 'approved-plan', version: 'plan-v2' },
@@ -218,8 +297,9 @@ test('binding changes while the original authorization is pending cannot grant a
 
 async function workerFixture(t, program, options = {}) {
   const api = required(), f = await fixture();
-  const { hostCredential, beforeOpen, readHostContext, transformClient, ...transportOptions } = options;
+  const { hostCredential, beforeOpen, readHostContext, transformClient, commit, ...transportOptions } = options;
   if (readHostContext) f.options.readHostContext = readHostContext;
+  if (commit) f.options.client.commit = commit;
   if (hostCredential) {
     f.options.client.credential = hostCredential;
     f.state.context.hostCredential = hostCredential;
@@ -274,6 +354,37 @@ console.log(JSON.stringify(await client.hostContext())); client.close();`, { hos
   const result = JSON.parse(f.output()); assert.equal(result.authorization, 'preparation-only');
   assert.equal(result.approvedPlan.approvalReceiptId, 'approved-receipt'); assert.equal(result.ciTodo.version, 'todo-v3');
   assert.equal(h.reads.length, 3); assert.equal(f.output().includes(secret), false); assert.equal(f.opens(), 1);
+});
+
+test('real owning Node IPC sends private host commit and saved proof without exposing credentials or model methods', async t => {
+  const h = hostFixture(), seen = [], secret = `SYNTHETIC_HOST_ONLY_${randomUUID()}`;
+  const result = hostResult(), proof = hostProof();
+  const f = await workerFixture(t, `const client=connectCursorCiWorkerClient();
+await client.hostContext(); await client.commit(${JSON.stringify(hostMessage())});
+console.log(JSON.stringify(await client.commit(${JSON.stringify(result)}, {expectedEvidence:${JSON.stringify(proof)}}))); client.close();`, {
+    hostCredential: secret, readHostContext: context => required().readCursorCiHostContext({ ...h.options, context }),
+    commit: async (input, options) => { seen.push({ input, options }); return { received: input.id }; },
+  });
+  const [code] = await f.exited; assert.equal(code, 0, f.diagnostics());
+  assert.deepEqual(seen[1], { input: result, options: { expectedEvidence: proof } });
+  assert.equal(JSON.parse(f.output()).received, result.id); assert.equal(f.opens(), 1);
+  assert.equal(f.output().includes(secret), false); assert.equal(f.state.exchanges.length, 0, 'commit cannot fall back to ordinary model exchange');
+});
+
+test('real owning Node IPC refuses missing proof or an old commit provider without fallback', async t => {
+  for (const fault of ['proof', 'provider']) {
+    const h = hostFixture(), seen = [];
+    const f = await workerFixture(t, `const client=connectCursorCiWorkerClient(); await client.hostContext();
+try { await client.commit(${JSON.stringify(hostResult())}${fault === 'proof' ? '' : `,{expectedEvidence:${JSON.stringify(hostProof())}}`}); console.log('UNEXPECTED_COMMIT'); }
+catch(error) { console.log(error.code); } client.close();`, {
+      readHostContext: context => required().readCursorCiHostContext({ ...h.options, context }),
+      commit: async (...input) => { seen.push(input); return {}; },
+      ...(fault === 'provider' ? { transformClient: client => ({ ...client, commit: undefined }) } : {}),
+    });
+    const [code] = await f.exited; assert.equal(code, 0, f.diagnostics());
+    assert.match(f.output(), fault === 'proof' ? /INVALID_ARGUMENT/ : /CI_TEST_PROOF_REQUIRED/);
+    assert.doesNotMatch(f.output(), /UNEXPECTED_COMMIT/); assert.equal(seen.length, 0); assert.equal(f.state.exchanges.length, 0);
+  }
 });
 
 test('owning Node IPC refuses an old host provider without preparation instead of prompting or restoring scope', async t => {

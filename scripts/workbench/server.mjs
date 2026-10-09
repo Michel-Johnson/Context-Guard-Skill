@@ -9,6 +9,7 @@ import { ClaudeRuntime } from './claude-runtime.mjs';
 import { CursorRuntime } from './cursor-runtime.mjs';
 import { OriginalCursorCiClient } from './cursor-ci-mcp.mjs';
 import { bindCursorCiClient, pinCursorCiAuthority, readCursorCiHostContext } from './cursor-ci-channel.mjs';
+import { createCursorCiHostCommit } from './cursor-ci-commit.mjs';
 import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from '../shared/io.mjs';
@@ -829,7 +830,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         sessionId, nativeSessionId, root: ciRoot };
     };
     const original = new OriginalCursorCiClient({ origin: base, credential });
-    let scopedConnection, scopeFingerprint;
+    let scopedConnection, scopeFingerprint, hostCommit;
     const authorizeTask = async (context, prepared) => {
       const tuple = { taskId: context.taskId, planRef: prepared.approvedPlan.ref, planVersion: prepared.approvedPlan.version,
         planSourceSha: prepared.approvedPlan.sourceSha, approvalReceiptId: prepared.approvedPlan.approvalReceiptId,
@@ -849,14 +850,18 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             return result;
           } });
         scopedConnection.file = connection.file; // Original authority only; no credential copy or new login.
+        hostCommit = await createCursorCiHostCommit({ connection: scopedConnection, context, taskExpectation: fixed, readBinding });
       }
       await scopedConnection.send({ v: 2, id: randomUUID(), type: 'object.read', session: context.session,
         payload: { ref: tuple.ciTodoRef, version: tuple.ciTodoVersion } });
     };
-    return bindCursorCiClient({ client: { context: () => original.context(),
+    return bindCursorCiClient({ client: { context: options => original.context(options),
       exchange: message => {
         if (!scopedConnection) protocolFail('FORBIDDEN', 'Original CI task preparation is required');
         return scopedConnection.send(message);
+      }, commit: (message, options) => {
+        if (!hostCommit) protocolFail('FORBIDDEN', 'Original CI task preparation is required');
+        return hostCommit(message, options);
       } }, readBinding, authorizeTask,
       readHostContext: context => readCursorCiHostContext({ context,
         readExecution: async () => {
