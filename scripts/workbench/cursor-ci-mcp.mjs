@@ -93,6 +93,7 @@ export async function startCursorCiMcp({ client, testerSessionId, nativeSessionI
   if (source && source.manifest?.sourceSha !== scope.sourceSha) fail('CI_SOURCE_CHANGED');
   const credential = `cgci_${randomBytes(32).toString('base64url')}`;
   const key = Buffer.from(credential), abort = new AbortController();
+  const expiry = setTimeout(() => abort.abort(), ttlMs); expiry.unref?.();
   let initialized = false, protocolVersion = null, endpoint, closed = false;
   const fresh = async (ciResult = false) => { try {
     if (closed || abort.signal.aborted || now() >= expiresAt) fail('CI_CAPABILITY_EXPIRED');
@@ -198,7 +199,7 @@ export async function startCursorCiMcp({ client, testerSessionId, nativeSessionI
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   endpoint = `http://127.0.0.1:${server.address().port}/ci`;
   return { endpoint, credential, call, async close() {
-    if (closed) return; closed = true; abort.abort();
+    if (closed) return; closed = true; clearTimeout(expiry); abort.abort();
     await new Promise(resolve => { server.close(resolve); server.closeAllConnections?.(); });
   } };
 }

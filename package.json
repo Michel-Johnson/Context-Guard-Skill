@@ -52,6 +52,7 @@
     "test:sync": "node --test tests/workbench-sync.test.mjs tests/workbench-inbox.test.mjs",
     "test:browser": "node tests/workbench-browser.mjs && node tests/workbench-journal-recovery-browser.mjs && node tests/cursor-chat-browser.mjs",
     "test:cursor-browser": "node tests/cursor-chat-browser.mjs",
+    "test:cursor-ci-docker": "node tests/cursor-ci-runner-docker.mjs",
     "pack:shared": "node .github/scripts/release-shared.mjs"
   },
   "engines": {

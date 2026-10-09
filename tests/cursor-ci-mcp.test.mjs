@@ -163,6 +163,14 @@ test('local MCP task drift revokes the in-flight host test signal without claimi
   assert.equal(toolError(await running), 'CI_CAPABILITY_EXPIRED');
 });
 
+test('local MCP expiry aborts the host test without waiting for another client request', async t => {
+  const f = await fixture(t, { ttlMs: 100, runTest: async (_, { signal }) => {
+    await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true })); return { aborted: true };
+  } });
+  await f.initialize();
+  assert.equal(toolError(await f.call('context_guard_test', { id: 'expires', testId: 'fixed-test' })), 'CI_CAPABILITY_EXPIRED');
+});
+
 test('local MCP bounds error diagnostics and keeps scalar receipts out of structuredContent', async t => {
   const f = await fixture(t, { runTest: async () => { throw Object.assign(new Error('SYNTHETIC_PRIVATE_DIAGNOSTIC'), { code: 'private:synthetic-token' }); } });
   await f.initialize();
