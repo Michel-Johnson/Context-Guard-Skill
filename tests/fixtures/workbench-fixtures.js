@@ -736,7 +736,7 @@ const CONTEXT_GUARD_MAP = {
       "origin": "human",
       "owns": [
         "prototype/",
-        "docs/shots/"
+        "development-docs/shots/"
       ],
       "ideas": []
     },
@@ -1024,7 +1024,7 @@ const CONTEXT_GUARD_MAP = {
         "bin/",
         "package.json",
         "scripts/context_guard.py",
-        "references/",
+        "skill-reference/",
         "agents/"
       ],
       "ideas": []
@@ -1453,8 +1453,8 @@ const CONTEXT_GUARD_MAP = {
   "isNew": false
 };
 const CG_OWNS = {
-  M1:["prototype/","docs/shots/"],
-  M2:["SKILL.md","bin/","package.json","scripts/context_guard.py","references/","agents/"],
+  M1:["prototype/","development-docs/shots/"],
+  M2:["SKILL.md","bin/","package.json","scripts/context_guard.py","skill-reference/","agents/"],
   M3:[".codex/context/","scripts/map_owns.py"],
   M4:["hooks.json","scripts/context_guard_hook.py"],
   M5:[".github/"]

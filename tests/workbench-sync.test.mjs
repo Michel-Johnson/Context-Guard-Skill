@@ -1230,16 +1230,16 @@ test('archive reconciliation explicitly assigns support files to an accepted nod
   };
   const input = {
     summary: '修复工作台并补齐回归',
-    files: ['prototype/workbench.html', 'scripts/workbench/server.mjs', 'tests/workbench-browser.mjs', 'references/design/design-workbench-interface-v1.1.0.md'],
+    files: ['prototype/workbench.html', 'scripts/workbench/server.mjs', 'tests/workbench-browser.mjs', 'skill-reference/design/design-interface-v1.2.1.md'],
     assignments: [{
       nodeId: 'W1',
       reason: '服务、测试和接口文档都是工作台实现的配套变更',
-      files: ['scripts/workbench/server.mjs', 'tests/workbench-browser.mjs', 'references/design/design-workbench-interface-v1.1.0.md'],
+      files: ['scripts/workbench/server.mjs', 'tests/workbench-browser.mjs', 'skill-reference/design/design-interface-v1.2.1.md'],
     }],
   };
   const reconciliation = buildArchiveReconciliation(doc, agent.sessionId, input);
   assert.deepEqual(reconciliation.mapped, { W1: [
-    'prototype/workbench.html', 'references/design/design-workbench-interface-v1.1.0.md', 'scripts/workbench/server.mjs', 'tests/workbench-browser.mjs',
+    'prototype/workbench.html', 'scripts/workbench/server.mjs', 'skill-reference/design/design-interface-v1.2.1.md', 'tests/workbench-browser.mjs',
   ] });
   assert.deepEqual(reconciliation.unclassified, []);
   assert.equal(reconciliation.operations.length, 1);
@@ -1291,6 +1291,19 @@ test('archive reconciliation only creates evidence-backed proposals and deduplic
   assert.equal(otherSession.proposedId, proposed.id);
   assert.equal(otherSession.proposalDuplicate, true);
   assert.deepEqual(otherSession.operations, []);
+});
+
+test('renamed and legacy documentation folders cannot establish implementation evidence', () => {
+  const doc = { v: 1, project: 'docs-only', root: { id: 'T0', title: '项目', kind: 'module', proposal: 'accepted', children: [] } };
+  for (const directory of ['docs', 'references', 'development-docs', 'skill-reference']) {
+    const files = [`${directory}/guide.md`];
+    const proposal = { parentId: 'T0', title: '文档', purpose: '辅助说明', reason: '新增说明', basis: 'new-module', files };
+    assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, { files, proposal }), /cannot be the sole evidence/, directory);
+    assert.throws(() => applyOperations(doc, [{ type: 'create', parentId: 'T0', node: {
+      id: 'D1', title: '文档', purpose: '辅助说明', kind: 'work', owns: files,
+      memories: [{ text: '文档', proposalEvidence: { ...proposal } }],
+    } }], agent), /implementation file/, directory);
+  }
 });
 
 test('archive governance rejects duplicate, conflicting, and unrelated declarations', () => {

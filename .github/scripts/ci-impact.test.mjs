@@ -11,13 +11,13 @@ import { selectImpact, validateConfig } from "./ci-impact.mjs";
 const config = JSON.parse(fs.readFileSync(new URL("../ci-impact.json", import.meta.url), "utf8"));
 
 test("push events always run the complete CI", () => {
-  const plan = selectImpact({ config, eventName: "push", changedPaths: ["docs/README.md"] });
+  const plan = selectImpact({ config, eventName: "push", changedPaths: ["development-docs/README.md"] });
   assert.equal(plan.full, true);
   assert.ok(Object.values(plan.jobs).every(Boolean));
 });
 
 test("repository-only documentation runs security and selector only", () => {
-  const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["docs/README.md", "CI_todo.md"] });
+  const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["development-docs/README.md", "CI_todo.md"] });
   assert.equal(plan.full, false);
   assert.ok(Object.values(plan.jobs).every((enabled) => !enabled));
 });
@@ -34,9 +34,29 @@ test("workbench UI changes select tests, package and browser jobs", () => {
   });
 });
 
+test("role documents retain package validation after moving into roles", () => {
+  for (const role of ["README", "Coordinator", "Executor", "Tester"]) {
+    const plan = selectImpact({ config, eventName: "pull_request", changedPaths: [`roles/${role}.md`] });
+    assert.equal(plan.full, false);
+    assert.deepEqual(plan.unmatchedPaths, []);
+    assert.deepEqual(Object.entries(plan.jobs).filter(([, enabled]) => enabled).map(([job]) => job), ["package"]);
+  }
+});
+
 test("browser fixture changes select the browser job", () => {
   const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["tests/fixtures/workbench-fixtures.js"] });
   assert.deepEqual(Object.entries(plan.jobs).filter(([, enabled]) => enabled).map(([job]) => job), ["browser"]);
+});
+
+test("moved catalog retains test and package validation", () => {
+  for (const [path, expected] of [
+    ["skill-reference/interface-contract-v2.json", ["test", "package"]],
+  ]) {
+    const plan = selectImpact({ config, eventName: "pull_request", changedPaths: [path] });
+    assert.equal(plan.full, false);
+    assert.deepEqual(plan.unmatchedPaths, []);
+    assert.deepEqual(Object.entries(plan.jobs).filter(([, enabled]) => enabled).map(([job]) => job), expected);
+  }
 });
 
 test("Hook integration helper changes select only tests and minimum runtime", () => {
@@ -74,8 +94,8 @@ test("CI selector and governance changes force the complete CI", () => {
   for (const path of [
     ".github/ci-impact.json",
     ".github/workflows/ci.yml",
-    "docs/test-governance.md",
-    "docs/ci.md",
+    "development-docs/engineering/README.md",
+    "development-docs/ci.md",
     "bin/build-runtime.mjs",
     "package-lock.json",
     "scripts/cloud/server.mjs",

@@ -2,7 +2,7 @@
 
 # Context Guard
 
-项目说明使用中文；[README.zh-CN.md](README.zh-CN.md) 保留为兼容入口。
+项目说明使用中文。
 
 **下一代人与编码 Agent 的协作层。**
 
@@ -10,14 +10,14 @@
 
 Context Guard 把 **项目** 当成工作场所：
 
-1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。底层文件格式为 [`fs-v2.1`](references/design/design-memory-filesystem-v1.0.1.md)。
+1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。底层文件格式为 [`fs-v2.1`](skill-reference/design/design-memory-filesystem-v1.0.1.md)。
 2. **隔离的 Session** — 每次执行写自己的 Session。对话不是 Main。用户把 Coordinator 挂到节点上时，挂载不写入 Main。执行 Session 要等该事项的 brief 获批后才创建。
 3. **人只跟 Coordinator 说话** — Cloud Coordinator、本地工作台 Coordinator，或 Codex Session 当 Coordinator。确认和「去做」发生在那里。干活的 Session 不对人说。灰卡切片是以后的事，不是当前默认。
 4. **发布进 Main** — 人审核过的工作才进已提交的 main 基线。Session 草稿仍是草稿，直到过门禁。人可以直接改 Main 上的 TODO。
 
 它作为 Skill 安装到 **Codex**、**Cursor** 和 **Claude**。这一轮不开发新 Hook。
 
-[仓库文档与文件布局](docs/README.md) · [一页 Skill](SKILL.md)
+[仓库文档与文件布局](development-docs/README.md) · [一页 Skill](SKILL.md)
 
 ## 为什么这是另一种范式
 
@@ -45,31 +45,31 @@ Coordinator / Executor / Tester 的角色提示词用于拆开规划、执行和
 
 第一页 4–8 张主干模块卡。点一张进入。未修 Bug 在右侧列表。
 
-![工作台总览](docs/shots/workbench/overview.png)
+![工作台总览](development-docs/shots/workbench/overview.png)
 
 ### 进入模块
 
 开工单元挂在模块下面，只画从属实线。
 
-![模块内部](docs/shots/workbench/module.png)
+![模块内部](development-docs/shots/workbench/module.png)
 
 ### 模块关系
 
 「关系」高亮生产/消费伙伴，其余变暗，不会进入该模块。
 
-![模块关系](docs/shots/workbench/relations.png)
+![模块关系](development-docs/shots/workbench/relations.png)
 
 ### 会话流动
 
 点一条挂了会话的 Bug。从根到该节点的链路亮起来，当前会话沿线流动。
 
-![会话流动](docs/shots/workbench/session-flow.png)
+![会话流动](development-docs/shots/workbench/session-flow.png)
 
 ### 授权模式
 
 「授权模式」可以标切片。灰卡可见范围是以后的事，不是当前默认。新 Session 默认看见自己这张 Session Map。
 
-![授权模式](docs/shots/workbench/auth-mode.png)
+![授权模式](development-docs/shots/workbench/auth-mode.png)
 
 顶栏最右 **设置** 里切界面语言和主题。地图上的标题、用途、记忆仍按写入时的语言。
 
@@ -116,7 +116,7 @@ context-guard workbench --root /path/to/project --session <真实-session-id>
 context-guard doctor --platform cursor --root /path/to/project
 ```
 
-本地入口默认是 `http://项目名.localhost:1355`。绑定钉住命名 URL、Git 项目、后端和 Session；不会因为更新的任务自动切换。见 [命名工作台](references/design/design-workbench-v1.0.1.md)。
+本地入口默认是 `http://项目名.localhost:1355`。绑定钉住命名 URL、Git 项目、后端和 Session；不会因为更新的任务自动切换。见 [命名工作台](skill-reference/design/design-interface-v1.2.1.md#启动与绑定)。
 
 ## 一轮怎么走
 
@@ -157,11 +157,11 @@ Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在推理�
 | 主题 | 入口 |
 | --- | --- |
 | Skill（一页，给 Agent） | [SKILL.md](SKILL.md) |
-| 文档索引 | [docs/README.md](docs/README.md) |
-| 工作台 / Map CLI | [工作台接口](references/design/design-workbench-interface-v1.1.0.md) |
-| 角色（Coordinator / Executor / Tester） | [roles.md](roles.md) |
-| npm 发布 | [发布手册](docs/npm-release-runbook.md) |
+| 文档索引 | [development-docs/README.md](development-docs/README.md) |
+| 工作台 / Map CLI | [工作台接口](skill-reference/design/design-interface-v1.2.1.md) |
+| 角色（Coordinator / Executor / Tester） | [角色入口](roles/README.md) |
+| npm 发布 | [发布手册](development-docs/npm-release-runbook.md) |
 
 本仓库把 **源码** 放在 GitHub `main`，把 **开发记忆** 放在用户指定的私有服务器。整个 `.codex/` 不进 Git 或 npm。其他项目不会继承本仓库的服务器配置。见 [RULE.md](RULE.md)。
 
-本地 `.codex/context/` 是兼容缓存和草稿，不是第二份权威。Cloud Agent 阅读面正迁向 [Memory Filesystem v2](references/design/design-memory-filesystem-v1.0.1.md) 的 node/module Markdown；在该投影真正暴露之前，不要假装能直接读取服务器私有文件。
+本地 `.codex/context/` 是兼容缓存和草稿，不是第二份权威。Cloud Agent 阅读面正迁向 [Memory Filesystem v2](skill-reference/design/design-memory-filesystem-v1.0.1.md) 的 node/module Markdown；在该投影真正暴露之前，不要假装能直接读取服务器私有文件。

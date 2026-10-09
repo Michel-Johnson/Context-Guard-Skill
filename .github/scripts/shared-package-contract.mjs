@@ -4,9 +4,9 @@ import { installedFiles } from './package-contract.mjs';
 export function sharedMappings(kind) {
   if (kind === 'core') return [
     ...installedFiles.filter(file => file.startsWith('scripts/shared/') && !file.endsWith('/package.json')).map(file => [file, file.slice('scripts/shared/'.length)]),
-    ...installedFiles.filter(file => file.startsWith('references/')).map(file => [file, file]),
-    ...['roles.md', 'Coordinator.md', 'Executor.md', 'Tester.md'].map(file => [file, `roles/${file}`]),
-    ['docs/interface-contract-v2.json', 'interface-contract-v2.json'],
+    ...installedFiles.filter(file => file.startsWith('skill-reference/') && file !== 'skill-reference/interface-contract-v2.json').map(file => [file, file]),
+    ...installedFiles.filter(file => file.startsWith('roles/')).map(file => [file, file]),
+    ['skill-reference/interface-contract-v2.json', 'interface-contract-v2.json'],
     ['scripts/shared/package.json', 'package.json'],
   ];
   if (kind === 'workbench') return [
