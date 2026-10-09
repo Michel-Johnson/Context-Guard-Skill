@@ -5747,7 +5747,7 @@ function installDeviceApprovals(sync){
     }catch(error){refreshFailed=true;for(const button of list.querySelectorAll('button'))button.disabled=true;document.getElementById('device-approval-count').textContent='?';trigger.title=errorLabel(error);if(panel.open)status.textContent=errorLabel(error);}
     finally{running=false;if(fullReadNeeded&&panel.open&&!stopped&&!deciding)void refresh();}
   };
-  trigger.onclick=()=>{closeTray();closeSettings();status.textContent='';panel.showModal();trigger.setAttribute('aria-expanded','true');document.getElementById('device-approvals-close').focus();void refresh();};
+  trigger.onclick=()=>{closeTray();closeSettings();document.getElementById('workbench-tools').open=false;status.textContent='';panel.showModal();trigger.setAttribute('aria-expanded','true');document.getElementById('device-approvals-close').focus();void refresh();};
   document.getElementById('device-approvals-close').onclick=()=>panel.close();
   document.getElementById('device-approvals-refresh').onclick=()=>void refresh();
   panel.addEventListener('close',()=>{trigger.setAttribute('aria-expanded','false');document.querySelector(mapBetaEnabled?'#btn-settings':'#workbench-tools > summary').focus();});
