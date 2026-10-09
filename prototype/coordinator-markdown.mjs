@@ -248,7 +248,7 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       if (!prompt || !lead.trimEnd().endsWith(prompt)) {
         const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc, replyOptions)); card.append(title);
       }
-      const activity = doc.createElement('p'); activity.className = 'coordinator-question-status'; activity.setAttribute('role', 'status');
+      const activity = doc.createElement('p'); activity.className = 'coordinator-question-status coordinator-answer-activity'; activity.setAttribute('role', 'status');
       activity.textContent = '正在回复…'; activity.hidden = !(running && question.answer?.requestId === activeTurnId);
       if (question.superseded) {
         const notice = doc.createElement('p'); notice.className = 'coordinator-question-status'; notice.textContent = '此问题已被新的讨论替代。'; card.append(notice);

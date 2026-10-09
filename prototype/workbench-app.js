@@ -5700,7 +5700,7 @@ async function installCoordinatorPanel(sync){
     setTyping(true);
     setPlanningVisible(true);
     pinTurn();
-    if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
+    if(answeringCard)answeringCard.querySelector('.coordinator-answer-activity').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{
       const payload=Object.fromEntries(Object.entries(request).filter(([key])=>['id','text','retry','answerTo','attachments','followup','expectedTurnId'].includes(key)));
@@ -5714,7 +5714,7 @@ async function installCoordinatorPanel(sync){
         else if(id!==selected){const draft=drafts.get(id);if(draft&&!draft.text)draft.text=composerDraft;}
       }
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
-      if(id===selected){pendingError=message;pendingTransportUnknown=!error.serverResponse;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
+      if(id===selected){pendingError=message;pendingTransportUnknown=!error.serverResponse;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-answer-activity'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft){draft.error=message;draft.transportUnknown=!error.serverResponse;}}
     }
     finally{submitInFlight=null;busy=false;busyConversation=null;retry.disabled=false;setSendBlocked(!!pending);}
