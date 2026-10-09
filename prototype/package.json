@@ -1,6 +1,6 @@
 {
   "name": "@michelj/context-guard-workbench",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "type": "module",
   "description": "Context Guard 本地与云端共用工作台 UI",
   "repository": "github:Michel-Johnson/Context-Guard-Skill",
