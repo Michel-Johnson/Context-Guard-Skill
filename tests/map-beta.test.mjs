@@ -105,3 +105,17 @@ test('stable repository linking preserves its original picker-then-close order a
   const ctx=vm.createContext({mapBetaEnabled:false,document:{getElementById:()=>button},closeSettings:()=>calls.push('settings'),linkRepo:async()=>calls.push('picker')});
   vm.runInContext(code,ctx);await button.onclick();assert.deepEqual(calls,['picker','settings']);ctx.mapBetaEnabled=true;calls.length=0;await button.onclick();assert.deepEqual(calls,[],'Beta never invokes the obsolete linking flow');
 });
+
+test('the original stable first-layer lens clears relation chrome but preserves its URL and never reads Beta preferences',async()=>{
+  const source=await appSource(),code=extract(source,"document.getElementById('btn-lens').onclick=", "document.getElementById('btn-map-add-module').onclick="),buttons={lens:{},rel:{classList:{remove(){}} ,setAttribute(){}}},calls=[];
+  const ctx=vm.createContext({mapBetaEnabled:false,lensMode:false,bugPathMode:false,relationMode:true,relAnchorId:'original',document:{getElementById:id=>id==='btn-lens'?buttons.lens:buttons.rel,body:{classList:{remove(){}}}},closeSettings:()=>calls.push('settings'),exitLensMode:()=>assert.fail('inactive lens'),exitBugPath:()=>assert.fail('inactive bug'),clearRelationMode:()=>assert.fail('stable lens must preserve the original relation URL'),enterLensMode:()=>calls.push('lens')});
+  vm.runInContext(code,ctx);buttons.lens.onclick();assert.equal(ctx.relationMode,false);assert.equal(ctx.relAnchorId,null);assert.deepEqual(calls,['settings','lens']);ctx.mapBetaEnabled=true;calls.length=0;buttons.lens.onclick();assert.deepEqual(calls,[]);
+});
+
+test('new Beta Escape capture handlers cannot intercept stable keyboard events even with stale Beta selection state',async()=>{
+  const source=await appSource(),firstStart=source.indexOf("document.addEventListener('keydown',e=>{",source.indexOf('function closeSettings(){')),firstEnd=source.indexOf('function switchRepo(id)',firstStart),secondStart=source.indexOf("document.addEventListener('keydown',e=>{",source.indexOf("document.getElementById('btn-map-add-relation').onclick=")),secondEnd=source.indexOf("document.getElementById('btn-map-route-auto').onclick=",secondStart);
+  for(const code of [source.slice(firstStart,firstEnd),source.slice(secondStart,secondEnd)]){
+    const handlers=[],ctx=vm.createContext({mapBetaEnabled:false,relationDraft:{label:'retained'},selectedRouteKey:'stale',document:{addEventListener:(event,fn)=>handlers.push(fn),getElementById:()=>assert.fail('stable capture must not inspect Beta menus')},closeSettings:()=>assert.fail('stable keyboard routing stays with its original handlers'),cancelRelation:()=>assert.fail('no stale draft mutation'),renderMap:()=>assert.fail('no redraw')});
+    vm.runInContext(code,ctx);assert.equal(handlers.length,1);handlers[0]({key:'Escape',isComposing:false,defaultPrevented:false,preventDefault:()=>assert.fail('do not prevent stable event'),stopImmediatePropagation:()=>assert.fail('do not stop stable event')});assert.equal(ctx.relationDraft.label,'retained');assert.equal(ctx.selectedRouteKey,'stale');
+  }
+});
