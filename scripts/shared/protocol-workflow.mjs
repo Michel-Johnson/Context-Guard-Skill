@@ -123,7 +123,10 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
       }
     } else if (p.stage === 'planReady') {
       at('assigned', 'plan-rejected', 'rework'); read(p.data.planRef, p.data.planVersion, 'plan');
-      task.plan = { ref: p.data.planRef, version: p.data.planVersion }; task.sourceSha = p.data.sourceSha; task.stage = 'plan-ready';
+      task.plan = { ref: p.data.planRef, version: p.data.planVersion };
+      // Keep the submitted Plan baseline separate: handoff replaces sourceSha
+      // with the final commit. This field alone is not an approval or Git proof.
+      task.planSourceSha = p.data.sourceSha; task.sourceSha = p.data.sourceSha; task.stage = 'plan-ready';
     } else if (p.stage === 'progress') {
       at('executing');
       if (p.data.seq <= (task.progress?.seq ?? -1)) fail('CONFLICT', 'Progress sequence did not advance');
