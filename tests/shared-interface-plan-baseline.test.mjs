@@ -39,8 +39,8 @@ async function fixture(t) {
       requirementsRef: brief.ref, requirementsVersion: brief.version, rulesVersion: 'synthetic-rules' });
     return send(coordinator, 'review.result', { kind: 'plan', ref: plan.ref, version: plan.version, decision, reason: 'Synthetic review' });
   };
-  const handoff = async () => {
-    const todo = await send(executor, 'object.put', { ref: 'synthetic-todo', kind: 'ciTodo', baseVersion: '', content: { items: [{ id: 'one' }] } });
+  const handoff = async (items = [{ id: 'one' }]) => {
+    const todo = await send(executor, 'object.put', { ref: 'synthetic-todo', kind: 'ciTodo', baseVersion: '', content: { items } });
     await send(executor, 'task.report', { taskId, stage: 'handoff', data: { sourceSha: finalSource,
       ciTodoRef: todo.ref, unitTestRefs: [], experienceRefs: [] } });
     return todo;
@@ -67,6 +67,58 @@ test('Plan baseline survives approved handoff, exact receipt replay and reopenin
   assert.deepEqual(await reopened.taskRecord(f.coordinator, f.session, f.taskId), task);
   const saved = JSON.parse(await fs.readFile(reopened.file, 'utf8'));
   assert.deepEqual(saved.tasks[scopedObjectKey(f.coordinator, f.session, `task:${f.taskId}`)], task);
+});
+
+const mappedTodo = { todoId: 'one', testId: 'synthetic-check', argv: ['node', '--test', 'tests/fixture.mjs'], number: 1 };
+async function testingFixture(t, items) {
+  const f = await fixture(t), prepared = await f.prepare();
+  await f.store.handle(f.executor, prepared.report); await f.approve(prepared.plan);
+  const todo = await f.handoff(items);
+  await f.send(f.coordinator, 'ci.request', { taskId: f.taskId, sourceSha: finalSource, ciTodoRef: todo.ref, unitTestRefs: [] });
+  const evidence = await f.send(f.ci, 'object.put', { ref: 'synthetic-ci-evidence', baseVersion: '', kind: 'evidence', content: { observed: 'synthetic passing check' } });
+  const result = f.message('ci.result', { taskId: f.taskId, sourceSha: finalSource, verdict: 'passed',
+    checks: [{ testId: mappedTodo.testId, todoId: mappedTodo.todoId, status: 'passed', evidenceRef: evidence.ref }] });
+  return Object.assign(f, { todo, result });
+}
+
+test('CI consumes canonical or explicitly mapped alias TODO without rewriting the immutable handoff', async t => {
+  for (const item of [{ id: 'one' }, { ...mappedTodo }, { ...mappedTodo, id: 'one' }]) await t.test(JSON.stringify(item), async child => {
+    const f = await testingFixture(child, [item]), before = await f.task();
+    const receipt = await f.store.handle(f.ci, f.result), task = await f.task();
+    assert.equal(task.stage, 'awaiting-merge'); assert.equal(task.ci.verdict, 'passed');
+    assert.equal(task.acceptanceReview, undefined); assert.deepEqual(task.references, before.references);
+    assert.deepEqual(task.planReview, before.planReview); assert.equal(task.sourceSha, finalSource);
+    const original = await f.send(f.ci, 'object.read', { ref: f.todo.ref, version: f.todo.version });
+    assert.deepEqual(original.content.items, [item], 'the handed-off version remains byte-equivalent JSON');
+    const annotated = await f.send(f.ci, 'object.read', task.ciTodoResult);
+    assert.deepEqual(annotated.content.items, [{ ...item, status: 'done', testIds: [mappedTodo.testId] }]);
+    assert.notEqual(task.ciTodoResult.version, f.todo.version);
+    assert.deepEqual(await f.store.handle(f.ci, f.result), receipt);
+    assert.deepEqual(await f.task(), task, 'same CI result replay never issues another acceptance or version');
+  });
+});
+
+test('Malformed or conflicting CI TODO mappings leave the original testing task unchanged', async t => {
+  const cases = [
+    [{ ...mappedTodo, id: 'different' }], [{ todoId: 'one' }], [{ ...mappedTodo, testId: '' }],
+    [{ ...mappedTodo, argv: [] }], [{ ...mappedTodo, argv: ['node', 1] }], [{ ...mappedTodo, argv: ['node', '\n'] }],
+    [{ ...mappedTodo, todoId: ' ' }], [{ ...mappedTodo }, { id: 'one' }],
+    [{ ...mappedTodo }, { ...mappedTodo, todoId: 'two' }],
+    [{ ...mappedTodo, id: '' }], [{ id: 'one', testId: 'synthetic-check' }], [{ id: 'one', argv: ['node'] }],
+  ];
+  for (const [index, items] of cases.entries()) await t.test(String(index), async child => {
+    const f = await testingFixture(child, items), before = await fs.readFile(f.store.file);
+    await assert.rejects(f.store.handle(f.ci, f.result), { code: 'INVALID_ARGUMENT' });
+    assert.deepEqual(await fs.readFile(f.store.file), before, 'no CI receipt, TODO annotation or workflow transition persists');
+  });
+  for (const mode of ['testId', 'stale-version', 'foreign-role']) await t.test(mode, async child => {
+    const f = await testingFixture(child, [mappedTodo]);
+    if (mode === 'stale-version') await f.send(f.executor, 'object.put', { ref: f.todo.ref, baseVersion: f.todo.version, kind: 'ciTodo', content: { items: [mappedTodo] } });
+    const before = await fs.readFile(f.store.file);
+    if (mode === 'testId') f.result.payload.checks[0].testId = 'different-test';
+    await assert.rejects(f.store.handle(mode === 'foreign-role' ? f.executor : f.ci, f.result), { code: mode === 'foreign-role' ? 'FORBIDDEN' : 'CONFLICT' });
+    assert.deepEqual(await fs.readFile(f.store.file), before);
+  });
 });
 
 test('Rejected or reworked Plan gets a new baseline without an old successful report rolling it back', async t => {

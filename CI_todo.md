@@ -66,6 +66,7 @@
 - [ ] owning Node IPC：宿主专用 commit、mandatory proof 传输、终态上下文，实际 HostProof producer 与 profile/MCP/Runner→Cloud 事务组合。
 - [ ] hostContext：原 Plan/不可变批准/TODO、固定连接/版本和读取漂移拒绝；完整 Plan.paths 快照，preparation-only 不等于当前 Task 授权。
 - [ ] 发布共享包及 Cloud 固定消费：planSourceSha 持久化、返工/重放，sourceSha 为最终源码，旧记录不猜基线，不产生批准或权限。
+- [ ] CI TODO 字段兼容的真实 Cursor 交接：既存 todoId/testId/argv 与新 canonical id 走同一 Core 校验，原版本不改；Cloud 固定新包后独立 Tester 回传原任务。冲突映射零启动，聚合 CI 失败不得标通过。
 - [ ] 最新安装恢复原会话：CLI/Claude Hook 不覆盖 Cursor 身份，读写无 403；doctor 不崩溃与绑定就绪分别验。
 - [ ] 空会话失连接明确失败；既有会话重载，同原生会话完成任务/继续追问/回显，不用模拟 ACP 代替。
 - [ ] 已实现 Cloud→配对本地 Cursor：权限、原会话连续通讯和任务结果；未实现 Cloud REST 不计测试项。
