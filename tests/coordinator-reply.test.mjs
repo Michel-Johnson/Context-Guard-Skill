@@ -54,6 +54,7 @@ test('问题集中到问答入口，整轮正文与卡片不能藏入额外问�
   assert.equal(coordinatorTurnReplyIssue('', [question], { previousTexts: ['[查看资料](https://example.test/?q=1)'] }), null);
   assert.equal(coordinatorTurnReplyIssue('', [question, question], { detailed: true }).issue, 'MULTIPLE_QUESTIONS');
   assert.equal(coordinatorTurnReplyIssue('', [{ name: 'show_nodes', input: { message: '你想核对哪部分？' } }]).issue, 'MULTIPLE_QUESTIONS');
+  assert.equal(coordinatorTurnReplyIssue('', [{ name: 'show_nodes', input: { message: '请查看 https://example.test/?q=1' } }]), null);
   assert.equal(coordinatorTurnReplyIssue('', [{ name: 'mount_conversation', input: { description: 'node-private' } }], { internalIds: ['node-private'] }).issue, 'REPLY_INTERNAL_ID');
 });
 

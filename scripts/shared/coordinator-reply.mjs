@@ -49,7 +49,7 @@ export function coordinatorTurnReplyIssue(text, calls, options = {}) {
     for (const value of coordinatorToolReplyTexts(call.name, call.input)) {
       const issue = coordinatorReplyIssue(value, { ...options, technical: false, detailed: false });
       if (issue) return { issue, text: value };
-      if (call.name === 'show_nodes' && /[?？]/u.test(value)) return { issue: 'MULTIPLE_QUESTIONS', text: value };
+      if (call.name === 'show_nodes' && /[?？]/u.test(readable(value))) return { issue: 'MULTIPLE_QUESTIONS', text: value };
     }
   }
   const questions = calls.filter(call => call.name === 'ask_user').length;
