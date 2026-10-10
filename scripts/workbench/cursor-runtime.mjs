@@ -275,7 +275,8 @@ export class CursorRuntime {
             cwd = (await createdProfile.verify()).nativeCwd; env = createdProfile.environment;
           }
           if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
-          acp = this.acpFactory({ command: config.command, cwd, args: config.model ? ['--model', config.model] : [], env,
+          acp = this.acpFactory({ command: createdProfile?.nativeCommand || config.command, cwd,
+            args: [...(createdProfile?.nativeArgs || []), ...(config.model ? ['--model', config.model] : [])], env,
             privateFiles: config.role === 'ci' });
           if (createdProfile) this.ciConnecting.set(sessionId, acp);
           const native = await acp.connect();

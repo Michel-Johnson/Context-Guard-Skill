@@ -9,6 +9,7 @@ import { canonical } from '../shared/protocol.mjs';
 import { startCursorCiDiscovery, CURSOR_CI_TOOL_NAMES } from './cursor-ci-mcp.mjs';
 import { privateCursorCommand } from './cursor-acp.mjs';
 import { cursorCiGuardHooks, cursorCiHookWorkspaceRoot, verifyCursorCiHookWorkspace } from './cursor-ci-guard.mjs';
+import { prepareCursorCiNativeIdentity } from './cursor-ci-native.mjs';
 
 const invokePrivate = (command, args, options) => {
   const native = privateCursorCommand(command, args);
@@ -138,7 +139,8 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
     await atomicWrite(file, encode(record));
     const home = path.join(profileRoot, 'home'), temporary = path.join(profileRoot, 'tmp');
     const guard = path.join(profileRoot, 'guard');
-    const directories = [home, temporary, guard, record.nativeCwd, path.join(home, '.cursor'),
+    const versionHome = path.join(profileRoot, 'version-home');
+    const directories = [home, versionHome, temporary, guard, record.nativeCwd, path.join(home, '.cursor'),
       path.dirname(record.hookWorkspaceRoot), record.hookWorkspaceRoot, path.join(home, 'appdata'),
       path.join(home, 'local-appdata'), path.join(home, 'xdg-config'), path.join(home, 'xdg-data'), path.join(home, 'xdg-cache')];
     for (const target of directories) await fs.mkdir(target, { mode: 0o700 });
@@ -148,7 +150,15 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
       HOME: home, USERPROFILE: home, APPDATA: path.join(home, 'appdata'), LOCALAPPDATA: path.join(home, 'local-appdata'),
       CURSOR_CONFIG_DIR: path.join(home, '.cursor'), CURSOR_DATA_DIR: path.join(home, '.cursor'),
       XDG_CONFIG_HOME: path.join(home, 'xdg-config'), XDG_DATA_HOME: path.join(home, 'xdg-data'), XDG_CACHE_HOME: path.join(home, 'xdg-cache'),
-      TMPDIR: temporary, TEMP: temporary, TMP: temporary, AGENT_CLI_CREDENTIAL_STORE: 'memory' };
+      TMPDIR: temporary, TEMP: temporary, TMP: temporary, AGENT_CLI_CREDENTIAL_STORE: 'memory',
+      NODE_DISABLE_COMPILE_CACHE: '1', CURSOR_INVOKED_AS: 'cursor-agent' };
+    // Official index.js initializes defaults even for --version. The provenance
+    // probe gets its own empty home, never the real turn's policy directory.
+    const versionEnv = { ...env, ...Object.fromEntries(['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA',
+      'CURSOR_CONFIG_DIR', 'CURSOR_DATA_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME'].map(key => [key, versionHome])) };
+    delete versionEnv.CURSOR_API_KEY; delete versionEnv.CURSOR_AUTH_TOKEN;
+    const nativePin = await prepareCursorCiNativeIdentity({ command, invoke, options: { cwd: record.nativeCwd, env: versionEnv } });
+    if (nativePin) record = { ...record, nativeIdentity: nativePin.identity };
     discovery = await startCursorCiDiscovery({ ttlMs: record.expiresAt - now(), now });
     const configuration = path.join(env.CURSOR_CONFIG_DIR, 'cli-config.json'), mcp = path.join(env.CURSOR_CONFIG_DIR, 'mcp.json');
     const mcpConfiguration = { mcpServers: { 'context-guard-ci': { url: discovery.endpoint,
@@ -169,7 +179,7 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
     const hooksBytes = encode(cursorCiGuardHooks({ nodeCommand: process.execPath, scriptFile,
       scriptSha256: expectedRecord.guardScriptSha256, manifestFile, manifestSha256 }));
     await fs.writeFile(hooksFile, hooksBytes, { flag: 'wx', mode: 0o600 });
-    try { await invoke(command, ['mcp', 'enable', 'context-guard-ci'], { cwd: record.nativeCwd, env, windowsHide: true, timeout: 15000, maxBuffer: 65536 }); }
+    try { await invoke(nativePin?.identity.command || command, [...(nativePin?.identity.args || []), 'mcp', 'enable', 'context-guard-ci'], { cwd: record.nativeCwd, env, windowsHide: true, timeout: 15000, maxBuffer: 65536 }); }
     catch { fail('CI_PROFILE_ENABLE_FAILED'); }
     const configurationBytes = await privateBytes(configuration), mcpBytes = await privateBytes(mcp);
     if (canonical(JSON.parse(mcpBytes)) !== canonical(mcpConfiguration) ||
@@ -181,6 +191,7 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
       if (closed) fail('CI_PROFILE_CLOSED');
       if (now() >= record.expiresAt) { await close(); fail('CI_PROFILE_EXPIRED'); }
       try {
+        await nativePin?.verify();
         for (const target of [directory, profileRoot, ...directories]) await realDirectory(target, { privateMode: true });
         await refuseExecutableConfiguration(home);
         await verifyCursorCiHookWorkspace(record);
@@ -198,7 +209,13 @@ export async function prepareCursorCiProfile({ directory, sessionId, root, comma
       return structuredClone(record);
     };
     await verify();
-    return { environment: env, discovery, verify, close, bindNative: nativeSessionId => withFileLock(file + '.lock', async () => {
+    const verifyNative = async () => {
+      await verify();
+      if (!nativePin) { await close(); fail('CI_NATIVE_UNSUPPORTED'); }
+      return structuredClone(nativePin.identity);
+    };
+    return { environment: env, discovery, verify, verifyNative, close,
+      nativeCommand: nativePin?.identity.command || command, nativeArgs: [...(nativePin?.identity.args || [])], bindNative: nativeSessionId => withFileLock(file + '.lock', async () => {
       await verify();
       if (!uuid.test(nativeSessionId || '') || record.nativeSessionId && record.nativeSessionId !== nativeSessionId) fail('CI_NATIVE_MISMATCH');
       if (!record.nativeSessionId) { record = { ...record, nativeSessionId }; await atomicWrite(file, encode(record)); }

@@ -50,6 +50,8 @@
 
 ### CURSOR-WORKBENCH-01 · 安装后的 Cursor
 
+- [ ] 新 profile 的支持原生制品身份、canonical Node/index.js 参数、完整分发闭包与变化撤权，从准确安装版本验证；版本自报、旧 JSON、未知制品不能获得激活权。正式合成清单/资源漂移回归与隔离真实机制不代替原 owning worker 和三路径业务任务验收；不重签厂商 SEA、不自动升级或更换用户命令，业务硬停保持。
+
 - [ ] 新 CI 私有 profile 格式 3 的固定官方 guard，在准确安装入口及官方 CLI 验证四工具放行、内置工具/Task/同名外来 MCP 拒绝，以及缺失、篡改、崩溃、超时、无输出、非法输出的 fail-closed；需要实际原生尝试与无越界效果，模型自述或无调用不能算通过。正式 profile/guard 子进程测试不证明厂商旁路、OS/Windows ACL 或 Cloud VM 隔离，原业务硬停保留。
 
 - [ ] 原生 Hook 元数据的固定 `hookWorkspaceRoot`，从准确安装版本验证与实际 native cwd、逻辑源码根分别对应；不借元数据存储目录授权文件/Task，也不从旧记录学习新根。正式反例已覆盖准确厂商形状误拒绝及目录/可执行配置漂移；隔离原生四 MCP/实际 Docker/宿主证明组合不代替原 owning Runtime、业务 Task 和三路径验收。

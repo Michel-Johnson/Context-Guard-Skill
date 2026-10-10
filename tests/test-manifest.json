@@ -85,6 +85,7 @@
     "tests/cursor-ci-channel.test.mjs",
     "tests/cursor-ci-commit.test.mjs",
     "tests/cursor-ci-profile.test.mjs",
+    "tests/cursor-ci-native.test.mjs",
     "tests/cursor-ci-runner.test.mjs",
     "tests/cursor-ci-runner-docker.mjs",
     "tests/cursor-protocol.test.mjs",

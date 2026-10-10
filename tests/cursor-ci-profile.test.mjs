@@ -99,6 +99,16 @@ test('CI profile binds one native ID without replacing the original profile or d
   assert.equal(f.calls.length, 1, 'a persisted profile is not permission to start another native environment');
 });
 
+test('preparation-only native fixtures cannot gain activation identity from their saved JSON', async t => {
+  const f = await fixture(), profile = await required()(f.options); t.after(() => profile.close());
+  assert.equal(profile.nativeCommand, process.execPath);
+  const record = await profile.verify(); assert.equal(record.nativeIdentity, undefined);
+  await assert.rejects(profile.verifyNative(), { code: 'CI_NATIVE_UNSUPPORTED' });
+  await assert.rejects(profile.verify(), { code: 'CI_PROFILE_CLOSED' });
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(f.owner, 'ci-profile.json'), 'utf8')), record);
+  assert.equal(f.calls.length, 1, 'unsupported identity does not run a native version probe or recreate a profile');
+});
+
 test('CI profile accepts fixed official default hydration without relearning its authority or extending expiry', async t => {
   const f = await fixture(), clock = 1700000000000;
   let current = clock;
