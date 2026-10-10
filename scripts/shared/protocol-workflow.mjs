@@ -5,6 +5,28 @@ import { hash } from './io.mjs';
 export const workflowTypes = new Set(['brief.submit', 'review.request', 'review.result', 'task.assign', 'task.message', 'task.report', 'task.rework', 'ci.request', 'ci.result', 'executor.state', 'task.control']);
 export const scopedObjectKey = (p, session, ref) => hash(canonical([p.repositoryId, session.id, session.generation, ref]));
 
+// Read compatibility only: never insert an id into an immutable handed-off item.
+// Mapping syntax is not permission to execute argv; adapters verify host policy.
+export function readCiTodoItems(items) {
+  const idValid = value => typeof value === 'string' && value.length > 0 && value.length <= 128;
+  const labelValid = value => idValid(value) && /\S/.test(value) && !/[\x00-\x1f]/.test(value);
+  const invalid = () => fail('INVALID_ARGUMENT', 'CI TODO requires unique identities and complete explicit test mappings');
+  if (!Array.isArray(items) || !items.length) invalid();
+  const parsed = items.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) invalid();
+    const hasId = Object.hasOwn(item, 'id'), hasAlias = Object.hasOwn(item, 'todoId');
+    if (hasId && !idValid(item.id) || hasAlias && !labelValid(item.todoId) || !hasId && !hasAlias ||
+        hasId && hasAlias && item.id !== item.todoId) invalid();
+    const mapped = hasAlias || Object.hasOwn(item, 'testId') || Object.hasOwn(item, 'argv');
+    if (mapped && (!Object.hasOwn(item, 'testId') || !Object.hasOwn(item, 'argv') || !labelValid(item.testId) || !Array.isArray(item.argv) || !item.argv.length || item.argv.length > 40 ||
+        item.argv.some(arg => typeof arg !== 'string' || !arg || arg.length > 2000 || /[\x00-\x1f]/.test(arg)))) invalid();
+    return { item, id: hasId ? item.id : item.todoId, ...(mapped ? { testId: item.testId, argv: item.argv } : {}) };
+  });
+  const mapped = parsed.filter(value => value.testId !== undefined);
+  if (new Set(parsed.map(value => value.id)).size !== parsed.length || new Set(mapped.map(value => value.testId)).size !== mapped.length) invalid();
+  return parsed;
+}
+
 // All effects stay inside ProtocolStore's transaction. Model calls and GitHub
 // polling belong to authenticated adapters, never to this state machine.
 export async function reduceWorkflow(state, principal, message, emit, policy = {}) {
@@ -182,9 +204,8 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     const todoRef = task.handoff.ciTodoRef, todoVersion = task.references[todoRef];
     const todo = read(todoRef, todoVersion, 'ciTodo');
     if (read(todoRef).version !== todoVersion) fail('CONFLICT', 'CI TODO changed after handoff');
-    const items = todo.content.items;
-    if (!Array.isArray(items) || !items.length || items.some(item => typeof item?.id !== 'string' || !item.id || item.id.length > 128) || new Set(items.map(item => item.id)).size !== items.length) fail('INVALID_ARGUMENT', 'CI TODO requires uniquely numbered items');
-    if (p.checks.some(check => !items.some(item => item.id === check.todoId))) fail('CONFLICT', 'CI result references an unknown TODO');
+    const items = readCiTodoItems(todo.content.items);
+    if (p.checks.some(check => !items.some(item => item.id === check.todoId && (item.testId === undefined || item.testId === check.testId)))) fail('CONFLICT', 'CI result differs from the handed-off TODO mapping');
     if (p.verdict === 'passed' && items.some(item => !p.checks.some(check => check.todoId === item.id && check.status === 'passed'))) fail('CONFLICT', 'CI did not cover every handed-off TODO');
     const references = {};
     for (const check of p.checks) {
@@ -192,8 +213,8 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
       if (check.reproductionRef) references[check.reproductionRef] = read(check.reproductionRef, undefined, 'evidence').version;
     }
     task.ci = { ...put(`ci:${p.taskId}:${randomUUID()}`, 'ciResult', { ...p, references }), verdict: p.verdict };
-    const annotated = items.map(item => {
-      const checks = p.checks.filter(check => check.todoId === item.id);
+    const annotated = items.map(({ item, id }) => {
+      const checks = p.checks.filter(check => check.todoId === id);
       return { ...item, status: checks.length && checks.every(check => check.status === 'passed') ? 'done' : 'pending', testIds: checks.map(check => check.testId) };
     });
     task.ciTodoResult = put(todoRef, 'ciTodo', { ...todo.content, items: annotated, ciResultRef: task.ci.ref });
