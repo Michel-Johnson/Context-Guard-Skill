@@ -67,7 +67,7 @@ export function claudeArguments(config, { sessionId, resume }) {
 // This is an invocation adapter, not a second task queue. Cloud retains FIFO.
 // A busy native turn rejects the next delivery for the existing inbox to retry.
 export class ClaudeRuntime {
-  constructor(directory) { this.directory = directory; }
+  constructor(directory, { executorCreation } = {}) { this.directory = directory; this.executorCreation = executorCreation; }
   sessionFile(sessionId) {
     if (!uuid.test(sessionId)) fail('INVALID_SESSION', 'Claude requires a real Session UUID');
     return path.join(this.directory, sessionId, 'session.json');
@@ -161,20 +161,26 @@ export class ClaudeRuntime {
       return { sessionId: request.sessionId, root, state: 'starting', deliveryId: delivery.deliveryId };
     });
   }
-  async ciReceiver(executorSessionId) {
-    const creation = await readJSON(path.join(path.dirname(this.sessionFile(executorSessionId)), 'creation.json'), null);
+  async ciReceivers(executorSessionId) {
+    const creation = this.executorCreation ? await this.executorCreation(executorSessionId)
+      : await readJSON(path.join(path.dirname(this.sessionFile(executorSessionId)), 'creation.json'), null);
     const candidates = [];
     for (const name of await fs.readdir(this.directory).catch(error => { if (error.code === 'ENOENT') return []; throw error; })) {
       if (!uuid.test(name)) continue;
       const state = await readJSON(this.sessionFile(name), null);
       if (state?.config.role === 'ci' && [executorSessionId, creation?.templateSessionId].includes(state.config.executorSessionId)) candidates.push({ sessionId: name, root: state.config.root });
     }
+    return candidates;
+  }
+  async ciReceiver(executorSessionId) {
+    const candidates = await this.ciReceivers(executorSessionId);
     if (candidates.length !== 1) fail('CI_RECEIVER_REQUIRED', 'Configure exactly one independent CI receiver for this developer Session');
     return candidates[0];
   }
   async acceptsCiExecutor(config, sessionId) {
     if (!uuid.test(sessionId || '')) return false;
     if (sessionId === config.executorSessionId) return true;
+    if (this.executorCreation) return (await this.executorCreation(sessionId))?.templateSessionId === config.executorSessionId;
     const creation = await readJSON(path.join(path.dirname(this.sessionFile(sessionId)), 'creation.json'), null);
     const executor = await readJSON(this.sessionFile(sessionId), null);
     return creation?.templateSessionId === config.executorSessionId && executor?.config.role === 'executor' &&

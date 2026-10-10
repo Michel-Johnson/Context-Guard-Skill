@@ -5836,10 +5836,6 @@ async function boot(){
     }catch{ /* Map remains readable if the optional translation module is unavailable. */ }
   }
   installDeviceApprovals(workbenchSync);
-  if(workbenchSync.config){
-    const {installCursorChat}=await import('./cursor-chat.mjs');
-    installCursorChat(workbenchSync,{language:uiLang});
-  }
   if(connected) installCoordinatorPanel(workbenchSync);
   if(!connected){
     if(!window.__CG_SERVER) await loadMapFromHttp();

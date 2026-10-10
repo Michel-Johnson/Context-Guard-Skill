@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { CursorAcp } from '../scripts/workbench/cursor-acp.mjs';
 
 // The native process is an isolated protocol peer, not a real Cursor/model.
@@ -47,6 +50,49 @@ function client(t, options = {}) {
   const instance = new CursorAcp({ command: process.execPath, cwd: process.cwd(), args: ['-e', peer, '--'], env: {}, ...options });
   t.after(() => instance.close());
   return instance;
+}
+
+// Mirrors the provider's documented pre-authentication boundary. Authentication
+// is still enforced by session/new and session/load, not by this test client.
+const authPeer = `
+const rl = require('node:readline').createInterface({ input: process.stdin });
+let loggedIn = false;
+const credential = process.env.CURSOR_API_KEY || process.env.CURSOR_AUTH_TOKEN;
+const preauthenticated = typeof credential === 'string' && !!credential.trim();
+const send = message => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');
+rl.on('line', line => {
+  const request = JSON.parse(line);
+  if (request.method === 'initialize') send({ id: request.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true } } });
+  else if (request.method === 'authenticate') {
+    if (preauthenticated) send({ id: request.id, error: { code: -32000, message: 'Unnecessary browser login' } });
+    else { loggedIn = true; send({ id: request.id, result: {} }); }
+  } else if (['session/new', 'session/load'].includes(request.method)) {
+    if (!(loggedIn || credential === 'fixture-valid')) send({ id: request.id, error: { code: -32000, message: 'Private provider authentication failure' } });
+    else send({ id: request.id, result: { sessionId: request.params.sessionId || 'fixture-authenticated-session' } });
+  }
+});
+`;
+
+for (const key of ['CURSOR_API_KEY', 'CURSOR_AUTH_TOKEN']) {
+  for (const resume of [false, true]) {
+    test(`ACP uses provider pre-authentication via ${key} for ${resume ? 'load' : 'new'}`, async t => {
+      const acp = client(t, { args: ['-e', authPeer, '--'], env: { [key]: 'fixture-valid' } });
+      const sessionId = 'fixture-authenticated-session';
+      assert.equal((await acp.connect(resume ? { sessionId } : {})).sessionId, sessionId);
+    });
+  }
+  test(`ACP does not treat invalid ${key} as a successful connection`, async t => {
+    const acp = client(t, { args: ['-e', authPeer, '--'], env: { [key]: 'fixture-invalid' } });
+    await assert.rejects(acp.connect(), cause => cause.code === 'CURSOR_RPC_ERROR' && !cause.message.includes('Private'));
+    assert.notEqual(acp.initialized, true);
+  });
+}
+
+for (const credential of ['', '   ']) {
+  test(`ACP retains browser authentication for ${credential ? 'whitespace' : 'empty'} credentials`, async t => {
+    const acp = client(t, { args: ['-e', authPeer, '--'], env: { CURSOR_API_KEY: credential } });
+    assert.equal((await acp.connect()).sessionId, 'fixture-authenticated-session');
+  });
 }
 
 test('ACP authenticates, streams Unicode and follows up in the same native Session', async t => {
@@ -105,3 +151,40 @@ test('ACP rejects bad settings, missing binary and invalid prompts', async t => 
   await assert.rejects(acp.prompt(''), { code: 'INVALID_PROMPT' });
   await assert.rejects(acp.prompt('x'.repeat(65537)), { code: 'INVALID_PROMPT' });
 });
+
+test('private ACP native writes keep restrictive permissions without changing the parent or interpreting argv',
+  { skip: process.platform === 'win32' ? 'POSIX umask is not a Windows ACL guarantee' : false }, async t => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-acp-private-'));
+    const parentMask = process.umask(), literal = 'literal $(touch injected-marker) ; echo unexpected';
+    const native = `
+const fs = require("node:fs"), readline = require("node:readline");
+fs.writeFileSync("replacement.tmp", JSON.stringify({ mask: process.umask(), pid: process.pid, argv: process.argv.slice(1) }));
+fs.renameSync("replacement.tmp", "cli-config.json");
+const send = message => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", line => {
+  const request = JSON.parse(line);
+  if (request.method === "initialize") send({ id: request.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+  else if (request.method === "authenticate") send({ id: request.id, result: {} });
+  else if (request.method === "session/new") send({ id: request.id, result: { sessionId: "private-native" } });
+});`;
+    for (const privateFiles of [true, false]) {
+      const cwd = path.join(directory, privateFiles ? 'ci' : 'executor'); await fs.mkdir(cwd, { mode: 0o700 });
+      await fs.writeFile(path.join(cwd, 'cli-config.json'), 'original private bytes', { mode: 0o600 });
+      const acp = new CursorAcp({ command: process.execPath, cwd, args: ['-e', native, '--', literal], env: {}, privateFiles });
+      t.after(() => acp.close());
+      assert.equal((await acp.connect()).sessionId, 'private-native', 'the native JSON-RPC stdout stays intact');
+      const observed = JSON.parse(await fs.readFile(path.join(cwd, 'cli-config.json'), 'utf8'));
+      assert.equal(observed.mask, privateFiles ? 0o077 : parentMask);
+      assert.equal(observed.pid, acp.child.pid, 'the shim execs, rather than spawning an unowned process');
+      assert.deepEqual(observed.argv, [literal, 'acp']);
+      assert.equal((await fs.stat(path.join(cwd, 'cli-config.json'))).mode & 0o777, 0o666 & ~(privateFiles ? 0o077 : parentMask));
+      await assert.rejects(fs.stat(path.join(cwd, 'injected-marker')), { code: 'ENOENT' });
+      assert.equal(process.umask(), parentMask);
+      await acp.close(); assert.notEqual(acp.child.exitCode ?? acp.child.signalCode, null);
+    }
+    assert.throws(() => new CursorAcp({ command: process.execPath, cwd: directory, privateFiles: 'true' }), { code: 'INVALID_RUNTIME' });
+    const absent = new CursorAcp({ command: path.join(directory, 'missing-native'), cwd: directory, privateFiles: true });
+    t.after(() => absent.close());
+    await assert.rejects(absent.connect(), { code: 'CURSOR_START_FAILED' }); await absent.closed;
+    assert.equal(process.umask(), parentMask);
+  });

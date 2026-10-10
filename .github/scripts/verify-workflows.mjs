@@ -92,6 +92,8 @@ for (const [name, content] of Object.entries(workflows)) {
 requireMatch(ci, /^\s*pull_request:\s*$/m, "CI must run for pull requests.");
 requireMatch(ci, /^\s*push:\s*$/m, "CI must run after changes reach main.");
 requireMatch(ci, /^\s+branches:\s*$[\s\S]*?^\s+- main\s*$/m, "CI push coverage must include main.");
+const pushTriggers = ci.slice(ci.indexOf('\n  push:'), ci.indexOf('\npermissions:'));
+requireMatch(pushTriggers, /^\s+- "cursor\/\*\*"\s*$/m, "Cursor source pushes must use ordinary CI, not PR merge results.");
 requireMatch(ci, /^\s*name:\s*Required\s*$/m, "CI must expose the unique Required status check.");
 requireMatch(ci, /^  impact:\s*$/m, "CI must compute a deterministic impact plan.");
 requireMatch(ci, /run: >-[\s\S]*?ci-impact\.mjs[\s\S]*?--event/, "CI must execute the repository impact selector.");
@@ -122,6 +124,7 @@ const installJob = workflowJob(ci, "install", "minimum-runtime");
 requireMatch(installJob, /os:\s*windows-latest/, "Install CI must retain the Windows runner for workbench process regressions.");
 forbidMatch(installJob, /run:\s*npm test/, "Install jobs must not repeat the complete test suite.");
 const testJob = workflowJob(ci, "test", "package");
+requireMatch(testJob, /actions\/checkout@[a-f0-9]{40}[^\n]*\n\s+with:\s*\n\s+ref: \$\{\{ github.sha \}\}/, "Functional CI must check out the exact event source.");
 requireMatch(testJob, /if:\s*needs\.impact\.outputs\.test == 'true'/, "Functional tests must follow the impact plan.");
 requireMatch(testJob, /run:\s*npm test/, "Selected functional CI must retain the complete repository test entry.");
 const packageJob = workflowJob(ci, "package", "install");

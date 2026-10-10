@@ -11,12 +11,14 @@ import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, upd
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { definitiveMemoryRejection } from '../scripts/workbench/memory.mjs';
-import { canRetryWorkbenchListen, prepareSessionCommit, startServer, receiverExecutionHeartbeat } from '../scripts/workbench/server.mjs';
+import { canRetryWorkbenchListen, prepareSessionCommit, startServer, receiverExecutionHeartbeat, nativeTaskDelivery } from '../scripts/workbench/server.mjs';
 import { canRetryWorkbenchListen as sharedListenGuard } from '../scripts/workbench/listen.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
 import { ProtocolDelivery } from '../scripts/workbench/protocol-delivery.mjs';
+import { CursorRuntime } from '../scripts/workbench/cursor-runtime.mjs';
+import { saveMainBinding, resolveProject } from '../scripts/workbench/project.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/shared/io.mjs';
@@ -25,6 +27,17 @@ import { WorkbenchSync, reconcileRecoveryDraft, workbenchTimeoutMs } from '../pr
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
 const retainedFixtures = new Set();
+
+test('Independent Tester prompt and process target the Tester root, not the Executor source tree', () => {
+  const executor = { id: randomUUID(), platform: 'claude', worktreeRoot: '/fixture/executor' };
+  const tester = { sessionId: randomUUID(), platform: 'cursor', root: '/fixture/tester' };
+  const notification = { id: 'ci-request', type: 'ci.request', session: { id: executor.id, generation: 2 }, payload: { taskId: 'approved-task', sourceSha: 'a'.repeat(40), ciTodoRef: 'checks' } };
+  const input = nativeTaskDelivery(notification, executor, tester, 'Verify the assigned commit', '/fixture/project');
+  assert.equal(input.root, tester.root); assert.equal(input.sessionId, tester.sessionId); assert.equal(input.platform, 'cursor');
+  assert.match(input.message, /宿主绑定的当前工作树：\/fixture\/tester/);
+  assert.doesNotMatch(input.message, /\/fixture\/executor/);
+  assert.deepEqual(input.execution.session, notification.session, 'Executor identity remains in the handoff metadata only');
+});
 
 test('Cursor heartbeat uses actual receiver state instead of a newer lifecycle intent', () => {
   const identity = { platform: 'cursor', status: 'active', statusSeen: '2026-10-09T02:00:02Z' };
@@ -1542,6 +1555,78 @@ test('Cursor runtime HTTP requires local CLI authority and an exact Cursor bindi
     assert.equal((await chat('/api/cursor-chat', running.humanToken, { id: 'fixture-turn', sessionId, text: 'Changed task' })).data.error.code, 'ID_REUSED');
     const cliDuplicate = await call(running.state.adminToken, { sessionId, action: 'message', message: { id: 'fixture-turn', message: 'Synthetic boundary task' } });
     assert.deepEqual(cliDuplicate, sent, 'CLI and UI share one durable prompt identity and guard');
+  } finally { await running.close(); }
+});
+
+test('Cursor Tester public HTTP keeps exact source, role and evidence scope independent of Executor', async () => {
+  const f = await fixture(); retainedFixtures.add(f.root);
+  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
+  git('init', '-b', 'main');
+  await fs.writeFile(path.join(f.root, '.gitignore'), '.codex/\ntester/\n');
+  await fs.writeFile(path.join(f.root, 'README.md'), 'assigned source\n');
+  git('add', '.gitignore', 'README.md');
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'source fixture');
+  await saveMainBinding(f.root, { mode: 'local', branch: 'main' });
+  const sha = git('rev-parse', 'HEAD'), ciRoot = path.join(f.root, 'tester'); git('worktree', 'add', '--detach', ciRoot, sha);
+  const executorId = randomUUID(), testerId = randomUUID();
+  for (const [sessionId, root] of [[executorId, f.root], [testerId, ciRoot]]) {
+    const canonicalRoot = await fs.realpath(root), ctx = path.join(root, '.codex/context'); await fs.mkdir(ctx, { recursive: true });
+    await fs.writeFile(path.join(ctx, 'map.json'), encode(f.doc)); // Both local worktrees have initialized synthetic project Maps.
+    await fs.appendFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), event: 'session-start', session_id: sessionId, platform: 'cursor', source: 'cursor-acp-provision', worktree_root: canonicalRoot }) + '\n');
+  }
+  const running = await startServer({ root: f.root, port: 0 }), base = new URL(running.state.url).origin;
+  const call = async (route, token, input) => {
+    const response = await fetch(base + route, { method: input ? 'POST' : 'GET', headers: { Authorization: `Bearer ${token}`, ...(input ? { 'Content-Type': 'application/json' } : {}) }, ...(input ? { body: JSON.stringify(input) } : {}) });
+    return { status: response.status, data: await response.json() };
+  };
+  try {
+    const executor = await call('/api/session', running.state.adminToken, { sessionId: executorId, worktreeRoot: f.root });
+    const tester = await call('/api/session', running.state.adminToken, { sessionId: testerId, worktreeRoot: ciRoot });
+    assert.equal(executor.status, 200, JSON.stringify(executor.data)); assert.equal(tester.status, 200, JSON.stringify(tester.data));
+    const config = { command: process.execPath, root: ciRoot, name: 'Independent Cursor Tester', role: 'ci', executorSessionId: executorId, ciCommands: ['node --test'] };
+    for (const invalid of [{ ...config, root: f.root }, { ...config, executorSessionId: randomUUID() }]) {
+      const rejected = await call('/api/cursor-runtime', running.state.adminToken, { action: 'create', operationId: 'unapproved-ci-creation', config: invalid });
+      assert.equal(rejected.status, 403); assert.equal(rejected.data.error.code, 'FORBIDDEN');
+    }
+    const configured = await call('/api/cursor-runtime', running.state.adminToken, { action: 'configure', sessionId: testerId, config });
+    assert.equal(configured.status, 200); assert.equal(configured.data.role, 'ci');
+    const forbiddenPlan = { v: 2, id: 'tester-cannot-write-plan', type: 'object.put', session: tester.data.protocolBinding.session,
+      payload: { kind: 'plan', ref: 'foreign-role-plan', baseVersion: '', content: { text: 'Tester must not become an Executor' } } };
+    const elevated = await call('/api/v2/messages', tester.data.token, forbiddenPlan);
+    assert.equal(elevated.status, 403, JSON.stringify(elevated.data));
+    assert.equal(elevated.data.error.code, 'FORBIDDEN');
+    assert.deepEqual((await call('/api/v2/execution', tester.data.token)).data, { active: null, ci: true });
+    const project = await resolveProject(f.root), runtime = new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime'));
+    runtime.wake = async () => {}; // Durable local API scope only; no external Cursor model is invoked.
+    const execution = { session: executor.data.protocolBinding.session, taskId: 'assigned-task', sourceSha: sha, ciTodoRef: 'assigned-checks', references: { 'assigned-checks': 'checks-version', 'assigned-unit': 'unit-version' } };
+    await runtime.deliver({ id: 'ci-assignment', sessionId: testerId, root: ciRoot, message: 'Test assigned commit', execution });
+    assert.deepEqual((await call('/api/v2/execution', tester.data.token)).data.active, { ...execution, mode: 'ci', commands: ['node --test'],
+      tester: { sessionId: testerId, nativeSessionId: testerId, deliveryId: 'ci-assignment', workerPid: null } });
+    const result = { v: 2, id: 'ci-result', type: 'ci.result', payload: { taskId: execution.taskId, sourceSha: sha, verdict: 'passed', checks: [{ testId: 'fixture-test', todoId: 'fixture-todo', status: 'passed', evidenceRef: `ci:${testerId}:test` }] } };
+    for (const token of [executor.data.token, running.humanToken]) assert.equal((await call('/api/v2/ci', token, result)).status, 403);
+    assert.equal((await call('/api/v2/ci', tester.data.token, { ...result, session: { id: randomUUID(), generation: 1 } })).status, 403);
+    for (const payload of [{ ...result.payload, taskId: 'foreign-task' }, { ...result.payload, sourceSha: 'a'.repeat(40) }]) assert.equal((await call('/api/v2/ci', tester.data.token, { ...result, payload })).status, 403);
+    const object = { v: 2, id: 'ci-evidence', type: 'object.put', payload: { kind: 'evidence', ref: `ci:${testerId}:test`, baseVersion: '', content: { output: 'isolated fixture' } } };
+    assert.equal((await call('/api/v2/ci', tester.data.token, { ...object, payload: { ...object.payload, ref: `ci:${executorId}:test` } })).status, 403);
+    assert.equal((await call('/api/v2/ci', tester.data.token, { ...object, payload: { ...object.payload, kind: 'plan' } })).status, 403);
+    assert.equal((await call('/api/v2/ci', tester.data.token, { ...object, payload: { ...object.payload, ref: `ci:${testerId}:host:proof` } })).status, 403);
+    const read = { v: 2, id: 'ci-read', type: 'object.read', payload: { ref: 'assigned-checks', version: 'checks-version' } };
+    for (const payload of [{ ref: 'other-task-checks', version: 'checks-version' }, { ref: 'assigned-checks', version: 'old-version' },
+      { ref: `ci:${executorId}:test`, version: 'evidence-version' }, { ref: '__proto__', version: 'checks-version' }]) {
+      const rejected = await call('/api/v2/ci', tester.data.token, { ...read, payload });
+      assert.equal(rejected.status, 403, JSON.stringify(rejected.data)); assert.equal(rejected.data.error.code, 'FORBIDDEN');
+    }
+    for (const payload of [read.payload, { ref: 'assigned-unit', version: 'unit-version' }, { ref: `ci:${testerId}:test`, version: 'evidence-version' }]) {
+      const allowed = await call('/api/v2/ci', tester.data.token, { ...read, payload });
+      assert.equal(allowed.status, 503); assert.equal(allowed.data.error.code, 'UNAVAILABLE', 'scope authorization does not invent a Cloud object');
+    }
+    const unverified = await call('/api/v2/ci', tester.data.token, { ...result, id: 'unverified-cursor-result' });
+    assert.equal(unverified.status, 403, 'native end_turn and model evidence do not prove Cursor CI');
+    assert.equal(unverified.data.error.code, 'FORBIDDEN');
+    const noCloud = await call('/api/v2/ci', tester.data.token, result);
+    assert.equal(noCloud.status, 403); assert.equal(noCloud.data.error.code, 'FORBIDDEN', 'missing host proof is rejected before Cloud access or receipt replay');
+    await fs.writeFile(path.join(ciRoot, 'README.md'), 'modified after assignment\n');
+    assert.equal((await call('/api/v2/ci', tester.data.token, result)).data.error.code, 'CI_SOURCE_CHANGED');
   } finally { await running.close(); }
 });
 

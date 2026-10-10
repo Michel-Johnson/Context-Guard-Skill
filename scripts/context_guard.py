@@ -647,13 +647,23 @@ def session_records(root: Path) -> list[dict[str, object]]:
     return records
 
 
+def resolve_cursor_session_id(root: Path, native_id: str) -> str:
+    # Only the backend's persisted native/worktree mapping may translate an ID.
+    # Imported Claude hooks do not make a Cursor conversation a Claude Session.
+    result = run_node_workbench(["workbench", "cursor", "--resolve-native", "--root", str(root), "--session", native_id])
+    value = result.get("sessionId")
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError("Invalid Cursor identity resolution")
+    return value
+
+
 def resolve_session_id(root: Path, explicit: str = "") -> str:
     if explicit.strip():
-        return explicit.strip()
+        return resolve_cursor_session_id(root, explicit.strip())
     for key in ("CODEX_THREAD_ID", "CLAUDE_SESSION_ID", "CURSOR_SESSION_ID"):
         value = os.environ.get(key, "").strip()
         if value:
-            return value
+            return resolve_cursor_session_id(root, value) if key != "CODEX_THREAD_ID" else value
     state = read_json(context_dir(root) / "private" / "hook-sessions.json", {})
     if isinstance(state, dict):
         values = [value.strip() for value in state.values() if isinstance(value, str) and value.strip()]

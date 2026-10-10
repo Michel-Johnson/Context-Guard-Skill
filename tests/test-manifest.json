@@ -12,6 +12,11 @@
   },
   "standaloneSuites": [
     {
+      "path": "tests/cursor-ci-runner-docker.mjs",
+      "command": "npm run test:cursor-ci-docker",
+      "purpose": "显式配置的真实本机 Docker 验证 MCP 到测试进程及停止边界；任务授权为合成夹具，不代替原生模型或产品任务验收。"
+    },
+    {
       "path": "tests/cursor-chat-browser.mjs",
       "command": "npm run test:cursor-browser",
       "purpose": "Real Chromium verifies Cursor conversation UI; native provider responses are synthetic."
@@ -76,6 +81,14 @@
     "tests/claude-runtime.test.mjs",
     "tests/cursor-acp.test.mjs",
     "tests/cursor-runtime.test.mjs",
+    "tests/cursor-ci-source.test.mjs",
+    "tests/cursor-ci-mcp.test.mjs",
+    "tests/cursor-ci-channel.test.mjs",
+    "tests/cursor-ci-commit.test.mjs",
+    "tests/cursor-ci-profile.test.mjs",
+    "tests/cursor-ci-native.test.mjs",
+    "tests/cursor-ci-runner.test.mjs",
+    "tests/cursor-ci-runner-docker.mjs",
     "tests/cursor-protocol.test.mjs",
     "tests/interface-delivery.test.mjs",
     "tests/interface-map.test.mjs",

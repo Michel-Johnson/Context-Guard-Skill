@@ -3,7 +3,8 @@ run-name: >-
   CI | ${{ github.event_name == 'pull_request' && format('PR #{0} | {1} -> {2}', github.event.pull_request.number, github.head_ref, github.base_ref) || format('{0} | {1}', github.ref_type == 'tag' && '标签检查' || '分支检查', github.ref_name) }}
 
 # CI checks code and installation behavior; it never publishes to npm.
-# Keep existing push coverage, including tags, and PRs targeting main.
+# Cursor handoff verification needs ordinary CI on its exact source push,
+# not a PR merge checkout. Keep main, tags and normal PR gates unchanged.
 on:
   pull_request:
     branches:
@@ -11,6 +12,7 @@ on:
   push:
     branches:
       - main
+      - "cursor/**"
     tags:
       - "*"
 
@@ -91,6 +93,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

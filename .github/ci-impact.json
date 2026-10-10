@@ -21,6 +21,7 @@
     "package.json",
     "package-lock.json",
     "tests/test-manifest.json",
+    "tests/cursor-ci-runner-docker.mjs",
     "tests/browser-device-login-runner.mjs",
     "plugins/**",
     "RULE.md",

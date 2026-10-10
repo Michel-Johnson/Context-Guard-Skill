@@ -5,15 +5,25 @@ import { StringDecoder } from 'node:string_decoder';
 const error = (code, message) => Object.assign(new Error(message), { code });
 const validId = value => typeof value === 'string' && value.length > 0 && value.length <= 256;
 
+// POSIX has no per-spawn umask option in Node. Set it only in the owned child,
+// then exec the absolute native command with intact argv, stdio and PID.
+export function privateCursorCommand(command, args) {
+  if (!path.isAbsolute(command || '') || !Array.isArray(args) || args.some(arg => typeof arg !== 'string')) {
+    throw error('INVALID_RUNTIME', 'Use an absolute native command and separate arguments');
+  }
+  return process.platform === 'win32' ? { command, args } :
+    { command: '/bin/sh', args: ['-c', 'umask 077 && exec "$@"', 'context-guard-cursor-private', command, ...args] };
+}
+
 // Cursor owns the model loop, tools and conversation history. This module only
 // implements its official stdio ACP client; it is not a second agent harness.
 export class CursorAcp {
   constructor({ command, cwd, env, args = [], timeoutMs = 60000, outputLimitBytes = 4 * 1024 * 1024,
-    onUpdate = () => {}, requestPermission, requestInteraction } = {}) {
+    onUpdate = () => {}, requestPermission, requestInteraction, privateFiles = false } = {}) {
     if (!path.isAbsolute(command || '') || !path.isAbsolute(cwd || '') ||
         !Array.isArray(args) || args.some(arg => typeof arg !== 'string') ||
         !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 ||
-        !Number.isSafeInteger(outputLimitBytes) || outputLimitBytes <= 0) {
+        !Number.isSafeInteger(outputLimitBytes) || outputLimitBytes <= 0 || typeof privateFiles !== 'boolean') {
       throw error('INVALID_RUNTIME', 'Cursor ACP requires absolute command/cwd and bounded transport settings');
     }
     this.timeoutMs = timeoutMs;
@@ -22,14 +32,23 @@ export class CursorAcp {
     this.onUpdate = onUpdate;
     this.requestPermission = requestPermission;
     this.requestInteraction = requestInteraction;
+    // Official CLI accepts these credentials at startup. Calling cursor_login
+    // again would initiate browser login in an isolated, otherwise empty profile.
+    // This only selects the wire flow; the provider still authenticates requests.
+    const nativeEnv = env ?? process.env;
+    this.preAuthenticated = ['CURSOR_API_KEY', 'CURSOR_AUTH_TOKEN'].some(name =>
+      typeof nativeEnv[name] === 'string' && nativeEnv[name].trim().length > 0);
     this.pending = new Map();
     this.nextId = 1;
     this.updates = Promise.resolve();
-    this.child = spawn(command, [...args, 'acp'], { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const native = privateFiles ? privateCursorCommand(command, [...args, 'acp']) : { command, args: [...args, 'acp'] };
+    this.child = spawn(native.command, native.args, { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     this.closed = new Promise(resolve => { this.resolveClosed = resolve; });
     this.child.once('error', () => this.fail(error('CURSOR_START_FAILED', 'Cursor process could not start')));
-    this.child.once('close', () => {
-      this.fail(error('CURSOR_DISCONNECTED', 'Cursor process exited before its response'));
+    this.child.once('close', code => {
+      this.fail(privateFiles && !this.initialized && [126, 127].includes(code) ?
+        error('CURSOR_START_FAILED', 'Cursor process could not start') :
+        error('CURSOR_DISCONNECTED', 'Cursor process exited before its response'));
       this.resolveClosed();
     });
     this.child.stdin.on('error', () => this.fail(error('CURSOR_DISCONNECTED', 'Cursor input stream closed')));
@@ -123,7 +142,7 @@ export class CursorAcp {
       clientInfo: { name: 'context-guard', version: '0.8.3' } });
     if (init?.protocolVersion !== 1) throw error('CURSOR_PROTOCOL_VERSION', 'Unsupported Cursor ACP protocol version');
     if (sessionId && (!validId(sessionId) || init.agentCapabilities?.loadSession !== true)) throw error('CURSOR_RESUME_UNSUPPORTED', 'Cursor cannot load the requested Session');
-    await this.request('authenticate', { methodId: 'cursor_login' });
+    if (!this.preAuthenticated) await this.request('authenticate', { methodId: 'cursor_login' });
     if (sessionId) this.sessionId = sessionId; // load may emit transcript updates before its response.
     const result = await this.request(sessionId ? 'session/load' : 'session/new', { cwd: this.cwd, mcpServers: [], ...(sessionId ? { sessionId } : {}) });
     if (!sessionId && !validId(result?.sessionId)) throw error('CURSOR_INVALID_SESSION', 'Cursor did not return a native Session ID');

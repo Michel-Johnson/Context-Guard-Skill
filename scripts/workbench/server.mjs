@@ -7,6 +7,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ClaudeRuntime } from './claude-runtime.mjs';
 import { CursorRuntime } from './cursor-runtime.mjs';
+import { OriginalCursorCiClient } from './cursor-ci-mcp.mjs';
+import { bindCursorCiClient, pinCursorCiAuthority, readCursorCiHostContext } from './cursor-ci-channel.mjs';
+import { createCursorCiHostCommit } from './cursor-ci-commit.mjs';
 import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from '../shared/io.mjs';
@@ -29,7 +32,7 @@ import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { ProtocolMap, verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
 import { messageHandler, sendMessage } from './protocol-client.mjs';
-import { fail as protocolFail, validateMessage } from '../shared/protocol.mjs';
+import { fail as protocolFail, validateMessage, canonical } from '../shared/protocol.mjs';
 import { MapError, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../shared/map-model.mjs';
 import { buildContextTree, contextDocument, contextSlice, publicContextTree } from '../shared/context-tree.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -37,6 +40,35 @@ export const statePath = root => path.join(root, '.codex/context/private/workben
 export const projectStatePath = project => project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : statePath(project.worktreeRoot);
 export const projectLockPath = project => project.kind === 'git' ? path.join(project.sharedDir, 'node-workbench.lock') : path.join(project.worktreeRoot, '.codex/context/private/node-workbench.lock');
 const execFileAsync = promisify(execFile);
+
+export function nativeTaskDelivery(message, session, ci, taskPrompt, fallbackRoot) {
+  const root = ci?.root || session.worktreeRoot || fallbackRoot;
+  return { id: `${message.session.generation}:${message.id}`, platform: ci?.platform || session.platform,
+    sessionId: ci?.sessionId || session.id, root,
+    message: `${taskPrompt}\n宿主绑定的当前工作树：${root}\n所有 Context Guard 命令的 --root 使用这个工作树，不使用模板或主仓库目录。mainVersion 是记忆版本，不是 Git SHA。`,
+    ...(message.type === 'task.message' ? { deliveryType: 'task.message', taskId: message.payload.taskId,
+      ...(message.payload.planRef ? { planRef: message.payload.planRef, planVersion: message.payload.planVersion } : {}) } : {}),
+    ...(ci ? { execution: { session: message.session, taskId: message.payload.taskId, sourceSha: message.payload.sourceSha,
+      ciTodoRef: message.payload.ciTodoRef, references: message.payload.references || {} } } : {}) };
+}
+
+export async function registeredExecutorCreation(runtimes, sessionId, binding) {
+  if (!binding?.worktreeRoot) return null;
+  const candidates = [];
+  for (const runtime of runtimes) {
+    const file = runtime.sessionFile(sessionId), state = await readJSON(file, null);
+    if (!state) continue;
+    candidates.push({ state, creation: await readJSON(path.join(path.dirname(file), 'creation.json'), null) });
+  }
+  if (candidates.length > 1) protocolFail('FORBIDDEN', 'Executor has ambiguous native providers');
+  const candidate = candidates[0];
+  if (!candidate?.creation) return null;
+  const { state, creation } = candidate;
+  if ((state.config.role || 'executor') !== 'executor' || state.sessionId !== sessionId ||
+      state.config.root !== binding.worktreeRoot || await fs.realpath(creation.root) !== state.config.root ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(creation.templateSessionId || '') || creation.templateSessionId === sessionId) protocolFail('FORBIDDEN', 'Executor creation does not match its current registered workspace');
+  return creation;
+}
 
 export async function reportVerifiedControl(store, principal, send, message) {
   const execution = await store.activeExecution(principal, message.session);
@@ -168,8 +200,30 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   let project = await resolveProject(root);
   await inspectRetiredSync(project);
   project = await ensureProjectBinding(project);
-  const claudeRuntime = new ClaudeRuntime(path.join(project.sharedDir, 'claude-runtime'));
-  const cursorRuntime = new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime'));
+  const executorCreation = sessionId => registeredExecutorCreation([claudeRuntime, cursorRuntime], sessionId, access.binding(sessionId));
+  const claudeRuntime = new ClaudeRuntime(path.join(project.sharedDir, 'claude-runtime'), { executorCreation });
+  const cursorRuntime = new CursorRuntime(path.join(project.sharedDir, 'cursor-runtime'), { executorCreation, ciClientFactory: openCursorCiClient });
+  const ciRuntimeFor = async sessionId => {
+    // Protocol/legacy Sessions need not be native UUIDs. They cannot name a
+    // configured native Tester, but must retain their ordinary execution API.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId || '')) return null;
+    const configured = [];
+    for (const runtime of [claudeRuntime, cursorRuntime]) {
+      const status = await runtime.status(sessionId);
+      if (status.configured) configured.push({ runtime, role: status.role });
+    }
+    const tester = configured.find(candidate => candidate.role === 'ci');
+    if (tester && configured.length > 1) protocolFail('FORBIDDEN', 'Tester identity has ambiguous native providers');
+    return tester?.runtime || null;
+  };
+  const ciReceiverFor = async executorSessionId => {
+    const candidates = [];
+    for (const [platform, runtime] of [['claude', claudeRuntime], ['cursor', cursorRuntime]]) {
+      candidates.push(...(await runtime.ciReceivers(executorSessionId)).map(receiver => ({ ...receiver, platform })));
+    }
+    if (candidates.length !== 1) protocolFail('FORBIDDEN', 'Configure exactly one independent Tester receiver');
+    return candidates[0];
+  };
   const ctx = path.join(root, '.codex/context'), lock = projectLockPath(project), sharedState = projectStatePath(project);
   const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(ctx, 'private/named-entry.json');
   let namedEntry = await readJSON(namedFile, null), openClaimed = false;
@@ -265,7 +319,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         for (const request of requests) {
           try {
             if (!access.binding(request.templateSessionId)) protocolFail('FORBIDDEN', 'The template is no longer bound to this backend');
-            const created = await claudeRuntime.provision(request, { baseRef: project.mainRef, start: false });
+            const templates = await Promise.all([claudeRuntime.status(request.templateSessionId), cursorRuntime.status(request.templateSessionId)]);
+            if (templates.filter(status => status.configured).length !== 1) protocolFail('FORBIDDEN', 'Configure exactly one native provider for the creation template');
+            const created = templates[1].configured
+              ? await cursorRuntime.provisionAssigned(request, { baseRef: project.mainRef })
+              : await claudeRuntime.provision(request, { baseRef: project.mainRef, start: false });
             await registerSession({ sessionId: request.sessionId, worktreeRoot: created.root }, { connection: device });
           } catch (error) {
             device.lastError = error.code || 'SESSION_CREATION_FAILED';
@@ -389,13 +447,9 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
                 : { ...result, deliveryState: 'stored', reason: 'Native turn is busy; resume control is queued' };
             }
             const taskPrompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
-            const prompt = `${taskPrompt}\n宿主绑定的当前工作树：${session.worktreeRoot || root}\n所有 Context Guard 命令的 --root 使用这个工作树，不使用模板或主仓库目录。mainVersion 是记忆版本，不是 Git SHA。`;
-            const ci = message.type === 'ci.request' ? await claudeRuntime.ciReceiver(session.id) : null;
+            const ci = message.type === 'ci.request' ? await ciReceiverFor(session.id) : null;
             if (ci && (!access.binding(ci.sessionId) || access.binding(ci.sessionId).worktreeRoot !== ci.root || ci.root === session.worktreeRoot)) protocolFail('FORBIDDEN', 'CI receiver binding is not independent');
-            await taskDelivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: ci ? 'claude' : session.platform, sessionId: ci?.sessionId || session.id, root: ci?.root || session.worktreeRoot || root, message: prompt,
-              ...(message.type === 'task.message' ? { deliveryType: 'task.message', taskId: message.payload.taskId,
-                ...(message.payload.planRef ? { planRef: message.payload.planRef, planVersion: message.payload.planVersion } : {}) } : {}),
-              ...(ci ? { execution: { session: message.session, taskId: message.payload.taskId, sourceSha: message.payload.sourceSha, ciTodoRef: message.payload.ciTodoRef, references: message.payload.references || {} } } : {}) });
+            await taskDelivery.deliver(nativeTaskDelivery(message, session, ci, taskPrompt, root));
             return { ...result, deliveryState: 'received' };
           } catch (error) {
             if (error?.details?.deliveryState === 'uncertain') return { ...result, deliveryState: 'uncertain', reason: 'Native host acceptance could not be confirmed' };
@@ -739,6 +793,91 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (!actor) throw new MapError('UNAUTHORIZED', 'Missing or expired capability', 401);
     return actor;
   }
+  async function openCursorCiClient({ sessionId, nativeSessionId, root: ciRoot, deliveryId, fingerprint, workerPid }) {
+    const binding = access.binding(sessionId);
+    const entry = [...agentTokens].find(([, actor]) => actor.sessionId === sessionId && actor.worktreeId === binding?.worktreeId);
+    if (!entry) protocolFail('FORBIDDEN', 'The original CI Session capability is unavailable');
+    const [credential, actor] = entry; // Fix once; never select a replacement on rebind/re-registration.
+    const connection = await projectDevice();
+    if (!connection) protocolFail('UNAVAILABLE', 'The original Cloud connection is required');
+    const authority = await pinCursorCiAuthority({ readAuthority: async () => {
+      const configured = await readJSON(memoryConfigPath(project), null);
+      const registration = await readJSON(connection.file, null);
+      if (device !== connection || configured?.url !== connection.origin || registration?.origin !== connection.origin) {
+        protocolFail('FORBIDDEN', 'The original Cloud authority changed');
+      }
+      return registration;
+    } });
+    const readBinding = async () => {
+      const authorityVersion = await authority();
+      const current = access.binding(sessionId);
+      const localIdentity = canonical({ worktreeId: current?.worktreeId, root: current?.worktreeRoot, role: current?.role });
+      const state = await readJSON(cursorRuntime.sessionFile(sessionId));
+      const job = await readJSON(cursorRuntime.jobFile(sessionId, deliveryId));
+      if (agentTokens.get(credential) !== actor || !current || current.worktreeId !== actor.worktreeId ||
+          current.worktreeRoot !== ciRoot || state.config?.role !== 'ci' || state.config.root !== ciRoot ||
+          state.nativeSessionId !== nativeSessionId || job.id !== deliveryId || job.fingerprint !== fingerprint || job.workerPid !== workerPid) {
+        protocolFail('FORBIDDEN', 'The owning CI worker or binding changed');
+      }
+      const registered = await protocolStore.registeredBinding(backendPrincipal, sessionId);
+      if (!registered || registered.worktreeId !== current.worktreeId) protocolFail('FORBIDDEN', 'Original CI registration changed');
+      const confirmed = access.binding(sessionId);
+      if (agentTokens.get(credential) !== actor || canonical({ worktreeId: confirmed?.worktreeId,
+        root: confirmed?.worktreeRoot, role: confirmed?.role }) !== localIdentity) protocolFail('FORBIDDEN', 'CI binding changed during authorization');
+      if (await authority() !== authorityVersion) protocolFail('FORBIDDEN', 'CI authority changed during authorization');
+      return { epoch: instance, bindingVersion: hash(canonical({ protocol: registered.version, role: current.role,
+        access: access.accessRecord(sessionId), fingerprint, authorityVersion })), worktreeId: current.worktreeId, generation: registered.generation,
+        sessionId, nativeSessionId, root: ciRoot };
+    };
+    const original = new OriginalCursorCiClient({ origin: base, credential });
+    let scopedConnection, scopeFingerprint, hostCommit;
+    const authorizeTask = async (context, prepared) => {
+      const tuple = { taskId: context.taskId, planRef: prepared.approvedPlan.ref, planVersion: prepared.approvedPlan.version,
+        planSourceSha: prepared.approvedPlan.sourceSha, approvalReceiptId: prepared.approvedPlan.approvalReceiptId,
+        sourceSha: context.sourceSha, ciTodoRef: context.ciTodoRef, ciTodoVersion: prepared.ciTodo.version };
+      const current = canonical(tuple);
+      if (scopeFingerprint !== undefined && scopeFingerprint !== current) protocolFail('FORBIDDEN', 'Original CI task scope changed');
+      if (!scopedConnection) {
+        const fixed = structuredClone(tuple), binding = await readBinding();
+        scopeFingerprint = current;
+        scopedConnection = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2', 'ci', sessionId,
+          'tasks', hash(canonical({ deliveryId, fingerprint, tuple: fixed, binding }))), origin: connection.origin, allowLoopback: true,
+          revalidateOutcomes: true,
+          transport: async (origin, connectionCredential, message, options) => {
+            await readBinding();
+            const result = await sendMessage(origin, connectionCredential, message, { ...options, ciSessionId: sessionId, ciTaskExpectation: fixed });
+            await readBinding();
+            return result;
+          } });
+        scopedConnection.file = connection.file; // Original authority only; no credential copy or new login.
+        hostCommit = await createCursorCiHostCommit({ connection: scopedConnection, context, taskExpectation: fixed, readBinding });
+      }
+      await scopedConnection.send({ v: 2, id: randomUUID(), type: 'object.read', session: context.session,
+        payload: { ref: tuple.ciTodoRef, version: tuple.ciTodoVersion } });
+    };
+    return bindCursorCiClient({ client: { context: options => original.context(options),
+      exchange: message => {
+        if (!scopedConnection) protocolFail('FORBIDDEN', 'Original CI task preparation is required');
+        return scopedConnection.send(message);
+      }, commit: (message, options) => {
+        if (!hostCommit) protocolFail('FORBIDDEN', 'Original CI task preparation is required');
+        return hostCommit(message, options);
+      } }, readBinding, authorizeTask,
+      readHostContext: context => readCursorCiHostContext({ context,
+        readExecution: async () => {
+          await readBinding();
+          const active = await protocolStore.activeExecution(backendPrincipal, context.session);
+          await readBinding();
+          return active;
+        },
+        readObject: async (ref, version) => {
+          await readBinding();
+          const result = await connection.send({ v: 2, id: randomUUID(), type: 'object.read', session: context.session, payload: { ref, version } });
+          await readBinding();
+          return result;
+        } }),
+      testerSessionId: sessionId, nativeSessionId, deliveryId, workerPid, root: ciRoot });
+  }
   async function preparedSessionBinding(input) {
     const sessionId = typeof input?.sessionId === 'string' ? input.sessionId.trim() : '';
     if (!sessionId) throw new MapError('SESSION_REQUIRED', 'A real lifecycle Session ID is required', 400);
@@ -807,12 +946,21 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         const requestOrigin = direct ? base : namedEntry.origin;
         if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
+        const suppliedCredential = req.headers.authorization?.replace(/^Bearer /, '') || (route === '/api/events' ? url.searchParams.get('token') : null);
+        const suppliedAgent = agentTokens.get(suppliedCredential);
+        if (suppliedAgent && !['/api/v2/execution', '/api/v2/ci'].includes(route) && await ciRuntimeFor(suppliedAgent.sessionId)) {
+          protocolFail('FORBIDDEN', 'Tester capability is limited to its assigned execution and CI channel');
+        }
         if (route === '/api/cursor-runtime' && req.method === 'POST') {
           if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const input = await body(req);
           if (input.action === 'create') {
             const target = await resolveProject(input.config?.root || '');
             if (target.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Create Cursor only in this project', 403);
+            if (input.config.role === 'ci') {
+              const executor = access.binding(input.config.executorSessionId);
+              if (!executor || executor.worktreeRoot === target.worktreeRoot) protocolFail('FORBIDDEN', 'Create Tester only beside an independent registered Executor');
+            }
             const created = await cursorRuntime.provision({ operationId: input.operationId, config: input.config });
             await registerSession({ sessionId: created.sessionId, worktreeRoot: created.root });
             return send(res, 200, { ...created, url: `${requestOrigin}/prototype/workbench.html?session=${encodeURIComponent(created.sessionId)}` });
@@ -827,6 +975,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           }
           if (input.action !== 'configure') throw new MapError('INVALID_ARGUMENT', 'Use configure, status or message');
           if (await fs.realpath(input.config?.root || '') !== binding.worktreeRoot) throw new MapError('WORKTREE_MISMATCH', 'Configure only the bound Cursor worktree', 409);
+          if (input.config.role === 'ci') {
+            const executor = access.binding(input.config.executorSessionId);
+            if (!executor || executor.worktreeRoot === binding.worktreeRoot) protocolFail('FORBIDDEN', 'Tester needs an independent registered worktree');
+          }
           return send(res, 200, await cursorRuntime.configure(input.sessionId, input.config));
         }
         if (route === '/api/claude-runtime' && req.method === 'POST') {
@@ -972,8 +1124,9 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         if (route === '/api/v2/execution' && req.method === 'GET') {
           const actor = auth(req, url);
           if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent is required');
-          if ((await claudeRuntime.status(actor.sessionId).catch(() => null))?.role === 'ci') {
-            try { return send(res, 200, { active: await claudeRuntime.ciContext(actor.sessionId) }); }
+          const ciRuntime = await ciRuntimeFor(actor.sessionId);
+          if (ciRuntime) {
+            try { return send(res, 200, { active: await ciRuntime.ciContext(actor.sessionId) }); }
             catch (error) { if (error.code === 'CI_NOT_ACTIVE') return send(res, 200, { active: null, ci: true }); throw error; }
           }
           const principal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId, role: 'executor' };
@@ -992,12 +1145,20 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         if (route === '/api/v2/ci' && req.method === 'POST') {
           const actor = auth(req, url);
           if (actor.kind !== 'agent' || access.binding(actor.sessionId)?.worktreeId !== actor.worktreeId) protocolFail('FORBIDDEN', 'A current CI Session binding is required');
-          const input = await body(req), context = await claudeRuntime.ciContext(actor.sessionId, { verifySource: input.type === 'ci.result' });
+          const input = await body(req), ciRuntime = await ciRuntimeFor(actor.sessionId);
+          if (!ciRuntime) protocolFail('FORBIDDEN', 'Only a registered Tester can use the CI channel');
+          const context = await ciRuntime.ciContext(actor.sessionId, { verifySource: input.type === 'ci.result' });
           if (!context || input.session && JSON.stringify(input.session) !== JSON.stringify(context.session)) protocolFail('FORBIDDEN', 'CI message targets a different developer Session');
           const message = validateMessage({ ...input, session: context.session });
+          const ownEvidence = message.payload.ref?.startsWith(`ci:${actor.sessionId}:`);
+          const assignedReference = Object.hasOwn(context.references || {}, message.payload.ref) && context.references[message.payload.ref] === message.payload.version;
           if (!['object.read', 'object.put', 'ci.result'].includes(message.type) || message.type === 'object.put' &&
-              (message.payload.kind !== 'evidence' || !message.payload.ref.startsWith(`ci:${actor.sessionId}:`)) || message.type === 'ci.result' &&
+              (message.payload.kind !== 'evidence' || !ownEvidence) || message.type === 'object.read' && !ownEvidence && !assignedReference || message.type === 'ci.result' &&
               (message.payload.taskId !== context.taskId || message.payload.sourceSha !== context.sourceSha)) protocolFail('FORBIDDEN', 'CI message exceeds its assigned test scope');
+          if (ciRuntime === cursorRuntime && (message.type === 'ci.result' || message.type === 'object.put' &&
+              message.payload.ref.startsWith(`ci:${actor.sessionId}:host:`))) {
+            protocolFail('FORBIDDEN', 'Verified Cursor CI host proof is required; model claims cannot authorize results');
+          }
           const connection = await projectDevice();
           if (!connection) protocolFail('UNAVAILABLE', 'Cloud connection is unavailable');
           return send(res, 200, { id: message.id, ok: true, data: await ciChannel(actor.sessionId, connection).send(message) });

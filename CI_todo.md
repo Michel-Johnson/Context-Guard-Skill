@@ -55,6 +55,23 @@
 
 ### CURSOR-WORKBENCH-01 · 安装后的 Cursor
 
+- [ ] 新 profile 的支持原生制品身份、canonical Node/index.js 参数、完整分发闭包与变化撤权，从准确安装版本验证；版本自报、旧 JSON、未知制品不能获得激活权。正式合成清单/资源漂移回归与隔离真实机制不代替三路径业务任务验收；不重签厂商 SEA、不自动升级或更换用户命令，未知制品仍硬停，其他 UID 制品拒绝的真实系统验收尚缺。
+
+- [ ] 新 CI 私有 profile 格式 3 的固定官方 guard，在准确安装入口及官方 CLI 验证四工具放行、内置工具/Task/同名外来 MCP 拒绝，以及缺失、篡改、崩溃、超时、无输出、非法输出的 fail-closed；需要实际原生尝试与无越界效果，模型自述或无调用不能算通过。正式 profile/guard 子进程测试不证明厂商旁路、OS/Windows ACL 或 Cloud VM 隔离，缺少支持身份和原宿主证明仍硬停。
+
+- [ ] 原生 Hook 元数据的固定 `hookWorkspaceRoot`，从准确安装版本验证与实际 native cwd、逻辑源码根分别对应；不借元数据存储目录授权文件/Task，也不从旧记录学习新根。正式反例已覆盖准确厂商形状误拒绝及目录/可执行配置漂移；隔离原生四 MCP/实际 Docker/宿主证明组合不代替原 owning Runtime、业务 Task 和三路径验收。
+
+- [ ] 原 held CI 已接线管理员 Runner 策略、完整 Plan.paths 快照、同一 HostProof 与支持制品的一次原 Discovery 激活；从准确安装版本核验私有策略、真实 daemon/镜像、原 Task 及 Coordinator 归属。正式 Runtime 回归的厂商 ACP、Docker/批准为合成；源码隔离真实 Runtime/native/Docker/Core 实验也使用合成任务/批准，不代表三路径业务验收。激活不确定及停止失败保留原 active/ownership，不重跑模型。
+
+- [ ] 原 Runtime 关闭的单次操作、全部自有资源收拢及准备失败私有确认，在准确安装版本和 owning 后端验证；正式原 callback 回归已核晚 ACK/ledger 保存前不释放、各资源失败仍独立停止且不重试、到期/撤权及预先 abort。最终 native 校验和 running 写入时只撤远端 Task、不发本地 abort 的回归已先复现再验证零 prompt；未确认结果或停止保留归属，不将替身或源码隔离实验推广为生产停止链通过。
+- [ ] 原 Discovery 的完整宿主证明回调与无回调只读模式，在准确安装版本和原 owning worker 验证。正式 HTTP/HostProof/Runner/Core 组合覆盖原编号失 ACK、单次执行、撤权及初始期限；原 worker 激活保持原期限且等待私有结果，不把 Docker/批准替身或单条真实模型实验当作生产任务验收。
+- [ ] 新 CI profile 的严格默认配置兼容与格式 3，在准确安装版本及官方 CLI 验证原 native ID、MCP、默认模型路由和首次期限不变；补充默认值不重新学习权限，未知配置和隐私降级拒绝。旧格式 2 不升级；正式 profile/Runtime 回归与原生机制实验分别记录，不代替 Task 隔离、真实业务任务和三路径验收。
+- [ ] 原任务范围校验已接入 owning 后端准备及操作路径、固定设备传输与缓存重验；从准确安装版本验证完整 owning 后端到 Cloud 的原任务、批准版本、重绑和失 ACK，不能用分开的 HTTP/私有 IPC 正反测试代替真实组合。未知原生制品硬停、公开结果拒绝及宿主证明门禁保留。
+- [ ] 本任务已实现的私有 CI profile、MCP、Runner 与宿主证据发布器，在准确安装版本验证原生工具边界、实际观察不可覆盖和终态回执。源码真实 Core/MCP 组合测试仍使用合成 Docker/批准，不能替代原任务、独立 Tester 与三条连接路径验收。
+- [ ] 宿主证据 sender/Cloud 接收器已补原 Core 同事务版本/内容核验、范围摘要同存与双 ACK；从固定制品和原 owning worker 私有 commit 验证组合、未知回执恢复及实际宿主观察，不能用独立 sender/HTTP 模块用例代替。生产调用未接通，公开结果拒绝必须保留；历史定向、失败与冻结证据保留，不把源码接线记为生产验收。
+- [ ] owning 后端和自有 Node IPC 已补宿主专用 commit、mandatory proof 持久传输及终态结果上下文；从准确安装入口验证实际 HostProof producer、原 native profile/MCP/Runner 与 Cloud 同事务结果组合。私有 callback、合成 ACK、真实 Node IPC 和源码隔离 native 实验不能代替该组合，公开结果拒绝保留。
+- [ ] 已接线的 owning Node worker `hostContext` 原 Plan/不可变批准回执/TODO 准备，在准确安装版本和真实项目验证固定连接、版本与读取途中漂移拒绝。`preparation-only` 不代替 Cloud 当前 Task 事务门禁；目录快照必须使用原 Plan 完整范围，不能以隔离 IPC/合成批准通过宣称原生执行已就绪。
+
 - [ ] Core 已独立保存提交 Plan 时的 `planSourceSha`，交接后的 `sourceSha` 仍是最终代码；从正常发布的准确共享包及 Cloud 固定消费验证持久化、返工更新、旧回执重放和旧记录不猜值。该字段不产生批准或新执行权限，不能代替原生 Cursor 任务验收。
 - [ ] 在最新安装版本恢复原 Cursor 会话，验证 CLI 活动和导入的 Claude Hook 不覆盖 Cursor 身份，工作台读写不再返回 403；`doctor` 不崩溃与实际绑定就绪分别验收。
 - [ ] 验证空会话关闭后明确失败、已有会话可以重新加载；同一原生会话完成任务、继续追问并正确回显。不能用源码工作台或模拟 ACP 代替安装入口。

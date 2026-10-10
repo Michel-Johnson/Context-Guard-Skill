@@ -8,7 +8,7 @@
 | --- | --- |
 | 开工读什么、开发中何时查询、收工如何查变化 | [Executor 上下文流程](design-context-v1.0.0.md) |
 | Coordinator 如何讨论需求、推荐并确认主节点 | [Coordinator 需求讨论](design-coordinator-dialogue-v0.1.0.md) |
-| Cursor CLI 与 Cloud Agent 如何接入 | [Cursor 接入](design-cursor-workbench-v0.1.0.md) |
+| Cursor CLI 与 Cloud Agent 如何接入 | [Cursor 接入](design-cursor-workbench-v0.2.0.md) |
 | 谁能调用什么、如何启动绑定、读写和恢复 | [工作台与 Agent 接口](design-interface-v1.2.1.md) |
 | 项目和节点记忆写什么、由谁维护 | [记忆撰写规范](design-memory-definition-v0.2.0.md) |
 | Main / Session 目录如何组织、文件如何生成 | [底层文件结构](design-memory-filesystem-v1.0.1.md) |

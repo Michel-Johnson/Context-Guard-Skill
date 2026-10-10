@@ -156,6 +156,8 @@ try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(15000);
   page.on('pageerror', error => errors.push(error.stack || error.message));
+  const cursorRequests = [];
+  page.on('request', request => { if (/\/(?:cursor-chat\.mjs|api\/cursor-chat)(?:[/?]|$)/.test(new URL(request.url()).pathname)) cursorRequests.push(request.url()); });
   recordCheck('real-hook-session-bootstrap');
   stage = 'bidirectional-sync';
   const legacy = { repos: { 'browser-test': { live: { ...doc.root, title: '旧缓存绝不能回盖' } } }, repoId: 'browser-test' };
@@ -183,6 +185,11 @@ try {
   const initialized = await read(); assert.equal(initialized.root.id, 'T0'); assert.equal(initialized.root.children.length, 0, 'production initialization must not persist demo modules'); assert.equal(initialized.root.bugs.length, 0); assert.equal(initialized.bootstrap, 'proposed', 'an empty project is not a finalized architecture');
   await page.waitForFunction(() => window.__legacyWarningObserved === true);
   recordCheck('empty-map-explicitly-initializes-current-workbench');
+  stage = 'coordinator-only-cursor-role-entry';
+  assert.equal(await page.locator('#btn-cursor,dialog.cursor-chat').count(), 0, 'The normal workbench must not expose a separate Cursor chat');
+  assert.equal(await page.locator('#btn-coordinator').count(), 1, 'Keep the existing Coordinator entry');
+  assert.deepEqual(cursorRequests, [], 'Page startup must not load or query the retired standalone chat');
+  recordCheck('coordinator-only-entry-without-standalone-cursor-startup');
   stage = 'backend-password-ui';
   let loginRequest;
   const loginRoute = '**/api/v2/messages?**';
@@ -220,7 +227,7 @@ try {
   assert.equal(await page.locator('#cg-sync-session option:checked').textContent(), '主工作台 · 工作中 Session');
   assert.equal(await page.locator('body').evaluate(el => el.classList.contains('rel-mode')), false);
   assert.equal(await page.locator('#btn-rel').getAttribute('aria-pressed'), 'false');
-  await page.locator('#session-chip').click();
+  await page.locator('#session-chip').focus(); await page.keyboard.press('Enter');
   assert.equal(await page.locator('#session-menu [data-session]').count(), 2);
   assert.equal(await page.locator('#session-menu .session-option-name').filter({ hasText: '当前会话' }).count(), 0, 'an unpinned browser must not invent a current Session');
   await page.locator('#session-chip').click();
