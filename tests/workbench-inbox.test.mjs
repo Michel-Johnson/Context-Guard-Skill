@@ -18,6 +18,7 @@ test('绑定卡片展示名称路径和推荐理由，不将内部身份写入�
     pathText: '博客：项目\n└─ 登录：处理登录', reason: '  登录失败由这个模块处理。  ' };
   assert.equal(bindingProposalText(proposal), '建议绑定到：\n博客：项目\n└─ 登录：处理登录\n理由：登录失败由这个模块处理。\n可回复“同意绑定”或“暂不绑定”，也可点下方按钮。');
   assert.doesNotMatch(bindingProposalText(proposal), /internal-/);
+  assert.ok(bindingProposalText({ ...proposal, itemKind: 'todo', title: '补充错误提示测试' }).startsWith('待办：补充错误提示测试\n'));
   for (const reason of [undefined, null, '', '   ']) {
     const text = bindingProposalText({ ...proposal, reason });
     assert.ok(text.includes(proposal.pathText)); assert.doesNotMatch(text, /理由：|undefined|null/);

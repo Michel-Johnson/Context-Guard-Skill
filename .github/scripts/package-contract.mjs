@@ -24,6 +24,7 @@ export const installedFiles = [
   "scripts/workbench/context.mjs",
   "scripts/shared/context-tree.mjs",
   "scripts/shared/coordinator-path.mjs",
+  "scripts/shared/coordinator-reply.mjs",
   "skill-reference/design/design-context-v1.0.0.md",
   "skill-reference/formats/session-record.md",
   "scripts/workbench/memory-merge.mjs",

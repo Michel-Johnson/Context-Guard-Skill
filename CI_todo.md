@@ -31,6 +31,11 @@
 
 ## Coordinator
 
+### COORDINATOR-BADCASE-20261010 · 短回复、挂载与选项
+
+- [ ] 冻结修订的 Map 与 Chrome Slack 各三段十轮：新需求、旧事项和普通追问，验收段落长度、单个核心问题、唯一主节点确认、旧按钮失效与 ✅ 送达。源/替身测试不代替真实入口。
+- [ ] 人工检查回复可读性、事实与挂载时机；首次有意义回复以两秒为目标，不以表情或进度文字计时。正式源测试从 `tests/coordinator-reply.test.mjs` 和 `tests/workbench-browser.mjs` 定位。
+
 ### COORDINATOR-DIALOGUE-01 · 真实讨论
 
 - [ ] 在已接通模型的工作台，就真实 Bug 连续讨论 5–10 轮，核对模块、Bug 和 attempt 引用；记录用户发送到首次有意义正文的时间，目标不超过 2 秒。👀 或占位文字不算有意义回复，旧样本未达到目标。
