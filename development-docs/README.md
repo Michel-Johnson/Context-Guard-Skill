@@ -1,25 +1,23 @@
 # 文档入口
 
-`development-docs/` 放仓库开发、测试和发布说明；`skill-reference/` 放随 Skill 分发的产品设计、接口契约和操作指南。产品角色从 [SKILL.md](../SKILL.md) 进入，源码位置见 [AGENTS.md](../AGENTS.md#架构与源码位置)。
+`development-docs/` 供仓库开发；`skill-reference/` 是分发给产品 Agent 的设计、契约与操作资料。按任务找一份，不通读所有文档。
 
 ## 仓库开发
 
-| 要查什么 | 入口 |
+| 查什么 | 权威入口 |
 | --- | --- |
-| Skill 与 Cloud 的源码归属、共享包边界 | [仓库边界](repository-boundaries.md) |
-| 当前主线与暂缓范围 | [当前开发方向](current-focus.md) |
-| 权限、分支、PR 与交付要求 | [RULE.md](../RULE.md) |
-| 开发步骤、风险判断与任务模板 | [开发流程](engineering/README.md) |
-| 测试入口、质量要求与真实客户端验收 | [检查怎样算通过](ci.md) |
-| 已实现模块的测试缺口 | [CI_todo.md](../CI_todo.md) |
-| npm、共享包发布与失败恢复 | [发布手册](npm-release-runbook.md) |
+| 源码/构建归属 | [仓库边界](repository-boundaries.md) |
+| 当前投入/暂缓 | [当前开发方向](current-focus.md) |
+| 权限、PR、交付、清理 | [RULE](../RULE.md) |
+| 开发流程/风险/证据 | [开发流程](engineering/README.md) |
+| 测试入口与通过条件 | [CI 标准](ci.md) |
+| 已实现模块未验项 | [CI_todo](../CI_todo.md) |
+| 发布/失败恢复 | [发布手册](npm-release-runbook.md) |
 
 ## 产品资料
 
-设计从 [设计目录](../skill-reference/design/README.md) 按主题查找；角色分工只在 [角色入口](../roles/README.md) 维护。Map 读取与挂载见 [Map 操作](../skill-reference/map-read.md)，交接、审核和测试结论见 [交接指南](../skill-reference/agent-handoff.md)。协议字段与示例见 [接口设计](../skill-reference/design/design-interface-v1.2.1.md) 和 [机器契约](../skill-reference/interface-contract-v2.json)。
-
-共享核心、UI、角色与通用资料在 Skill 维护；Cloud 固定版本使用。Cloud 专有部署见其 [部署手册](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/cloud-deployment.md)。源码存在或文档写明，不等于客户端、Cloud 或 Slack 已部署验收。
+先读 [SKILL](../SKILL.md)，按需转 [角色](../roles/README.md)、[设计目录](../skill-reference/design/README.md)、[Map 操作](../skill-reference/map-read.md)、[交接](../skill-reference/agent-handoff.md)；字段以 [机器契约](../skill-reference/interface-contract-v2.json) 和 [接口说明](../skill-reference/design/design-interface-v1.2.1.md) 为准。源码位置见 [AGENTS](../AGENTS.md#架构与源码位置)，Cloud 专有部署见其 [手册](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/cloud-deployment.md)。
 
 ## 资源与历史
 
-`shots/workbench/` 保存 README 的产品截图，不是产品前端源码或设计规范。旧文档和已完成测试记录从 Git 历史查看；失败证据及未完成验收不能因整理文档丢失。私有开发记忆、真实数据与凭据不进入本目录。
+shots/workbench/ 为 README 配图，不是前端源码。旧说明/已完成项查 Git，未验项和失败证据保留；文档存在不证明已部署。私有记忆、数据、凭据不进入文档目录。

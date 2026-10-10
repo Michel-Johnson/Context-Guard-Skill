@@ -1,21 +1,10 @@
 # 底层文件结构与生成规范
 
-文档版本：v1.0.1。
-
-本文规定底层目录、索引和事项文件的结构，不规定记忆正文怎么写。
-
-文件格式：`fs-v2.1`；底层事务格式：`v2`。
+文档 v1.0.1；文件 fs-v2.1，事务 v2。记忆正文仅 memory.md，写法见 [记忆规范](design-memory-definition-v0.2.0.md)；index.md 是导航，bugs/todos/ideas 是事项，Map/manifest 是生成数据。
 
 ## 记忆与文件结构的区别
 
-| 文件 | 用途 |
-| --- | --- |
-| `memory.md` | 项目或节点记忆：接手项目所需的当前知识 |
-| `index.md` | 索引：节点导航和文档链接 |
-| `bugs/<id>.md`、`todos/<id>.md`、`ideas/<id>.md` | 事项记录：缺陷、任务和想法 |
-| `map.json`、`manifest.json` 等 | 底层数据：结构、版本和生成信息 |
-
-只有 `memory.md` 是这里所说的记忆正文，写法见 [记忆撰写规范](design-memory-definition-v0.2.0.md)。索引和事项记录即使用 Markdown，也不是记忆正文。
+正文、索引、事项不能混用；事项模板见下文，不把 Markdown 扩展名当记忆正文。
 
 ## 目录
 
@@ -40,39 +29,32 @@ filesystem-v2/
     `-- sessions/<session-hash>/        # 与 Main 同构，彼此隔离
 ```
 
-Main 与各 Session 同构、彼此隔离。上图是服务器逻辑目录，不要求在源码仓库手建文件。
+服务器逻辑目录，不在源码仓库手建；Main/Session 同构且隔离。
 
 ## 索引与事项文件的模板与格式
 
-- [节点 / 模块索引模板与格式](../formats/file-templates.md#节点索引)
-- [Bug 模板与格式](../formats/file-templates.md#bug)
-- [TODO 模板与格式](../formats/file-templates.md#todo)
-- [Idea 模板与格式](../formats/file-templates.md#idea)
-
-这些规范提供文件模板、字段说明和填写示例，不是实际事项记录。各角色共用同一格式，分工写在规范内，不另建角色版。
+统一用 [索引](../formats/file-templates.md#节点索引)、[Bug](../formats/file-templates.md#bug)、[TODO](../formats/file-templates.md#todo)、[Idea](../formats/file-templates.md#idea) 模板，角色共用，不另建版本。
 
 ## 保存与生成
 
-- `memory.md` 从节点 `memoryDocument` 生成，有正文才生成文件。人和 Coordinator 修改正文；Executor、Tester 按现有权限读取。项目记忆用于首轮上下文，节点记忆和历史按需读取。
-- 索引、目录名、ID、状态、轮次、关系、测试和 Session 链接、Map、清单及迁移报告由代码生成，不手工改生成文件。事项索引直接写入节点 `index.md`，不另建 JSON 索引。
-- Bug/Todo 的 `attempts` 存于版本化 Map，按数组顺序生成 A1…An 与 `CurrentAttempt`。轮次状态为 `Confirmed|Refuted`；被推翻时指向更晚轮次并说明原因。Markdown 是生成结果，重建时读取事务快照。
-- 旧 Todo 没有方案证据时保留未判定 A1，标记 `TODO_ATTEMPT_UNCLASSIFIED`；审核补齐前不能判为 `Confirmed` 或宣称符合模板。
-- 索引保留 Bug 现象、Todo 需求或 Idea 正文的完整首段，不改写、不截断；详情用链接。
+- memoryDocument 有正文才生成 memory.md。人/Coordinator 修改，E/T 按权限读取；项目首轮、节点/历史按需。
+- 目录名、索引、ID、状态、轮次、关系、测试/Session 链接、Map/清单/迁移报告由代码生成，不手改；事项索引直接入 index.md，不另建 JSON 索引。
+- Map attempts 数组依序生成 A1…An/CurrentAttempt，状态仅 Confirmed/Refuted；推翻指向更晚轮次并说明。重建读事务快照。
+- 旧 Todo 无方案证据保未判定 A1、TODO_ATTEMPT_UNCLASSIFIED，审核前非 Confirmed/模板合规。
+- 索引取 Bug 现象/Todo 需求/Idea 原文完整首段，不改写截断，详情链接。
 
 ## 读取与兼容
 
-项目启用此结构后，通过按版本读取接口或 `context-guard memory file` 读取获授权的文件，不直接访问服务器磁盘。未启用的项目仍走旧兼容传输，不能使用此入口。
+启用项目用带版本接口或 context-guard memory file，非直接磁盘；未启用仍旧传输，不启用/迁移。默认 map read --context 定位，事项沿 index.md；FIND/snapshot 仅迁移恢复。
 
-默认先用 `map read --context` 定位节点并按需读取；需要本规范的事项文件时再沿 `index.md` 链接展开。旧 FIND / snapshot 仅用于明确的迁移或恢复。开发笔记另存本地 [会话记录](../formats/session-record.md)，不属于本目录，也不向 Cloud 同步。
+legacy-records/、runtime-state.json 仅迁移/事务兼容/回滚，非日常入口。旧 memories[] 预览保原文、附件、提案依据，人明确整理保存才更新，不自动归类/追加/删历史或生成记忆；版本冲突保草稿。
 
-`legacy-records/` 和 `runtime-state.json` 仅用于迁移、事务兼容与回滚，不是日常阅读入口；核对迁移须说明目的。
-
-旧 `memories[]` 只读预览保留原文、附件和提案依据。人可整理后明确保存；预览不自动归类、追加、删除历史或生成记忆。保存校验版本，冲突时保留草稿。
+[本地会话笔记](../formats/session-record.md) 不属此目录、不上传 Cloud。
 
 ## Session 发布条件
 
-发布门禁、完成证明和 Session 代次统一见 [Cloud Map 的发布规则](design-memory-server-v1.1.0.md#main-发布与-session-代次)；生成文件或上传成功不代表已经发布。
+统一按 [Cloud 发布规则](design-memory-server-v1.1.0.md#main-发布与-session-代次)，文件生成/上传不是发布。
 
 ## 待确认
 
-- 安装包里的仓库 `development-docs/` 链接不可访问时，如何提供文档。
+分发包无法访问仓库 development-docs 链接时的文档提供方式仍待确认。
