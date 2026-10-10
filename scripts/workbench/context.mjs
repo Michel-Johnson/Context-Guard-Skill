@@ -33,11 +33,17 @@ export async function executorContext(project, session, action, options = {}, { 
     if (options.restart) cache = null;
     if (!cache && options.ifStarted) return { clear: true, active: false };
     if (!cache && action === 'check') throw new MapError('CONTEXT_NOT_STARTED', '尚未建立开工上下文基线，不能判断开发期间的变化', 409);
+    const refreshNavigation = !!cache && options.refresh && !options.node;
     const read = async (node, version) => {
       const result = config ? await memoryRequest(project, `context?${new URLSearchParams({ session, ...(node ? { node } : {}), ...(version ? { version } : {}) })}`)
         : await localRead?.(node, version);
       if (!result || result.sessionId !== session) throw new MapError('CONTEXT_UNAVAILABLE', '无法确认上下文所属 Session', 503);
       return result;
+    };
+    const readGlobal = async index => {
+      const result = await read(index.root, index.version);
+      if (result.version !== index.version || result.content?.node?.id !== index.root) throw new MapError('CONTEXT_UNAVAILABLE', '项目说明与导航索引不一致', 503);
+      return result.content;
     };
     const save = async () => {
       await atomicWrite(file, encode(cache));
@@ -51,9 +57,9 @@ export async function executorContext(project, session, action, options = {}, { 
       const tree = validTree(result.tree);
       cache = { origin, baseline: tree, index: tree, fragments: {}, original: {}, read: [], mounted: [], reviewed: null };
       // 仅拉取项目级说明，不下载整棵树的正文。
-      const global = await read(tree.root, tree.version);
-      cache.fragments[tree.root] = global.content;
-      cache.original[tree.root] = global.content;
+      const global = await readGlobal(tree);
+      cache.fragments[tree.root] = global;
+      cache.original[tree.root] = global;
       await save();
     }
     if (options.mount) {
@@ -67,11 +73,20 @@ export async function executorContext(project, session, action, options = {}, { 
     if (limit < 1) throw new MapError('INVALID_ARGUMENT', '每页至少返回一项');
     if (action === 'read' && !options.diff) {
       if (!options.node) {
+        if (refreshNavigation) {
+          const latest = validTree((await read()).tree);
+          const global = await readGlobal(latest);
+          // 显式刷新显示内容，保留开工/确认基线和此前实际读取的正文。
+          cache.index = latest;
+          cache.fragments[latest.root] = global;
+          cache.checked = null;
+          await save();
+        }
         const nodes = Object.values(cache.index.nodes);
         if (!cache.fragments[cache.index.root]) {
-          const result = await read(cache.index.root, cache.index.version);
-          cache.fragments[cache.index.root] = result.content;
-          cache.original[cache.index.root] = result.content;
+          const global = await readGlobal(cache.index);
+          cache.fragments[cache.index.root] = global;
+          cache.original[cache.index.root] = global;
           await save();
         }
         return { source: config ? 'cloud' : 'local', version: cache.index.version, global: cache.fragments[cache.index.root],

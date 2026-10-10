@@ -102,6 +102,7 @@
     "tests/fixtures/workbench-fixtures.js",
     "tests/shared-interface-protocol.test.mjs",
     "tests/shared-interface-store.test.mjs",
+    "tests/shared-interface-plan-baseline.test.mjs",
     "tests/shared-interface-blobs.test.mjs",
     "tests/shared-interface-snapshots.test.mjs",
     "tests/shared-workbench-ui-sync.test.mjs"
