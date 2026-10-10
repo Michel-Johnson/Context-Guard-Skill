@@ -69,6 +69,6 @@ export const replyRepairInstruction = (code, { detailed = false } = {}) => (deta
   REPLY_INTERNAL_ID: '重新表达：用节点或事项的中文短名称，不输出内部编号、哈希及测试标签。保留业务事实。',
   REPLY_PARAGRAPH_LONG: '重新表达：每段最多60个可见字符，只保留当前问题所需事实，不截断句子。',
   REPLY_TOO_MANY_PARAGRAPHS: '上一份正文段落过多，尚未展示。重新回答：不要标题、列表、开场复述或结尾追问，合并相关约束，最多两段、每段最多60字。例如：保留用户名，错误提示用中文，且不能泄露凭据。不要复述本示例，依据当前资料回答。',
-  MULTIPLE_QUESTIONS: '整个用户轮次只保留一个核心问题，用ask_user提问。节点卡片message只写简短说明，不带问句；不要在正文和卡片里重复提问，也不要重复展示同一张卡片。',
+  MULTIPLE_QUESTIONS: '整个用户轮次最多一个核心问题，需要澄清才用ask_user；不需要提问可直接简短回复。节点卡片message只写说明，不带问句；正文和卡片不重复提问，不重复展示同一卡片。',
   REACTION_REQUIRES_TEXT: '用户没有要求只用表情。请给有用的短文字回复，不用表情代替。',
 }[code] || '本轮输出格式不完整，请遵守接话标识和工具格式后重新回答。');
