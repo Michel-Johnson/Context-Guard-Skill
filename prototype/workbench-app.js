@@ -5366,7 +5366,7 @@ async function installCoordinatorPanel(sync){
       onAnswer:(question,answer)=>{
         if(busy||pending)return;
         const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
-        void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
+        return submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
       },onNode:id=>{navigationRun++;void openMapNode(id).catch(error=>{status.textContent='无法定位节点：'+error.message;});}});
     const streamingMessage=messages.querySelector('.coordinator-streaming');
     setTyping((busy&&busyConversation===selected)||state.status==='running'||!!streamingMessage||revealSettling);
@@ -5458,9 +5458,19 @@ async function installCoordinatorPanel(sync){
     for(const proposal of state.approvals||[]){
       if(proposal.kind!=='binding-proposal'||!proposal.pending)continue;
       const card=document.createElement('section'),description=document.createElement('p');
+      card.dataset.bindingProposal=proposal.id;
       description.style.whiteSpace='pre-wrap';
       description.textContent=bindingProposalText(proposal);
       card.append(description);
+      if(proposal.path?.length){
+        const details=document.createElement('details'),summary=document.createElement('summary');
+        summary.textContent='节点说明';details.append(summary);
+        for(const level of proposal.path){
+          const line=document.createElement('p');
+          line.textContent=(level.label||level.title)+'：'+(level.purpose||'尚未填写描述');details.append(line);
+        }
+        card.append(details);
+      }
       for(const [decision,label]of [['approved','确认绑定'],['rejected','暂不绑定']]){
         const button=document.createElement('button');button.type='button';button.textContent=label;
         const request={id:crypto.randomUUID(),proposalId:proposal.id,version:proposal.version,decision};
@@ -5690,7 +5700,7 @@ async function installCoordinatorPanel(sync){
     setTyping(true);
     setPlanningVisible(true);
     pinTurn();
-    if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
+    if(answeringCard)answeringCard.querySelector('.coordinator-answer-activity').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{
       const payload=Object.fromEntries(Object.entries(request).filter(([key])=>['id','text','retry','answerTo','attachments','followup','expectedTurnId'].includes(key)));
@@ -5704,7 +5714,7 @@ async function installCoordinatorPanel(sync){
         else if(id!==selected){const draft=drafts.get(id);if(draft&&!draft.text)draft.text=composerDraft;}
       }
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
-      if(id===selected){pendingError=message;pendingTransportUnknown=!error.serverResponse;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
+      if(id===selected){pendingError=message;pendingTransportUnknown=!error.serverResponse;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-answer-activity'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft){draft.error=message;draft.transportUnknown=!error.serverResponse;}}
     }
     finally{submitInFlight=null;busy=false;busyConversation=null;retry.disabled=false;setSendBlocked(!!pending);}

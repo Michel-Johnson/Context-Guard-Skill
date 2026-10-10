@@ -1,7 +1,8 @@
 import { lexer } from './vendor/marked.mjs';
 
 export function bindingProposalText(proposal) {
-  return '建议绑定到：\n' + proposal.pathText +
+  const type = ({ todo: '待办', bug: 'Bug', idea: '想法' })[proposal.itemKind];
+  return (type ? type + (proposal.title ? '：' + proposal.title : '') + '\n' : '') + '建议绑定到：\n' + proposal.pathText +
     (typeof proposal.reason === 'string' && proposal.reason.trim() ? '\n理由：' + proposal.reason.trim() : '') +
     '\n可回复“同意绑定”或“暂不绑定”，也可点下方按钮。';
 }
@@ -190,7 +191,14 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     input.placeholder = '在此回答，或补充说明…'; input.setAttribute('aria-label', '回答：' + question.text); input.value = draft.text;
     const send = doc.createElement('button'); send.type = 'button'; send.textContent = '发送'; send.setAttribute('aria-label', '发送“' + question.text + '”');
     const update = () => { send.disabled = !canAnswer || !answerValue(); };
-    const commit = () => { const answer = answerValue(); if (canAnswer && answer) onAnswer?.(question, answer); };
+    let submitting = false;
+    const commit = async () => {
+      const answer = answerValue();
+      if (!canAnswer || !answer || submitting) return;
+      submitting = true; send.disabled = true; input.disabled = true;
+      try { await onAnswer?.(question, answer); }
+      finally { submitting = false; input.disabled = false; update(); }
+    };
     input.addEventListener('input', () => { draft.text = input.value; update(); });
     input.addEventListener('keydown', event => {
       if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
@@ -240,16 +248,18 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       if (!prompt || !lead.trimEnd().endsWith(prompt)) {
         const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc, replyOptions)); card.append(title);
       }
-      const activity = doc.createElement('p'); activity.className = 'coordinator-question-status'; activity.setAttribute('role', 'status');
+      const activity = doc.createElement('p'); activity.className = 'coordinator-question-status coordinator-answer-activity'; activity.setAttribute('role', 'status');
       activity.textContent = '正在回复…'; activity.hidden = !(running && question.answer?.requestId === activeTurnId);
-      if (question.answer) {
+      if (question.superseded) {
+        const notice = doc.createElement('p'); notice.className = 'coordinator-question-status'; notice.textContent = '此问题已被新的讨论替代。'; card.append(notice);
+      } else if (question.answer) {
         const answer = doc.createElement('p'); answer.className = 'coordinator-answer'; answer.textContent = '你的回答：' + question.answer.text; card.append(answer);
       } else {
         const draft = questionDrafts.get(question.id) || { option: '', text: '' }; questionDrafts.set(question.id, draft);
         const choices = doc.createElement('div'); choices.className = 'coordinator-choices';
         const optionButtons = [];
         const choiceItems = [
-          ...(question.nodes || []).slice(0, 3).map(node => ({ label: node.title, nodeId: node.id })),
+          ...(question.nodes || []).slice(0, 3).map(node => ({ label: node.label || node.title, nodeId: node.id })),
           ...(question.options || []).map(label => ({ label })),
         ];
         const answerValue = () => [draft.option, draft.text.trim()].filter(Boolean).join('\n\n');
@@ -257,12 +267,12 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
         for (const option of choiceItems) {
           const button = doc.createElement('button'); button.type = 'button'; button.textContent = option.label; button.disabled = !canAnswer;
           if (option.nodeId) { button.classList.add('coordinator-node-link'); button.dataset.nodeId = option.nodeId; }
-          button.setAttribute('aria-pressed', String(draft.option === option.label)); optionButtons.push(button);
-          button.addEventListener('click', () => {
-            if (draft.option === option.label) { composer.commit(); return; }
+          optionButtons.push(button);
+          button.addEventListener('click', async () => {
             draft.option = option.label;
-            for (const item of optionButtons) item.setAttribute('aria-pressed', String(item.textContent === draft.option));
-            composer.update();
+            for (const item of optionButtons) item.disabled = true;
+            try { await composer.commit(); }
+            finally { for (const item of optionButtons) item.disabled = !canAnswer; }
           }); choices.append(button);
         }
         card.append(choices, composer.compose);
@@ -276,11 +286,11 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       for (const node of (action.nodes || (action.node ? [action.node] : [])).slice(0, 3)) {
         if (Array.isArray(node.path) && node.path.length && action.kind !== 'binding-proposal') {
           const path = doc.createElement('p'); path.style.whiteSpace = 'pre-wrap';
-          path.textContent = node.path.map((item, index) => `${index ? '  '.repeat(index - 1) + '└─ ' : ''}${item.title}：${item.purpose || '尚未填写描述'}`).join('\n');
+          path.textContent = node.pathText || node.path.map(item => item.title).join(' → ');
           actions.append(path);
         }
         const button = doc.createElement('button'); button.type = 'button'; button.className = 'coordinator-node-link';
-        button.textContent = node.title; button.dataset.nodeId = node.id; button.addEventListener('click', () => onNode?.(node.id)); actions.append(button);
+        button.textContent = node.label || node.title; button.dataset.nodeId = node.id; button.addEventListener('click', () => onNode?.(node.id)); actions.append(button);
       }
       if (action.kind === 'conversation-mounted' && action.conversationId) {
         const button = doc.createElement('button'); button.type = 'button'; button.textContent = '继续这个事项';

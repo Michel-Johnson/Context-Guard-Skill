@@ -67,6 +67,7 @@
   "separatePackages": [],
   "productFiles": [
     "tests/coordinator-path.test.mjs",
+    "tests/coordinator-reply.test.mjs",
     "tests/map-beta.test.mjs",
     "tests/map-graph-view.test.mjs",
     "tests/map-graph-fixtures.test.mjs",

@@ -874,6 +874,36 @@ try {
   try {
     const port = staticServer.address().port;
     await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?preview=1`);
+    await preview.evaluate(async () => {
+      const { conversationFragments } = await import('/coordinator-markdown.mjs');
+      const host = document.createElement('section'); host.id = 'choice-acceptance'; document.body.append(host);
+      Object.assign(host.style, { position: 'fixed', inset: '100px 100px auto', zIndex: '10000', background: 'white' });
+      window.choiceAnswers = []; window.choiceRelease = null;
+      host.append(conversationFragments([{ role: 'assistant', questions: [{ id: 'choice-first', text: '回答范围？', options: ['当前文章', '全站文章'] }] }], document,
+        { canAnswer: true, onAnswer: async (question, text) => { window.choiceAnswers.push({ id: question.id, text }); await new Promise(resolve => { window.choiceRelease = resolve; }); } }).body);
+    });
+    const choiceHost = preview.locator('#choice-acceptance');
+    await choiceHost.getByRole('button', { name: '全站文章', exact: true }).click();
+    assert.deepEqual(await preview.evaluate(() => window.choiceAnswers), [{ id: 'choice-first', text: '全站文章' }]);
+    assert.equal(await choiceHost.getByRole('button', { name: '全站文章', exact: true }).isDisabled(), true);
+    await preview.evaluate(() => window.choiceRelease());
+    await preview.evaluate(async () => {
+      const { conversationFragments } = await import('/coordinator-markdown.mjs');
+      const host = document.getElementById('choice-acceptance'); host.replaceChildren(); window.choiceAnswers = [];
+      host.append(conversationFragments([{ role: 'assistant', questions: [{ id: 'choice-second', text: '还有补充吗？', options: ['没有', '有'] }] }], document,
+        { canAnswer: true, onAnswer: async (question, text) => { window.choiceAnswers.push({ id: question.id, text }); } }).body);
+    });
+    await choiceHost.getByRole('textbox', { name: '回答：还有补充吗？' }).fill('还要展示引用来源');
+    await choiceHost.getByRole('textbox', { name: '回答：还有补充吗？' }).press('Enter');
+    assert.deepEqual(await preview.evaluate(() => window.choiceAnswers), [{ id: 'choice-second', text: '还要展示引用来源' }]);
+    await preview.evaluate(async () => {
+      const { conversationFragments } = await import('/coordinator-markdown.mjs');
+      document.getElementById('choice-acceptance').replaceChildren(conversationFragments([{ role: 'assistant', questions: [{ id: 'old', text: '旧问题？', options: ['旧选项'], superseded: true }] }], document, { canAnswer: true }).body);
+    });
+    assert.equal(await choiceHost.getByRole('button', { name: '旧选项', exact: true }).count(), 0);
+    assert.ok((await choiceHost.textContent()).includes('已被新的讨论替代'));
+    await preview.evaluate(() => document.getElementById('choice-acceptance').remove());
+    recordCheck('coordinator-choice-one-click-no-duplicate-and-free-text-keyboard');
     await preview.waitForSelector('.node.root');
     assert.equal(await preview.evaluate(() => document.documentElement.classList.contains('theme-preview')), true);
     assert.equal(await preview.locator('header.top').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 253, 248)');
