@@ -1,42 +1,38 @@
 # 当前开发方向：本机对话型 MVP
 
-读者：仓库开发 Agent。本文规定**开发优先级**，不表示下列目标已实现，也不替代 `fs-v2.1`、接口、安全或 PR 规则。历史实现与测试记录保留；遇到旧待办与本文冲突，以本文决定是否投入。
+本文决定开发投入，不表示目标已实现，也不替代格式、权限、PR 或验收。历史待办与本文冲突时，以本文决定是否继续。
 
-本次明确授权的维护任务是两仓库职责调整：共享 Map、协议、UI、角色提示词和通用设计迁回 Skill；Cloud 是可选的云端扩展，固定使用 Skill 发布的共享包。只调整源码归属、构建与分发，不恢复暂缓功能。
-
-本次另获批准实施 Executor 按需上下文流程：轻量导航、片段缓存、快速 hash 树与收工变化检查。工具和逻辑在 Skill；Cloud 只补鉴权读取接口并固定使用共享包。不改 fs-v2.1 或现有 SHA-256 清单，不恢复派发，不部署生产环境。
+已批准的维护：共享 Map、协议、UI、角色及通用资料归 Skill，Cloud 固定包消费；Executor 使用轻量导航、按需读取、片段缓存、快速 hash 树和收工检查，Cloud 只补鉴权读取适配。不改 fs-v2.1 或 SHA-256 清单，不恢复派发，不因此授权生产部署。
 
 ## 只保留三条主线
 
-1. **Map 与 fs-v2.1**：项目结构化记忆归用户所有；保持版本、节点、Bug/TODO 和 attempt 可准确读取、编辑及回写。
-2. **对话型 Coordinator**：只取回答所需的 Map 切片，优先聊天速度与事实准确性；不再把调度器或传输层当作它的开发目标。
-3. **Claude Code CLI 与 Cursor 接入**：从项目 Map 按需读取上下文，开发记录保存在本地会话记录 Markdown 文件，不同步到 Cloud。Codex Hook 后续再做，不作为本阶段验收要求。
+1. Map / fs-v2.1：结构、记忆、关系、Bug/TODO 和 attempt 可准确读写，数据归用户。
+2. 本机对话型 Coordinator：只读回答所需切片，优先速度和事实准确性，不扩调度器/传输层。
+3. Claude Code CLI / Cursor：按需取上下文，开发笔记仅本地 Markdown，不同步 Cloud。Codex Hook 后续再做。
 
 ## 暂缓范围
 
-Codex Hook、会话记录同步、Cloud 自动派发链（心跳、耐久队列、自动建 worktree、中断恢复、`resumed` 回执）、Quark 附件、CI 接收器匹配、人工验收回执自动化均**暂缓**。不删除现有代码，也不把既有 `[x]` 验收改成失败；只停止新增功能、专项联调和优化投入。维护既有安全门禁及正常回归，不用“暂缓”绕过必需检查。未完成的开发事项由 Coordinator 跟踪；[CI_todo.md](../CI_todo.md) 只记录已实现模块的测试缺口。
+Codex Hook、会话记录同步、Cloud 自动派发（心跳、耐久队列、自动 worktree、中断恢复、`resumed`）、Quark 附件、CI 接收器匹配和人审回执自动化暂缓。不删除既有代码、不改历史通过结论，停止新增、专项联调及优化；安全门禁和正常回归保留。开发需求交 Coordinator，测试缺口进 [CI_todo](../CI_todo.md)。
 
-第 5 步完成前，不新增心跳、耐久队列、自动 worktree 或中断恢复，也不扩写现有自动派发实现。既有两种执行模式分开维护，以共享 [接口定义](../skill-reference/design/design-interface-v1.2.1.md) 为准：
-
-- **manual**：人批准 brief 后保存 Main 事项并提供可粘贴执行提示，不自动创建执行 Session 或派发。
-- **automatic**：人批准 brief 后才创建新的执行 Session 并派发；保持已有权限、审核和回执门禁。
-
-两种模式的挂载都不写 Main，也不在挂载时创建执行 Session。不得在同一流程同时声称 manual 和自动派发；不因旧 TODO、历史设计或页面按钮恢复其余暂缓投入。
+第 5 步前不扩自动派发。两种既有模式按 [接口](../skill-reference/design/design-interface-v1.2.1.md) 分开：
+- manual：人批准 brief 后保存 Main 事项和执行提示，不自动建执行 Session 或派发。
+- automatic：人批准后才建执行 Session 并派发，保留审核/权限/回执。
+挂载均不写 Main、不建执行 Session，不因旧 TODO、设计或按钮恢复暂缓投入。
 
 ## 唯一 MVP 场景与验收
 
-在用户自己的真实项目、本机工作台、已建立的 Map 上，用户就某条真实 Bug 与 Coordinator 连续讨论 5–10 轮。Coordinator 首次有意义回复应在用户发送后 **2 秒内**开始，引用准确模块、Bug 和既有 attempt 结论；每轮都要让用户继续思考，而非等待系统。
+真实项目、本机工作台、已有 Map，与 Coordinator 就真实 Bug 讨论 5–10 轮。发送后 2 秒内开始有意义正文，准确引用模块、Bug 和 attempt；表情或占位文字不计。
 
-讨论收敛后，Coordinator 提出 brief。本 MVP 使用 **manual**：人确认后形成 Main 事项及可粘贴到 Claude Code CLI 或 Cursor 的执行提示，内含必要 Map 切片和读写路径；厂商 Agent 自行执行，开发记录只保存在本地，项目 Map 的更新仍按审核与发布规则进入 Main。本场景不要求自动派发能力；离线本地工作台仍须保留，其实际本机 Coordinator 能力另行验收，不由拆仓库或界面存在推断已经接通。
+用 manual：人确认 brief 后形成 Main 事项及 Claude/Cursor 可执行提示，含必要切片和路径；人选厂商 Agent，执行笔记本地保存，Map 结果经审核发布。离线本地工作台保留，但其模型能力单独验收，不从拆仓库或 UI 存在推断接通。
 
-用同一个真实任务与直接使用 Cursor Projects 比较：从提问到得到一条用户无需再改的任务所花的时间，以及等待与思考各占多少。录屏保留原始时间点和修订次数；没有对照与用户验收，不宣称 MVP 更快。
+与直接使用 Cursor Projects 做同任务对照，录屏记录形成无需再改任务的耗时、修订次数及等待/思考时间。无对照和用户验收不宣称更快。
 
 ## 开发顺序
 
-1. 瘦身 Coordinator：快速讨论 / brief 两种模式，小上下文、提前 compact、缓存 Main 前缀；先量准确率与首字延迟，再调 token。
-2. 统一默认读取入口：`map read --context` 取导航，`--node` 按需读取；需要已启用的 fs-v2.1 事项文件时沿 `index.md` 链接展开。旧 FIND/snapshot 仅用于明确的迁移或恢复。
-3. 验证 manual 的批准→保存 Main 事项→执行提示闭环；automatic 的批准→新执行 Session→派发按既有实现保留并做必要回归。挂载不写 Main、不创建执行 Session；不新增心跳、耐久队列、自动 worktree 或中断恢复。
-4. 用自己的项目跑唯一 MVP 场景、录屏，并与 Cursor Projects 做同任务对照。
-5. 根据录屏改 README：第一句话突出“能和你对话的项目 coordinator”，不以“范式”开场。此前不提前改营销文案。
+1. Coordinator 快速讨论 / brief 两模式，小上下文、提前 compact、Main 前缀缓存；先量准确率和首字延迟，再调 token。
+2. 默认 `map read --context` 导航、`--node` 正文；fs-v2.1 事项沿 `index.md` 链接展开，FIND/snapshot 只迁移或恢复。
+3. 验 manual 人审→Main 事项→执行提示；automatic 仅保持既有实现与必要回归。
+4. 跑真实场景、录屏、同任务对照。
+5. 依录屏修改 README，首句突出“能和你对话的项目 coordinator”，此前不提前改营销文案。
 
-每一步先完成可观察验收，再进入下一步。若 2 秒或任务质量不达标，优先检查 Map 是否准确、Coordinator 是否过重，不回到 Cloud 编排扩范围。
+每步先验再推进；未达速度/质量先检查 Map 和 Coordinator 负担，不以 Cloud 编排扩范围。

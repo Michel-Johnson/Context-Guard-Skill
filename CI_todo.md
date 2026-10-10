@@ -1,127 +1,119 @@
 # CI 待验证
 
-只记录已实现功能尚缺的测试与验收，不记录开发需求、发布进度或实验流水账。
+仅记录已实现模块的测试缺口。[ ] 为未完成；验收通过立即删条目，准确版本、入口和结果留 Git/PR。失败、跳过或证据不足不删除，源码/替身测试不代替准确安装、真实客户端和人工验收。
 
-`[ ]` 表示未完成验证；`[x]` 只能表示该项验收通过，须附准确源码版本、测试入口和结果。执行过但失败、跳过或证据不足，仍是未完成；已完成记录留 Git，不继续堆在本页。
-
-以下条目由原清单合并整理，未重新验证。源码 CI 通过不能代替真实客户端、性能和人工验收；没有当前版本的最终证据，仍保留待验证。
-
-原始条目、首次失败及日志索引见[整理前记录](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/eccac10f40aa97d6f135f7d0958927c06c7e08b1/CI_todo.md)。本次不删除本地失败日志或实验现场，也不把失败改记为通过。
+以下是待验清单，不表示重新验证。原记录与首次失败索引见 [整理前记录](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/eccac10f40aa97d6f135f7d0958927c06c7e08b1/CI_todo.md)，本地失败现场保留。公共边界以 RULE 和专项契约为准，不在每项重复。
 
 ## Map 与文件读取
 
 ### CONTEXT-NAV-REFRESH-01 · 显式导航刷新
 
-- [ ] 在准确合并后的安装入口验证 `map read --context --refresh`：已启用的真实 Cloud 项目返回新的轻量导航和项目说明，保留开工基线及原正文，变化检查仍报告未确认变更。断网、读错版本/根/Session 不替换缓存，不以旧缓存假报刷新成功；不恢复 Hook 或自动派发，不触碰其他项目进程。
-- [ ] Windows NTFS ACL 的其他账户读取隔离另行验收：Node 的 mode 不区分 owner/group/others，POSIX `0600` 断言只适用于支持它的平台。Windows 的私有目录定位/可读写不等于 ACL 已验证，不能用更改测试口径宣称 OS 级隐私通过。
+- [ ] 合并后安装入口：真实 Cloud 的 map read --context --refresh 取得新导航/说明，保留开工基线与旧正文、未确认变化；断网或错版本/根/Session 不替换缓存，不动其他项目或恢复派发。
+- [ ] Windows NTFS ACL：验证其他账户读取隔离；POSIX 0600 不证明 Windows ACL，目录可读写也不等于隐私通过。
 
 ### MAP-WORKBENCH-BETA-01 · 新版 Map
 
-- [ ] 从最新安装入口验证 Beta 开关、关系编辑、键盘操作、稳定版面板收起和深链恢复；Cloud 使用同一固定 UI 包后复验。旧候选的模块通过不能代替当前安装与消费验收。
-- [ ] 在真实客户端验证中文输入法和移动端触控；合成浏览器操作不算实机通过。
+- [ ] 最新安装及 Cloud 同一固定 UI 包：Beta 开关、关系、键盘、稳定面板收起和深链恢复。
+- [ ] 真实客户端中文输入法、移动触控，非合成浏览器操作。
 
 ### FILESYSTEM-READ-01 · 读取边界
 
-- [ ] 在已启用 fs-v2.1 的真实项目，用 `map read --context` 定位，再按 `index.md` 链接读取记忆、Bug/TODO 和 attempt；验证版本过期、旧未判定轮次和未启用项目的拒绝行为。不改变现有文件格式。
-- [ ] 核对默认读取结果不带 `legacy-records/`、`runtime-state.json` 或旧 JSON 索引；验证普通 Agent 的 Idea 隔离。旧兼容原始快照曾返回完整 Map，未找到新版隔离证据前，不宣称所有入口均已隔离。
+- [ ] 已启用 fs-v2.1 项目：导航→index.md→记忆/Bug/TODO/attempt，验证过期、未判定轮次、未启用拒绝，格式不变。
+- [ ] 默认阅读不含 legacy-records/runtime-state/旧 JSON 索引，普通 Agent 隔离 Idea；旧完整快照不是新版隔离证据。
 
 ### BROWSER-CLICK-FRAME-12 · 旧浏览器副本保护
 
-- [ ] 核对 `persist()` 和恢复导出对旧浏览器副本的影响。原记录指出共用存储键的覆盖风险；现有草稿保护断言不能证明原副本始终保留。
+- [ ] persist() 和恢复导出不覆盖旧浏览器副本；共用存储键风险不能只凭草稿断言关闭。
 
 ## Coordinator
 
 ### COORDINATOR-BADCASE-20261010 · 短回复、挂载与选项
 
-- [ ] 冻结修订的 Map 与 Chrome Slack 各三段十轮：新需求、旧事项和普通追问，验收段落长度、单个核心问题、唯一主节点确认、旧按钮失效与 ✅ 送达。源/替身测试不代替真实入口。
-- [ ] 人工检查回复可读性、事实与挂载时机；首次有意义回复以两秒为目标，不以表情或进度文字计时。正式源测试从 `tests/coordinator-reply.test.mjs` 和 `tests/workbench-browser.mjs` 定位。
+- [ ] 冻结 Map/Chrome Slack，各新需求、旧事项、普通追问三段十轮：短段、整轮单问题、唯一主节点确认、旧按钮失效及 ✅ 送达。
+- [ ] 人工核可读性、事实与挂载；有意义正文目标 2 秒，非表情/进度。正式入口 tests/coordinator-reply.test.mjs、tests/workbench-browser.mjs。
 
 ### COORDINATOR-DIALOGUE-01 · 真实讨论
 
-- [ ] 在已接通模型的工作台，就真实 Bug 连续讨论 5–10 轮，核对模块、Bug 和 attempt 引用；记录用户发送到首次有意义正文的时间，目标不超过 2 秒。👀 或占位文字不算有意义回复，旧样本未达到目标。
-- [ ] 与 Cursor Projects 使用同一真实任务对照，记录形成可直接执行任务的耗时、修订次数及等待时间；未完成对照和用户验收前，不宣称更快。
-- [ ] 复验节点推荐与完整路径：模型实际调用工具、定位可核验；唯一主节点由人确认，路径按需展开，不复制整份 Map。
+- [ ] 真实模型/工作台/Bug 5–10 轮，核模块/Bug/attempt 引用及有意义正文 ≤2 秒；旧样本未达标。
+- [ ] 同任务与 Cursor Projects 对照：可直接执行任务耗时、修订、等待；无对照/人验不宣称更快。
+- [ ] 真实工具节点推荐/完整路径，唯一主节点人确认、按需展开，不复制全 Map。
 
 ### COORDINATOR-PLAIN-REPLY-01 · 回复与摘要
 
-- [ ] 合并原短回复、清单前缀和测试标签三项验收：默认 TODO 保留全部事项、共同状态只说一次、名称清楚；去掉测试标记但保留必要业务日期、版本和用户明确索要的技术原值。不靠正文截断求短。
-- [ ] 真实长对话压缩后核对作者、关键引用和未决事项；工具调用或失败重试后不重复最终答复。原作者误判和重复回答不能以静态提示词测试关闭。
+- [ ] TODO 完整清单不丢事项，共同状态只说一次、短名清楚；去测试标签，保留业务日期/版本及索要的技术原值，不截断求短。
+- [ ] 真实长对话压缩后保留作者、引用和未决事项；工具/重试后不重复答复，静态提示词不关闭旧作者误判。
 
 ### MANUAL-BRIEF-01 · 人确认后的交接
 
-- [ ] 真实模型提出 brief，经人确认后保存正确 Main 事项并生成执行提示，交给已登录的 Claude Code CLI 或 Cursor 完成任务。重复批准不重复写入，过期批准拒绝；此 manual 流程不自动创建执行 Session 或派发。
+- [ ] 模型 brief→人审→正确 Main 事项/执行提示→已登录 Claude/Cursor 完成；重复不重写、过期拒绝，manual 不建执行 Session/派发。
 
 ## 客户端与上下文
 
 ### CURSOR-WORKBENCH-01 · 安装后的 Cursor
 
-- [ ] 新 profile 的支持原生制品身份、canonical Node/index.js 参数、完整分发闭包与变化撤权，从准确安装版本验证；版本自报、旧 JSON、未知制品不能获得激活权。正式合成清单/资源漂移回归与隔离真实机制不代替三路径业务任务验收；不重签厂商 SEA、不自动升级或更换用户命令，未知制品仍硬停，其他 UID 制品拒绝的真实系统验收尚缺。
+各项须从准确安装制品验证原 owning 后端/真实任务及三条连接路径。合成批准、Docker、ACP，源码隔离实验及分开的 HTTP/IPC 测试不代替完整业务验收；未知制品/缺宿主证明硬停，公开模型结果拒绝保留。
 
-- [ ] 新 CI 私有 profile 格式 3 的固定官方 guard，在准确安装入口及官方 CLI 验证四工具放行、内置工具/Task/同名外来 MCP 拒绝，以及缺失、篡改、崩溃、超时、无输出、非法输出的 fail-closed；需要实际原生尝试与无越界效果，模型自述或无调用不能算通过。正式 profile/guard 子进程测试不证明厂商旁路、OS/Windows ACL 或 Cloud VM 隔离，缺少支持身份和原宿主证明仍硬停。
-
-- [ ] 原生 Hook 元数据的固定 `hookWorkspaceRoot`，从准确安装版本验证与实际 native cwd、逻辑源码根分别对应；不借元数据存储目录授权文件/Task，也不从旧记录学习新根。正式反例已覆盖准确厂商形状误拒绝及目录/可执行配置漂移；隔离原生四 MCP/实际 Docker/宿主证明组合不代替原 owning Runtime、业务 Task 和三路径验收。
-
-- [ ] 原 held CI 已接线管理员 Runner 策略、完整 Plan.paths 快照、同一 HostProof 与支持制品的一次原 Discovery 激活；从准确安装版本核验私有策略、真实 daemon/镜像、原 Task 及 Coordinator 归属。正式 Runtime 回归的厂商 ACP、Docker/批准为合成；源码隔离真实 Runtime/native/Docker/Core 实验也使用合成任务/批准，不代表三路径业务验收。激活不确定及停止失败保留原 active/ownership，不重跑模型。
-
-- [ ] 原 Runtime 关闭的单次操作、全部自有资源收拢及准备失败私有确认，在准确安装版本和 owning 后端验证；正式原 callback 回归已核晚 ACK/ledger 保存前不释放、各资源失败仍独立停止且不重试、到期/撤权及预先 abort。最终 native 校验和 running 写入时只撤远端 Task、不发本地 abort 的回归已先复现再验证零 prompt；未确认结果或停止保留归属，不将替身或源码隔离实验推广为生产停止链通过。
-- [ ] 原 Discovery 的完整宿主证明回调与无回调只读模式，在准确安装版本和原 owning worker 验证。正式 HTTP/HostProof/Runner/Core 组合覆盖原编号失 ACK、单次执行、撤权及初始期限；原 worker 激活保持原期限且等待私有结果，不把 Docker/批准替身或单条真实模型实验当作生产任务验收。
-- [ ] 新 CI profile 的严格默认配置兼容与格式 3，在准确安装版本及官方 CLI 验证原 native ID、MCP、默认模型路由和首次期限不变；补充默认值不重新学习权限，未知配置和隐私降级拒绝。旧格式 2 不升级；正式 profile/Runtime 回归与原生机制实验分别记录，不代替 Task 隔离、真实业务任务和三路径验收。
-- [ ] 原任务范围校验已接入 owning 后端准备及操作路径、固定设备传输与缓存重验；从准确安装版本验证完整 owning 后端到 Cloud 的原任务、批准版本、重绑和失 ACK，不能用分开的 HTTP/私有 IPC 正反测试代替真实组合。未知原生制品硬停、公开结果拒绝及宿主证明门禁保留。
-- [ ] 本任务已实现的私有 CI profile、MCP、Runner 与宿主证据发布器，在准确安装版本验证原生工具边界、实际观察不可覆盖和终态回执。源码真实 Core/MCP 组合测试仍使用合成 Docker/批准，不能替代原任务、独立 Tester 与三条连接路径验收。
-- [ ] 宿主证据 sender/Cloud 接收器已补原 Core 同事务版本/内容核验、范围摘要同存与双 ACK；从固定制品和原 owning worker 私有 commit 验证组合、未知回执恢复及实际宿主观察，不能用独立 sender/HTTP 模块用例代替。生产调用未接通，公开结果拒绝必须保留；历史定向、失败与冻结证据保留，不把源码接线记为生产验收。
-- [ ] owning 后端和自有 Node IPC 已补宿主专用 commit、mandatory proof 持久传输及终态结果上下文；从准确安装入口验证实际 HostProof producer、原 native profile/MCP/Runner 与 Cloud 同事务结果组合。私有 callback、合成 ACK、真实 Node IPC 和源码隔离 native 实验不能代替该组合，公开结果拒绝保留。
-- [ ] 已接线的 owning Node worker `hostContext` 原 Plan/不可变批准回执/TODO 准备，在准确安装版本和真实项目验证固定连接、版本与读取途中漂移拒绝。`preparation-only` 不代替 Cloud 当前 Task 事务门禁；目录快照必须使用原 Plan 完整范围，不能以隔离 IPC/合成批准通过宣称原生执行已就绪。
-
-- [ ] Core 已独立保存提交 Plan 时的 `planSourceSha`，交接后的 `sourceSha` 仍是最终代码；从正常发布的准确共享包及 Cloud 固定消费验证持久化、返工更新、旧回执重放和旧记录不猜值。该字段不产生批准或新执行权限，不能代替原生 Cursor 任务验收。
-- [ ] 在最新安装版本恢复原 Cursor 会话，验证 CLI 活动和导入的 Claude Hook 不覆盖 Cursor 身份，工作台读写不再返回 403；`doctor` 不崩溃与实际绑定就绪分别验收。
-- [ ] 验证空会话关闭后明确失败、已有会话可以重新加载；同一原生会话完成任务、继续追问并正确回显。不能用源码工作台或模拟 ACP 代替安装入口。
-- [ ] 已实现的 Cloud 到配对本地 Cursor 通讯，在固定共享包与准确安装版本上验证权限、原会话连续通讯和任务结果；未完成的 Cursor Cloud REST 开发不计作测试项。
+- [ ] 新 profile：固定支持制品、canonical Node/index.js、完整分发与漂移撤权；版本自报/旧 JSON 不激活，不重签 SEA、不改用户命令；另验其他 UID 制品拒绝。
+- [ ] 格式 3 官方 guard：四工具放行，内置/Task/同名外来 MCP 拒绝；缺失、篡改、崩溃、超时、无输出/非法输出 fail-closed，核真实调用及无越界，不外推厂商旁路、OS/Windows ACL、Cloud VM。
+- [ ] hookWorkspaceRoot 与 native cwd、逻辑源码根分离；存储槽不授权文件/Task，不从旧记录学习新根，核元数据误拒和可执行配置漂移。
+- [ ] held CI：管理员 Runner、完整 Plan.paths、同一 HostProof 和一次原 Discovery 激活；核 daemon/镜像/Task/Coordinator 归属，未知激活/停止保留 active/ownership，不重跑模型。
+- [ ] Runtime 单次关闭：独立停止全部自有资源，晚 ACK/ledger 保存前不释放；核停止失败、到期/撤权/预先 abort、远端 Task 撤权且无本地 abort 时零 prompt；未确认不报停止成功。
+- [ ] Discovery 完整 HostProof 回调/无回调只读：原编号失 ACK、单次执行、撤权/最初期限；激活不延长授权并等待私有结果。
+- [ ] 格式 3 默认配置：native ID/MCP/默认模型/最初期限不变，默认补齐不重新学习信任，隐私降级和未知配置拒绝，格式 2 不升级。
+- [ ] owning 后端→Cloud Task 范围校验：固定设备/缓存重验、批准版本、重绑及失 ACK，不以拆开的 HTTP/IPC 用例代替组合。
+- [ ] 私有 profile/MCP/Runner/宿主证据发布器：真实原生工具范围、实际观察不可覆盖、终态回执及独立 Tester。
+- [ ] sender/Cloud 同事务 proof：版本/内容/范围摘要及双 ACK，固定制品、worker commit、未知回执恢复与实际观察；生产调用未接通，不把模块接线记为生产通过。
+- [ ] owning Node IPC：宿主专用 commit、mandatory proof 传输、终态上下文，实际 HostProof producer 与 profile/MCP/Runner→Cloud 事务组合。
+- [ ] hostContext：原 Plan/不可变批准/TODO、固定连接/版本和读取漂移拒绝；完整 Plan.paths 快照，preparation-only 不等于当前 Task 授权。
+- [ ] 发布共享包及 Cloud 固定消费：planSourceSha 持久化、返工/重放，sourceSha 为最终源码，旧记录不猜基线，不产生批准或权限。
+- [ ] 最新安装恢复原会话：CLI/Claude Hook 不覆盖 Cursor 身份，读写无 403；doctor 不崩溃与绑定就绪分别验。
+- [ ] 空会话失连接明确失败；既有会话重载，同原生会话完成任务/继续追问/回显，不用模拟 ACP 代替。
+- [ ] 已实现 Cloud→配对本地 Cursor：权限、原会话连续通讯和任务结果；未实现 Cloud REST 不计测试项。
 
 ### LOCAL-RECORDS-01 · 原生 Hook 与本地记录
 
-- [ ] 在已登录的 Claude Code CLI 和 Cursor 中，经用户信任的 Hook 实际触发启动、工具调用、压缩、结束与归档；记录写入工具返回的本地 Markdown，整个过程不上传会话笔记。
-- [ ] 分别核对安装后的 `doctor`、Hook 信任、实际上下文送达和浏览器启动失败反馈；函数模拟或无对话客户端检查不能代替原生宿主验收。Codex Hook 不在本阶段范围。
+- [ ] 已登录 Claude/Cursor 经信任 Hook 触发启动、工具、压缩、结束/归档，本地 Markdown/事件全程不上传。
+- [ ] 安装 doctor、Hook 信任、实际上下文送达和浏览器启动失败反馈分别验；Codex Hook 不在当前范围。
 
 ### EXECUTOR-CONTEXT-01 · 按需读取与收工检查
 
-- [ ] 无 Cloud：从安装入口读取本地轻量导航和节点；开发中复用已读缓存，收工对比最新本地 Map，只显示变化节点名称和类型。
-- [ ] 有 Cloud：在已授权真实项目验证导航、按需读取、挂载/已读/关联/全局变化及差异确认；断连明确报告“无法检查”，不把缓存当最新 Cloud。原公共 CLI、hash 与隔离 HTTP 回归不替代此验收。
-- [ ] 核对旧进程能力识别、安全升级和旧未确认基线拒绝；旧待发记录暂停上传并原样保留，不能通过重建空项目、删除待发数据或隐式迁移取得通过。
+- [ ] 无 Cloud 安装入口：轻量导航/节点、缓存复用、最新本地检查，只显示变化名称/类型。
+- [ ] 真实授权 Cloud：导航/按需/挂载、已读/关联/全局变化、差异确认；断连“无法检查”，缓存非最新。
+- [ ] 旧能力识别、安全升级、未确认基线拒绝；旧记录队列暂停原样保留，不删数据/重建空项目/隐式迁移求通过。
 
-实际绑定失效曾阻止多个专项的 Cloud 验收。恢复有效绑定后才能执行相关测试；绑定失败本身不是这些功能已通过或已失败的证据。
+Cloud 绑定失效先恢复有效绑定再验功能；绑定失败不等于这些功能通过或失败。
 
 ## 测试基础设施与安装
 
 ### GATE-05 · Windows 长链路
 
-- [ ] 针对当前源码复核 Windows 完整 CD 与浏览器 Hook 启动，保留原总时限和断言；原多次 900 秒超时、20 秒 bootstrap 超时不能由局部通过替代。
-- [ ] 复核 Claude 冷启动、持续输出、静默和输出限额的正式用例；区分启动未就绪与运行期限，不把测试前提修正说成生产超时问题已经解决。
+- [ ] 当前源码 Windows 完整 CD/浏览器 Hook，保留总时限/断言；原 900 秒及 20 秒 bootstrap 超时不能由局部通过关闭。
+- [ ] Claude 冷启动、持续输出、静默、限额：区分未就绪/运行期限，不将前提修正记作生产超时修复。
 
 ### WORKBENCH-LIFECYCLE-02 · 未归因的启动与读取失败
 
-- [ ] 在保留失败现场的正式入口核查 SessionStart 的 `verified=false` 和空图缺少 User 信号。定向重跑曾通过但未复现原失败，原因仍未确认。
-- [ ] 核查附件直接读取与 All Sessions 基线失效用例的 `fetch failed`；记录实际端口、请求阶段和原异常。调整测试端口前提不证明旧失败根因已解决。
+- [ ] 原现场 SessionStart verified=false、空图缺 User 信号；定向通过未复现，根因未确认。
+- [ ] 附件读取/All Sessions 基线的 fetch failed：核端口、阶段、原异常，改测试端口不证明旧根因已修。
 
 ### BROWSER-CLEANUP-13 · 清理与退出结果
 
-- [ ] 独立复核浏览器完整入口：正文断言和清理都成功才返回通过；`EBUSY` 重试耗尽仍失败，保留首次异常与现场。原 55 项正文通过但清理退出 1 的记录不能改记成功。
-- [ ] 在 Windows/Linux/macOS 的安装产物上核对正式停止、状态/锁释放和无残留自有进程；Windows 暂时 `EPERM` 与持续权限失败须分开，不删未知锁。
+- [ ] 正文和清理均成功才通过，EBUSY 重试耗尽失败；原 55 项正文通过但清理退出 1 保留。
+- [ ] 三系统安装产物的停止、状态/锁释放、自有进程无残留；Windows 暂时 EPERM 与持续拒绝分开，不删未知锁。
 
 ### PROJECT-COMMIT-READ-10 · 性能与跨平台
 
-- [ ] 对 Git 目录/HEAD/Main 合并读取、无变化注册不写盘及 runner 调度做独立功能与耗时核验；保留身份新鲜度、并发写入、错误回退和完整测试发现。减少进程或写入次数不能直接宣称完整 CD 已提速。
-- [ ] 在 macOS/Windows/Linux 的真实浏览器与受管网络核对 `.localhost` 解析；测长期 CPU、内存和磁盘 I/O，而非以一次短测推断稳定性。
+- [ ] Git/HEAD/Main 合并读取、无变化不写盘、runner 调度的独立功能/耗时，保留身份新鲜度、并发、错误回退和完整测试发现。
+- [ ] 三系统真实浏览器/受管网络的 .localhost，长期 CPU/内存/I/O，不以一次短测推断稳定。
 
 ### SPLIT-INSTALL-01 · 共享包与安装入口
 
-- [ ] 文档整理后的准确产物：验证机器契约仍从 core 根入口消费，Cloud 的旧资料标识可读取合并指南，角色链接、README 兼容入口和安装入口正常；历史 UI 演示及其专用测试已移除，正式产品断言保留；治理改动合并前须完整 CI。本次尚未完成完整功能与安装回归。
-- [ ] 角色路径迁移：从准确产物验证三类客户端新装使用 `roles/`，升级保留已有绝对提示词路径且不改用户配置；核对共享 core 的角色入口、Claude 读取和现有回归。已更新正式测试，尚未执行本次功能回归。
-- [ ] 在干净检出验证 Skill 独立构建及 Cloud 固定消费 Skill 共享包，核对锁文件、精确包清单、字节和许可；下载失败或制品被篡改必须拒绝，不依赖相邻仓库源码。
-- [ ] 最新准确产物在 Ubuntu/macOS/Windows 新装和升级后，验证工作台读写/刷新、授权与拒绝、版本一致；保留用户 Map、待发数据、设置和第三方 Hook，不重新启用已关闭的 Hook。旧版本安装通过不代表新版已验收。
+- [ ] 文档整理产物：core 根机器契约、Cloud 兼容资料标识、角色/README/安装链接；正式产品断言保留，完整 CI/安装回归待验。
+- [ ] roles/ 新装/升级：旧绝对提示词兼容且不改用户配置，共享 core、Claude 读取及正式回归。
+- [ ] 干净检出 Skill 独立构建、Cloud 固定消费：锁文件/精确清单/字节/许可，下载失败或篡改拒绝，不借相邻源码。
+- [ ] 三系统新版新装/升级：读写/刷新、权限拒绝、版本一致，保留 Map/队列/设置/第三方 Hook，不重启已关闭 Hook。
 
 ## 清单之外的事项
 
-- 未实现功能交 Coordinator：本机离线 Coordinator 对话入口、任意脚本越界修改的自动追踪、损坏启动锁的恢复工具等，不包装成“只差测试”。测试治理的 GATE-01/02 开发与现有覆盖限制见[检查标准](development-docs/ci.md#明确待实现)。
-- Codex Hook、会话记录同步、Cloud 自动派发、Quark 与 CI 接收器等暂缓范围见[当前开发方向](development-docs/current-focus.md)；移出本页不代表验收通过，不恢复投入。
-- Cloud/Slack 专项从 [Cloud 验证台账](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/CI_todo.md) 查找。旧 Home/按钮、附件截图、跨端与跨项目预览、身份摘要、指定标题和不接话语义等记录，未确认新版结果前仍不得宣称通过；原始证据保留在上述整理前记录。
-- PR、发布、部署和资源清理按 [RULE](RULE.md) 执行，不重复记为 CI 待办。
+未实现需求交 Coordinator；GATE-01/02 及静态检查/恢复缺口见 [CI 标准](development-docs/ci.md#明确待实现)。暂缓范围见 [当前方向](development-docs/current-focus.md)，移出不等于验收通过。
+
+Cloud/Slack 旧 Home/按钮、附件、跨端/项目预览、身份摘要、标题、不接话等专项见 [Cloud 台账](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/CI_todo.md)，未经新版验证不宣称通过。PR/发布/部署/清理按 [RULE](RULE.md)，不另记 CI 待办。
