@@ -58,7 +58,7 @@ CLI 与网页直接发消息共用 `native.prompt` 检查和投递编号；管�
 
 默认拒绝工具授权。操作者显式设置 `permissionPolicy:allow-once` 且 `permissionsApproved:true` 后，仅选择厂商提供的 allow_once 选项。Tester 还须限制到其测试范围，不能复用 Executor 的全工具授权。
 
-当前本地 Tester 不继承上述 Executor 授权：包括磁盘保留的旧 `allow-once` 配置，宿主工具请求均拒绝。ACP 工具描述不能证明完整命令、工作目录和路径范围，不从标题或提示词推导权限。这只取消宿主的宽泛授权，不是厂商文件系统沙箱；Cursor 自带的已授权工具仍需真实验证。受限测试执行通道尚未完成，因此不宣称本地 Tester 已能完成真实任务；独立 CI 回报仍须真实测试证据，不能用拒绝请求或本轮结束代替。
+当前本地 Tester 不继承上述 Executor 授权：包括磁盘保留的旧 `allow-once` 配置，宿主工具请求均拒绝。ACP 工具描述不能证明完整命令、工作目录和路径范围，不从标题或提示词推导权限。这只取消宿主的宽泛授权，不是厂商文件系统沙箱；原受限通道已在源码接线，仍须准确安装版本及三路径业务验收，不能用拒绝请求或本轮结束代替独立 CI 回报。
 
 本地 CI 对象读取只接受当前派发 `references` 中固定的引用/版本及 Tester 自己的 evidence 命名空间。知道同一 Executor Session 的其他任务引用，不授予读取权限。Cloud 接收端的当前任务事务限制仍须另行验证，不能用本地检查替代服务器鉴权。
 
@@ -70,7 +70,7 @@ CLI 与网页直接发消息共用 `native.prompt` 检查和投递编号；管�
 
 绑定固定原投递指纹、逻辑/原生 Session、工作树、任务与源码、引用版本、实际 owning PID、Tester 绑定版本和后端 epoch。初始期限不可续期；每次原授权返回后再次核对绑定，旧回执、晚回复、关闭、到期和重绑不能恢复权限。IPC 的重复、越界、过大或并发超限请求关闭本通道，不重签或重投模型。
 
-当前仅接通执行前的原授权检查。私有原生 profile、工具边界与不可覆盖证明尚未完成时，worker 明确返回 `CI_NATIVE_ISOLATION_REQUIRED`，不调用模型；既有空 CI 原生连接保持原 ID 和原 transport，不冷加载或替换。普通 Executor 不增加该门禁。
+原 owning worker 仅对新建且具有固定支持身份的 held profile 接通受限执行。缺少原生身份、管理员策略、同一 HostProof 或原 held transport 时，仍返回 `CI_NATIVE_ISOLATION_REQUIRED` 等准备错误，不调用模型；原 ID 和 transport 不冷加载或替换。普通 Executor 不增加该门禁。
 
 ### CI 原生配置准备（创建阶段）
 
@@ -90,13 +90,15 @@ CLI 与网页直接发消息共用 `native.prompt` 检查和投递编号；管�
 
 官方入口在 `--version` 时也初始化默认配置；探测使用新 profile 内独立私有 version-home，全部配置路径重定向且不传 provider 凭据。实际 turn 的权限配置仍以独占创建保存，不删除探测产物或用厂商默认值覆盖策略。非 sticky 的他人可写父目录拒绝；这不构成同 UID 攻击防御。
 
-完整文件/stat 清单只保存在原 profile 闭包，record/immutable guard manifest 仅保存版本、准确 Node/入口参数与分发摘要作审计；旧 JSON 或合成配置不能恢复这个闭包。新 `verifyNative` 必须复用原 profile/期限核验，未知制品和旧对象没有激活权限；普通 `verify` 也检查原分发漂移。这不是同 UID 防篡改或操作系统 attestation，原业务硬停在 owning worker 接线验收前仍保持。
+完整文件/stat 清单只保存在原 profile 闭包，record/immutable guard manifest 仅保存版本、准确 Node/入口参数与分发摘要作审计；旧 JSON 或合成配置不能恢复这个闭包。新 `verifyNative` 必须复用原 profile/期限核验，未知制品和旧对象没有激活权限；普通 `verify` 也检查原分发漂移。这不是同 UID 防篡改或操作系统 attestation；目录及文件所有者须为当前用户或 root，其他 UID 的制品拒绝。
 
 官方 CLI 2026.10.01 的真实 `session/new` 会补充默认配置，后续还会更新隐私缓存。创建时的完整配置摘要保留作审计，不再以全文字节不变判断授权。新 profile 格式为 2，另保存宿主预先固定的策略摘要；不能从厂商改写后的文件重新学习基线，旧 profile 不升级或重建。
 
-首版 CI 只支持默认模型路由，未指定、`default`、`auto` 统一为 `default`；其他模型在创建意图前拒绝。严格核对原权限、allowlist 和已核验的默认模型、空参数及展示/交互字段；允许补充默认值，不允许任意新字段、可执行 statusLine、其他模型/子模型、搜索自动批准或网络覆盖。Executor 的模型配置不变。
+首版 CI 只支持默认模型路由，未指定、`default`、`auto` 统一为 `default`；其他模型在创建意图前拒绝。CI 启动不传 `--model default`：厂商会将其标为用户改变默认模型，违反固定策略。默认由原私有配置选择，不放宽校验；Executor 保留显式模型参数。
 
-隐私缓存可缺席（厂商默认 ghost=true），或具有严格的 ghost=true、合法隐私枚举与有界更新时间；不伪造厂商缓存、不降低隐私策略。缓存更新不能改变原身份、能力、endpoint 或初始期限。此兼容修复仅针对配置校验，不证明 Task/子 agent 隔离，不解除执行硬停。
+严格核对原权限、allowlist 和已核验的默认模型、空参数及展示/交互字段；允许补充默认值，不允许任意新字段、可执行 statusLine、其他模型/子模型、搜索自动批准或网络覆盖。
+
+隐私缓存可缺席（厂商默认 ghost=true），或具有严格的 ghost=true、合法隐私枚举与有界更新时间；不伪造厂商缓存、不降低隐私策略。缓存更新不能改变原身份、能力、endpoint 或初始期限。此兼容修复仅针对配置校验，不证明 Task/子 agent 隔离，也不单独产生激活权。
 
 POSIX 上，CI 专用 `mcp enable` 和 ACP 进程从启动起使用子进程内的 `umask 077`，避免厂商原子重写配置时产生 0644 文件。固定 shell 只设置 mask 并 `exec` 绝对原命令，参数单独传递，保留 PID、stdio 和信号；不修改父进程 umask、不事后 chmod 漂移文件。Executor 不启用此选项，Windows 不以 POSIX mask 宣称 ACL 隔离。
 
@@ -116,7 +118,7 @@ guard 对 NOFOLLOW、单链接、私有权限、有界 UTF-8 JSON、canonical �
 
 `preToolUse` 只放行准确四个 `MCP:context_guard_*` 名称，内置 Read/Grep/List/ReadLints/Glob/Shell/Write/Task 等默认拒绝。该事件不含可靠 provider，因此另以 `beforeMCPExecution` 精确核工具、`context-guard-ci`、原 HTTP URL 双字段，缺失或 stdio command 拒绝；`subagentStart` 一律拒绝。
 
-原 private record 的 native 关联仍依赖宿主文件边界，不是同 UID 防篡改、操作系统沙箱或远程 attestation。原宿主每次 verify 和 Core 当前授权继续生效；真实工具/Task/同名外来 MCP、fail-closed 故障及官方潜在旁路尚须验证。此准备实现不解除 `CI_NATIVE_ISOLATION_REQUIRED`，也不推断 Cursor Cloud VM 的 Hook 行为。
+原 private record 的 native 关联仍依赖宿主文件边界，不是同 UID 防篡改、操作系统沙箱或远程 attestation。原宿主每次 verify 和 Core 当前授权继续生效；真实工具/Task/同名外来 MCP、fail-closed 故障及官方潜在旁路尚须验证。guard 配置本身不授予激活权，也不推断 Cursor Cloud VM 的 Hook 行为。
 
 异步读取结束、放行前再次核最初期限，不以 Hook 的 5 秒超时延长授权。拒绝只返回固定阶段类别，不输出原输入、错误 cause 或敏感定位；诊断码不是业务证据，也不授予重试、重新绑定或激活权限。
 
@@ -124,7 +126,7 @@ guard 对 NOFOLLOW、单链接、私有权限、有界 UTF-8 JSON、canonical �
 
 CI 创建的 ready 回执也须核原 held transport 的错误/关闭状态与真实子进程终态、活 profile；缓存存在不证明进程活着。连接失效时关闭自有能力、保留原记录，不替换空 native。重启后不能仅凭旧成功记录报告可用。等待事件登记锁期间关闭时，不追加启动事件或写 ready；持久化期间关闭亦不返回成功。
 
-当前接通首次创建、元数据发现及原 held profile 的宿主准备；同 profile 的后续 load、原任务激活与实际证明回报仍未接通。既有未隔离空 native 不升级或替换，业务执行硬停与公开结果拒绝不解除。
+当前已接通首次创建、元数据发现、原 held profile 的宿主准备及支持制品的一次原投递激活。后续同 profile 的 load/能力轮换尚未实现；既有未隔离空 native 不升级或替换，公开模型结果仍拒绝。
 
 官方 CLI 的隔离元数据实验仅证明四工具可发现、原项目 MCP 不参与清单，以及用户配置摘要未变。没有模型、Task 或原任务授权，不把该实验视为独立 CI 闭环。
 
@@ -144,7 +146,7 @@ Cursor 的公开 CI 入口在宿主证明及原事务校验接通前拒绝 `ci.r
 
 未提供这组回调时，Discovery 激活只开放固定上下文、批准源码与受限 `object.read`；测试、证据写入和结果回报都报 `CI_HOST_PROOF_REQUIRED`，不回退普通 `client.exchange` 写通道。完整回调不改变原 endpoint、凭据、协议、身份或最初期限；终态失 ACK 仍走原编号、正文和宿主期望，不重新激活或重跑测试。
 
-发现与活动状态共用原 endpoint、能力与初始化协议；元数据发现不构成开发批准。当前正式 HTTP 与原生机制已验证该入口，`CursorRuntime` 的生产 worker/profile 接线及原 CI 证明回报仍待完成。
+发现与活动状态共用原 endpoint、能力与初始化协议；元数据发现不构成开发批准。原 `CursorRuntime` 已在源码接线同一 profile、Runner 和 HostProof；准确安装、owning 后端到 Cloud、真实业务与生产验收仍待完成。
 
 工具只提供当前 CI 上下文、批准源码读取、固定 testId 执行和原 CI 消息回报。模型不能选择 argv、工作树、环境、镜像或任务身份。既有用户配置和 Hook 不替换。
 
@@ -180,7 +182,7 @@ Cursor 的公开 CI 入口在宿主证明及原事务校验接通前拒绝 `ci.r
 
 owning Node worker 通过私有空参数 `hostContext` 取得原 Plan、不可变批准回执及固定版本 CI TODO。读取复用原设备连接，不扩大普通 CI 引用权限；固定云端地址和登录身份摘要，每次 await 后复核，变化后旧能力永久失效。宿主使用原 `Plan.content.paths` 整份清单导出准确 Git 快照，目录范围包含其全部安全文件，不能改用测试文件子集替代。
 
-此结果明确为 `preparation-only`。本地下行投影只用于固定原引用，不等于 Cloud 当前 Task；真实激活和结果接收仍须在原 Core 事务内核任务、批准 Plan/回执、交接 SHA 和 TODO 版本。准备通过不能移除原生隔离硬停，也不能恢复已关闭能力。
+准备摘要仍标记 `preparation-only`，不是执行授权。本地下行投影只用于固定原引用，不等于 Cloud 当前 Task；激活和结果接收仍须在原 Core 事务内核任务、批准 Plan/回执、交接 SHA 和 TODO 版本。摘要不能代替固定原生身份，也不能恢复已关闭能力。
 
 后端已增加原任务范围校验：私有 `hostContext` 返回前及准备后的每次操作，使用原设备连接提交固定 Task、Plan 版本与基线、批准回执、交接 SHA 和 TODO 版本。`X-Context-Guard-CI-Task` 只是收窄期望，不是凭据、隔离证明或新的 CI 通过权；模型正文和公开 IPC 参数不能自行提供这些值。
 
@@ -196,7 +198,7 @@ Cloud 在原 Core authorize 中核当前 Task 与已发批准，新写入把范�
 
 MCP 用私有 `submitVerifiedResult` callback 发布经核验的结果，不增加公开工具或绕过普通模型结果拒绝。正式测试已覆盖产品 MCP HTTP、Runner 与 Core 事务组合；Docker、任务批准为合成依赖，不代表原生角色闭环。
 
-原 Discovery 到同一 HostProof 的组合回归也核对终态已接受但 ACK 丢失、原编号恢复、单次 Runner 执行、改提案、撤权和初始期限到期。Docker 与批准仍为合成前提；该接线不证明原生工具隔离，Runtime 业务硬停保留，直到原生 worker 的完整准备、执行与停止经过验证。
+原 Discovery 到同一 HostProof 的组合回归也核对终态已接受但 ACK 丢失、原编号恢复、单次 Runner 执行、改提案、撤权和初始期限到期。Docker 与批准仍为合成前提；这些正式回归不证明原生工具隔离，支持制品之外的 worker 仍硬停。
 
 私有提交还携带宿主保存的证据引用、准确版本与内容摘要。接收 callback 必须在原 Core 的同一事务 authorize 中核验这些期望，确保 reducer 读取的 latest 就是该观察；不能用提交前网络回读替代。模块内测试使用 `assertCursorCiHostEvidence`，Cloud 自有接收器使用 `authorizeCursorCiHostEvidence`，不反向导入本地工作台源码。
 
@@ -204,13 +206,13 @@ MCP 用私有 `submitVerifiedResult` callback 发布经核验的结果，不增�
 
 原事务将 evidenceHash 与 Task 范围、原结果回执共同提交。既有编号不能升级、省略或修改 proof；终态同编号也继续核原证据 latest/内容。成功才返回 `X-Context-Guard-CI-Evidence-Authorized`，发送器须同时确认 Task 与 Evidence 两个准确摘要。缺失、错误或旧服务忽略 proof header 时保持未知，不换编号或改正文。两个新增 header 的编码长度合计至多 12288 字节，各自至多 8192 字节。
 
-上述发送/接收模块已接线，owning 后端增加私有 commit callback；原生证明发布器调用、激活及安装组合仍待完成。期望不进入模型消息，不改变原编号/载荷；公开模型结果拒绝和原生执行硬停继续保留，不能由独立 sender/HTTP 测试推断真实任务闭环。
+上述发送/接收模块及 owning worker 私有证明调用已在源码接线；准确安装与 Cloud 组合仍待完成。期望不进入模型消息，不改变原编号/载荷；公开模型结果拒绝继续保留，不能由独立 sender/HTTP 测试推断真实任务闭环。
 
 私有 commit 只接受当前 Task/source/session 的本 Tester host evidence 或带 mandatory expectedEvidence 的原 ci.result，普通 exchange 仍拒这两种提交。准备及 callback 缺失时不开放结果上下文；context({ciResult:true}) 只免旧 testing 读取，仍核原身份、owning PID、投递、绑定、指纹和最初期限，不产生写权。
 
 原 Task 的 DeviceConnection 在发送结果前保存完整消息指纹、固定作用域及原 proof 元数据，每次实际传输和缓存重验都读取同一私有记录；缺记录、损坏、链接、换 proof 或借旧 durable wire 补造记录均拒绝。记录锁在 send 前释放，不形成传输取锁自死锁。未知 ACK 保留原编号、正文与 proof，后端不借此调用新模型或重跑测试。
 
-证据写仍在普通 testing 授权前后检查；结果提交由 Cloud 原 ci.result 事务鉴权，回执后只核本地固定身份，不再读旧 testing TODO。晚到响应时重绑或撤权仍永久关闭；本地未确认不能解释为远端没有效果。该私有路由不是 Runner 真实性证明，原生 producer 未接入前不解除硬停。
+证据写仍在普通 testing 授权前后检查；结果提交由 Cloud 原 ci.result 事务鉴权，回执后只核本地固定身份，不再读旧 testing TODO。晚到响应时重绑或撤权仍永久关闭；本地未确认不能解释为远端没有效果。该私有路由不是 Runner 真实性证明，不能单独产生原生执行权。
 
 已持久保存的终态回执只确认当次 Core 接受的历史事实；先核当前身份/授权/固定快照，不产生新业务写入，也不证明后来 evidence latest 未变。没有本地确认回执的失 ACK 重放仍走同一原事务与原证据期望。原 ciResult 已保存的引用版本不会随 evidence 新版改写。
 
@@ -220,7 +222,15 @@ MCP 用私有 `submitVerifiedResult` callback 发布经核验的结果，不增�
 
 异步准备后重查原 profile、原绑定/Task、固定策略与 owning transport。冷 Node worker 不能借旧 profile 恢复权限；没有策略时保持原硬停。有策略但缺原 held 归属、策略或身份漂移均拒绝。Runner 关闭未确认时保留原 active job、资源引用与 unknown，不自动清空或重试；其他自有 native/profile 的关闭仍继续尝试。
 
-当前发布器尚未接入原生 worker 激活。真实项目批准读取、管理员策略与实际环境的安装验收、owning worker 业务结果、Task 边界及后续同 profile 能力轮换仍待完成。业务硬停和公开结果拒绝继续保留；准备及账本摘要不是模型隔离、CI 通过或批准签名。
+支持制品的原 owning worker 在核对同一 profile、native ID、完整快照、管理员策略与 HostProof 后，先持久化原激活意图，再激活同一 Discovery。各阶段复核原授权及停止信号；running/PID 保存后，紧邻 prompt 再查原 scoped Task，匹配初始上下文后仅同步核停止与期限，再发送一次原 prompt，不延长最初期限。
+
+Discovery 到期、撤权或私有通道中止，立即关闭原能力并分别停止原 native 与 Runner。清理 Promise 在同步 abort 前固定，只调用一次；任何停止失败都不阻断其他自有资源。先收拢资源，再等待已进入的宿主证明/提交回执及账本保存，不让晚 ACK 被清理吞掉。
+
+只有原 HostProof 私有提交取得 Core 回执并保存 proof ledger，且停止确认完成，原 job 才能 finished 并释放 active。原 CI verdict 保留 passed/failed/incomplete；finished 仅表示该投递收拢，不等于任务通过。模型 end_turn、文本或公开字段不能产生宿主结果。
+
+激活尝试后未确认结果、丢 ACK、保存失败或停止不确定，保留原 job/active/ownership 与 unknown，不重投模型、重建 Session 或激活新能力。关闭不重试原失败资源；冷 worker、旧 JSON、缺策略/闭包或未知制品仍硬停。
+
+正式 Runtime 回归覆盖上述原回调、停止与竞态，厂商 ACP、Docker 和批准为合成依赖。另有官方 CLI、实际 Docker、原 Runtime/HostProof/Core 的隔离实验；其任务/批准仍为合成前提，不代替原 Coordinator、DeviceConnection、Cloud、安装和三路径业务验收。真实项目批准读取及后续同 profile 能力轮换仍待完成。
 
 本轮合成容器正反控制已运行；准确提交快照、MCP 接线、撤权/重放和原生角色闭环仍须分别验证。历史宽泛工具授权及旧沙箱探针不能作为这些项目的通过证据。
 

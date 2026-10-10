@@ -276,7 +276,10 @@ export class CursorRuntime {
           }
           if (config.role === 'ci' && this.ciClosing) fail('RUNTIME_CLOSING', 'The owning CI host is shutting down');
           acp = this.acpFactory({ command: createdProfile?.nativeCommand || config.command, cwd,
-            args: [...(createdProfile?.nativeArgs || []), ...(config.model ? ['--model', config.model] : [])], env,
+            // CI's fixed profile already selects the default route. Passing
+            // --model default marks vendor config as user-changed and violates
+            // that original policy; never relax the policy to accommodate it.
+            args: [...(createdProfile?.nativeArgs || []), ...(config.role !== 'ci' && config.model ? ['--model', config.model] : [])], env,
             privateFiles: config.role === 'ci' });
           if (createdProfile) this.ciConnecting.set(sessionId, acp);
           const native = await acp.connect();
@@ -463,12 +466,18 @@ export class CursorRuntime {
       // replacing them. Preserve the exact transport while CI setup is gated.
       if (!ci) this.pendingNative.delete(sessionId);
       const owner = ci ? { profile: this.pendingCiProfiles.get(sessionId), command: this.ciRunnerCommand,
-        check: () => { if (this.ciClosing || this.pendingNative.get(sessionId) !== acp ||
+        check: () => { if (owner.stopping || this.ciClosing || this.pendingNative.get(sessionId) !== acp ||
           this.pendingCiProfiles.get(sessionId) !== owner.profile || !nativeLive(acp)) fail('CI_HELD_PROFILE_REQUIRED', 'Original held CI ownership is unavailable'); } } : undefined;
       const work = withFileLock(jobFile + '.worker.lock', () => runWorker(this.sessionFile(sessionId), jobFile, acp,
         ci ? () => openCiClient(process.pid) : undefined, owner));
       this.ownedTurns.set(jobFile, { acp, work, owner });
-      void work.catch(() => {}).finally(() => { if (!owner?.unconfirmed) this.ownedTurns.delete(jobFile); });
+      void work.catch(() => {}).finally(() => {
+        if (!owner?.unconfirmed && !owner?.uncertain) this.ownedTurns.delete(jobFile);
+        if (owner?.completed) {
+          if (this.pendingNative.get(sessionId) === acp) this.pendingNative.delete(sessionId);
+          if (this.pendingCiProfiles.get(sessionId) === owner.profile) this.pendingCiProfiles.delete(sessionId);
+        }
+      });
       return;
     }
     const worker = spawn(process.execPath, [ownFile, '--worker', this.sessionFile(sessionId), jobFile], {
@@ -501,9 +510,20 @@ export class CursorRuntime {
         else if (!cursorCiProfileCleanupConfirmed(result.reason)) failed('CURSOR_PROFILE_PREPARATION_STOP_UNCONFIRMED');
       }
       for (const profile of this.pendingCiProfiles.values()) profiles.add(profile);
+      const turns = [...this.ownedTurns.values()], ownerStops = new Map();
+      for (const { owner } of turns) if (owner?.cleanup && !ownerStops.has(owner)) {
+        const work = owner.cleanup(); work.catch(() => {}); ownerStops.set(owner, work);
+      }
+      await Promise.all([...ownerStops.values()].map(work => stop('CURSOR_CI_OWNER_STOP_UNCONFIRMED', () => work)));
+      const ownedResource = resource => turns.find(turn => ownerStops.has(turn.owner) &&
+        [turn.owner.profile, turn.acp].includes(resource))?.owner;
       const closedProfiles = new Set();
       await Promise.all([...profiles].map(async profile => {
-        if (await stop('CURSOR_PROFILE_STOP_UNCONFIRMED', () => profile.close())) closedProfiles.add(profile);
+        const owner = ownedResource(profile);
+        if (owner) {
+          if (owner.confirmedStops?.has(profile)) closedProfiles.add(profile);
+          else failed('CURSOR_PROFILE_STOP_UNCONFIRMED');
+        } else if (await stop('CURSOR_PROFILE_STOP_UNCONFIRMED', () => profile.close())) closedProfiles.add(profile);
       }));
       for (const [key, profile] of this.pendingCiProfiles) if (closedProfiles.has(profile)) this.pendingCiProfiles.delete(key);
       const workers = [...this.ciWorkers.values()];
@@ -511,12 +531,15 @@ export class CursorRuntime {
       // One bridge failure must not stop other channels/native resources closing.
       for (const { worker } of workers) { try { worker.ref(); } catch { failed('CURSOR_WORKER_REFERENCE_UNCONFIRMED'); } }
       await Promise.all(workers.map(({ bridge }) => stop('CURSOR_WORKER_CHANNEL_STOP_UNCONFIRMED', () => bridge.close())));
-      const turns = [...this.ownedTurns.values()];
       const transports = new Set([...this.pendingNative.values(), ...this.ciConnecting.values(), ...turns.map(turn => turn.acp)]);
       this.shutdownOwnership = { profiles, transports, workers, turns }; // Retain failed ownership; never serialize it to a model/API.
       const closedTransports = new Set();
       await Promise.all([...transports].map(async acp => {
-        if (await stop('CURSOR_NATIVE_STOP_UNCONFIRMED', () => acp.close())) closedTransports.add(acp);
+        const owner = ownedResource(acp);
+        if (owner) {
+          if (owner.confirmedStops?.has(acp)) closedTransports.add(acp);
+          else failed('CURSOR_NATIVE_STOP_UNCONFIRMED');
+        } else if (await stop('CURSOR_NATIVE_STOP_UNCONFIRMED', () => acp.close())) closedTransports.add(acp);
       }));
       for (const table of [this.pendingNative, this.ciConnecting]) {
         for (const [key, acp] of table) if (closedTransports.has(acp)) table.delete(key);
@@ -547,7 +570,7 @@ async function prepareHeldCiHost({ config, client, context, prepared, owner }) {
     const profile = await owner.profile.verify(); owner.check();
     if (profile.sessionId !== context.tester.sessionId || profile.nativeSessionId !== context.tester.nativeSessionId ||
         profile.worktreeRoot !== config.root || record && canonical(profile) !== canonical(record) ||
-        context.tester.workerPid !== process.pid || client.signal.aborted) fail('CI_NATIVE_MISMATCH', 'Preserve original CI preparation ownership');
+        context.tester.workerPid !== process.pid || client.signal.aborted || owner.profile.discovery.signal?.aborted) fail('CI_NATIVE_MISMATCH', 'Preserve original CI preparation ownership');
     record ||= profile;
     const current = await client.context(options); owner.check();
     if (canonical(current) !== scope) fail('CI_TASK_CHANGED', 'Original CI preparation scope changed');
@@ -569,7 +592,24 @@ async function prepareHeldCiHost({ config, client, context, prepared, owner }) {
   owner.runner = runner; // Original owning turn retains cleanup responsibility even when metadata rejects.
   const proof = createCursorCiHostProof({ runner, approvedPlan: prepared.approvedPlan, ciTodo: prepared.ciTodo,
     commit: (message, options) => client.commit(message, options) });
-  owner.proof = proof; // Never placed in JSON, IPC payload or model context.
+  owner.pending = new Set();
+  const track = action => (...args) => {
+    if (owner.stopping) fail('CI_CAPABILITY_EXPIRED', 'The original CI host is stopping');
+    const work = Promise.resolve().then(() => action(...args));
+    owner.pending.add(work);
+    void work.finally(() => owner.pending.delete(work)).catch(() => {});
+    return work;
+  };
+  owner.proof = { runTest: track(proof.runTest), verifyResult: track(proof.verifyResult),
+    submitVerifiedResult: track(async message => {
+    // Only a successful private Core commit AND proof-ledger persistence can
+    // set this host outcome. Neither model text nor a public MCP JSON can.
+    const receipt = await proof.submitVerifiedResult(message);
+    owner.outcome = structuredClone({ receipt, resultId: message.id });
+    return receipt;
+  }) }; // Never placed in JSON, IPC payload or model context.
+  owner.source = source;
+  owner.client = { context: async options => (await check(options)).context, exchange: track(message => client.exchange(message)) };
   await runner.check();
   await runner.verifyEnvironment();
   await runner.check(); // Metadata awaits cannot bless changed snapshot bytes/modes.
@@ -592,17 +632,54 @@ async function runWorker(file, jobFile, heldAcp, openCiClient, ciOwner) {
       if (current.active === jobFile) await atomicWrite(file, encode({ ...current, active: null, updatedAt: job.updatedAt }));
     });
   };
-  let acp = heldAcp, log, ready = false, bytes = 0, text = '', stopping = false, ciClient;
+  let acp = heldAcp, log, ready = false, bytes = 0, text = '', stopping = false, ciClient, ciScope;
   const preserveHeldCi = config.role === 'ci' && !!heldAcp;
-  let cleanup;
-  const closeCiHost = () => cleanup ||= Promise.resolve().then(async () => {
+  let preparedCleanup, cleanup;
+  const closePreparedRunner = () => preparedCleanup ||= Promise.resolve().then(async () => {
     try { await ciOwner?.runner?.close(); }
-    catch { ciOwner.unconfirmed = true; fail('CI_STOP_UNCONFIRMED', 'The original CI host stop is unconfirmed'); }
+    catch { if (ciOwner) ciOwner.unconfirmed = true; fail('CI_STOP_UNCONFIRMED', 'The original CI host stop is unconfirmed'); }
   });
-  const stop = () => { stopping = true; void acp?.close(); };
+  const closeCiHost = () => {
+    if (cleanup) return cleanup;
+    let resolve, reject;
+    cleanup = new Promise((yes, no) => { resolve = yes; reject = no; }); // Before synchronous abort re-entry.
+    if (ciOwner) { ciOwner.stopping = true; ciOwner.confirmedStops ||= new Set(); }
+    const failures = [];
+    const attempt = async (code, resource, action) => { try { await action(); if (resource) ciOwner?.confirmedStops.add(resource); }
+      catch { failures.push(Object.assign(new Error('An owned CI stop is unconfirmed'), { code })); } };
+    // close() revokes profile/Discovery synchronously. All three resource
+    // attempts start independently, even if one rejects. No callback lock waits
+    // for cleanup; cleanup alone waits for original in-flight proof/ACK work.
+    const stops = [attempt('CI_PROFILE_STOP_UNCONFIRMED', ciOwner?.profile, () => ciOwner?.profile?.close()),
+      attempt('CI_NATIVE_STOP_UNCONFIRMED', acp, () => acp?.close()),
+      attempt('CI_RUNNER_STOP_UNCONFIRMED', ciOwner?.runner, () => preparedCleanup || ciOwner?.runner?.close())];
+    void Promise.all(stops).then(async () => {
+      await Promise.allSettled([...(ciOwner?.pending || [])]);
+      if (failures.length) {
+        if (ciOwner) ciOwner.unconfirmed = true;
+        reject(Object.assign(new AggregateError(failures, 'The original CI stop is unconfirmed'), { code: 'CI_STOP_UNCONFIRMED' }));
+      } else resolve();
+    }).catch(reject);
+    return cleanup;
+  };
+  if (ciOwner) ciOwner.cleanup = closeCiHost;
+  const stop = () => {
+    stopping = true;
+    if (config.role === 'ci') void closeCiHost().catch(() => {});
+    else void acp?.close().catch(() => {});
+  };
+  const ensureCiAvailable = () => {
+    if (stopping || ciClient?.signal.aborted || ciOwner?.profile?.discovery.signal?.aborted) {
+      fail('CI_CAPABILITY_EXPIRED', 'The original CI host is no longer available');
+    }
+    ciOwner?.check();
+  };
+  const discoverySignal = ciOwner?.profile?.discovery.signal;
+  discoverySignal?.addEventListener('abort', stop, { once: true });
+  if (discoverySignal?.aborted) stop();
   process.once('SIGTERM', stop); process.once('SIGINT', stop);
-  await update({ workerPid: process.pid, state: 'connecting' });
   try {
+    await update({ workerPid: process.pid, state: 'connecting' });
     log = await fs.open(jobFile + '.jsonl', 'a', 0o600);
     if (stopping) fail('CURSOR_INTERRUPTED', 'Cursor worker was stopped');
     // ACP descriptions do not prove bounded test commands/paths. Never lend
@@ -619,18 +696,37 @@ async function runWorker(file, jobFile, heldAcp, openCiClient, ciOwner) {
     if (acp) { acp.requestPermission = requestPermission; acp.onUpdate = onUpdate; }
     if (config.role === 'ci') {
       ciClient = openCiClient ? await openCiClient() : connectCursorCiWorkerClient();
-      ciClient.signal.addEventListener('abort', () => { if (ready) stop(); }, { once: true });
+      ciClient.signal.addEventListener('abort', stop, { once: true });
+      if (ciClient.signal.aborted) stop();
+      ensureCiAvailable();
       const context = await ciClient.context(); // Original task/role checked before a paid/native prompt.
+      ciScope = canonical(context);
+      ensureCiAvailable();
       const prepared = await ciClient.hostContext(); // Original approved Plan/receipt and fixed TODO, host-only preparation.
+      ensureCiAvailable();
       if (config.ciRunnerPolicyFile) {
         const ciPreparation = await prepareHeldCiHost({ config, client: ciClient, context, prepared, owner: ciOwner });
         await update({ ciPreparation });
-        ciOwner.check();
+        ensureCiAvailable();
       }
-      // Preparation may assemble the original host proof, but cannot prove
-      // native tools/Task isolation. Never activate discovery or prompt an
-      // unisolated Tester just because metadata and host authorization succeed.
-      fail('CI_NATIVE_ISOLATION_REQUIRED', 'The assigned native CI isolation must be verified before prompting');
+      const profile = ciOwner?.profile, record = profile && await profile.verify();
+      ensureCiAvailable();
+      if (!record?.nativeIdentity || typeof profile.verifyNative !== 'function' || !ciOwner.proof ||
+          !acp?.initialized || acp.sessionId !== session.nativeSessionId) {
+        fail('CI_NATIVE_ISOLATION_REQUIRED', 'The assigned native CI isolation must be verified before prompting');
+      }
+      const identity = await profile.verifyNative(); ensureCiAvailable();
+      if (canonical(identity) !== canonical(record.nativeIdentity)) fail('CI_NATIVE_MISMATCH', 'Preserve the original verified native distribution');
+      ciOwner.activationAttempted = true;
+      ciOwner.uncertain = true; // Retain ownership until both result and finish are durably confirmed.
+      await update({ ciActivation: { nativeSessionId: session.nativeSessionId, deliveryId: job.id,
+        sourceSha: context.sourceSha, expiresAt: record.expiresAt, state: 'attempted' } });
+      ensureCiAvailable();
+      await profile.discovery.activate({ client: ciOwner.client, source: ciOwner.source,
+        testerSessionId: context.tester.sessionId, nativeSessionId: context.tester.nativeSessionId,
+        tests: ciOwner.runner.policy.tests.map(test => test.id), ...ciOwner.proof });
+      ensureCiAvailable();
+      await profile.verifyNative(); ensureCiAvailable();
     }
     if (!acp) acp = new CursorAcp({ command: config.command, cwd: config.root, args: config.model ? ['--model', config.model] : [],
       env: cursorEnvironment(config.environmentFile ? await readJSON(config.environmentFile) : {}), requestPermission, onUpdate });
@@ -640,22 +736,61 @@ async function runWorker(file, jobFile, heldAcp, openCiClient, ciOwner) {
       const current = await readJSON(file);
       await atomicWrite(file, encode({ ...current, nativeSessionId: native.sessionId }));
     });
+    if (config.role === 'ci') ensureCiAvailable();
     ready = true;
     // Persist dispatch BEFORE writing the prompt. A worker crash here cannot
     // cause the same delivery to be invoked again after backend restart.
     await update({ state: 'running', childPid: acp.child.pid });
-    const result = await acp.prompt(job.message, { timeoutMs: config.timeoutMs || 1800000 });
+    let timeoutMs = config.timeoutMs || 1800000;
+    if (config.role === 'ci') {
+      // Native/config and durable job awaits cannot bless a silently revoked
+      // remote Task. Recheck the original scoped authority immediately before
+      // dispatch; only synchronous ownership/deadline checks follow it.
+      const current = await ciClient.context();
+      ensureCiAvailable();
+      if (canonical(current) !== ciScope) fail('CI_TASK_CHANGED', 'Original CI dispatch scope changed');
+      timeoutMs = Math.min(timeoutMs, job.ciActivation.expiresAt - Date.now());
+      if (timeoutMs <= 0) fail('CI_CAPABILITY_EXPIRED', 'The original CI deadline has expired');
+    }
+    const result = await acp.prompt(job.message, { timeoutMs });
     await log.sync();
+    if (config.role === 'ci') {
+      await closeCiHost(); // Includes in-flight private proof/late ACK, not just socket close.
+      if (!ciOwner.outcome) fail('CI_RESULT_UNCONFIRMED', 'A native end_turn is not a committed test result');
+      await finish({ state: 'finished', ciReceipt: ciOwner.outcome,
+        result: { stopReason: result.stopReason, text }, error: null });
+      ciOwner.completed = true;
+      ciOwner.uncertain = false;
+      return;
+    }
     await acp.close(); // Confirm native exit before allowing another delivery.
     await finish({ state: result.stopReason === 'end_turn' ? 'finished' : 'interrupted',
       result: { stopReason: result.stopReason, text }, error: result.stopReason === 'end_turn' ? null : 'CURSOR_TURN_STOPPED' });
   } catch (cause) {
-    try { await closeCiHost(); }
+    try {
+      if (ciOwner?.activationAttempted || stopping) await closeCiHost();
+      else await closePreparedRunner();
+    }
     catch (stopFailure) { await update({ state: 'unknown', error: stopFailure.code }); throw stopFailure; }
+    if (ciOwner?.activationAttempted) {
+      if (ciOwner.outcome) {
+        await finish({ state: 'finished', ciReceipt: ciOwner.outcome,
+          result: { stopReason: null, text }, error: null });
+        ciOwner.completed = true;
+        ciOwner.uncertain = false;
+      } else {
+        ciOwner.uncertain = true;
+        await update({ state: 'unknown', error: String(cause.code || 'CI_RESULT_UNCONFIRMED').slice(0, 100),
+          ...(text ? { result: { stopReason: null, text } } : {}) });
+      }
+      return;
+    }
     if (!preserveHeldCi) await acp?.close();
     await finish({ state: job.state === 'running' ? 'interrupted' : 'failed', ...(text ? { result: { stopReason: null, text } } : {}), error: String(cause.code || 'CURSOR_FAILED').slice(0, 100) });
   } finally {
     process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
+    discoverySignal?.removeEventListener('abort', stop);
+    ciClient?.signal.removeEventListener('abort', stop);
     ciClient?.close();
     if (!preserveHeldCi) await acp?.close();
     await log?.close();

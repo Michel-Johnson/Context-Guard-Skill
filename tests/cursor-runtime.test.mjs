@@ -22,7 +22,7 @@ import { bindCursorCiClient, readCursorCiHostContext } from '../scripts/workbenc
 import * as ciProfiles from '../scripts/workbench/cursor-ci-profile.mjs';
 import { CursorCiDockerRunner } from '../scripts/workbench/cursor-ci-runner.mjs';
 
-async function heldCiPreparationFixture(t, mutation, beforeDelivery) {
+async function heldCiPreparationFixture(t, mutation, beforeDelivery, activation = {}) {
   const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cg-ci-host-preparation-')));
   const root = path.join(directory, 'tester'); await fs.mkdir(root);
   const execute = promisify(execFile), git = async (...args) => (await execute('git', args, { cwd: root, windowsHide: true })).stdout.trim();
@@ -46,8 +46,9 @@ async function heldCiPreparationFixture(t, mutation, beforeDelivery) {
     async connect() { return { sessionId: nativeId }; }, async prompt() { calls.prompt++; throw new Error('no business model call'); }, async close() {} };
   let runtime;
   runtime = new CursorRuntime(path.join(directory, 'runtime'), {
-    acpFactory: () => native, ciProfileInvoke: async () => ({ stdout: '', stderr: '' }),
+    acpFactory: options => { calls.nativeOptions = options; return native; }, ciProfileInvoke: async () => ({ stdout: '', stderr: '' }),
     ciRunnerCommand: async (_command, argv) => {
+      if (activation.docker) return activation.docker(argv, { runtime, tester, policy, calls });
       calls.docker.push(argv); assert.ok(argv.includes('info') || argv.includes('inspect'), 'metadata only; never create/start/pull');
       if (mutation) await mutation({ runtime, policyFile, policy, tester, sourceSha, calls });
       return { stdout: JSON.stringify(argv.includes('info')
@@ -56,8 +57,14 @@ async function heldCiPreparationFixture(t, mutation, beforeDelivery) {
     },
     ciClientFactory: async identity => bindCursorCiClient({ ...identity, testerSessionId: tester,
       client: { context: () => runtime.ciContext(tester), exchange: async () => { calls.writes++; throw new Error('no ordinary write'); },
-        commit: async () => { calls.writes++; throw new Error('no host commit before isolation'); } },
-      authorizeTask: async () => {},
+        commit: async (message, options) => {
+          calls.writes++;
+          if (activation.commit) return activation.commit(message, options, { runtime, tester, calls });
+          throw new Error('no host commit before isolation');
+        } },
+      authorizeTask: async () => {
+        if (calls.authorityRevoked) throw Object.assign(new Error('Synthetic current Task authority withdrawn'), { code: 'CI_TASK_CHANGED' });
+      },
       readBinding: async () => ({ epoch: 'synthetic-backend', bindingVersion: 'binding-v1', worktreeId: 'tester-tree', generation: 1,
         sessionId: tester, nativeSessionId: nativeId, root }),
       readHostContext: context => readCursorCiHostContext({ context,
@@ -77,20 +84,232 @@ async function heldCiPreparationFixture(t, mutation, beforeDelivery) {
   profile.discovery.activate = (...args) => { calls.activate++; return originalActivate(...args); };
   const execution = { session: { id: executor, generation: 1 }, taskId: 'original-task', sourceSha,
     ciTodoRef: 'assigned-todo', references: { 'assigned-todo': 'todo-v1' } };
-  await beforeDelivery?.({ runtime, tester });
+  await beforeDelivery?.({ runtime, tester, native, profile, root, sourceSha, calls });
   await runtime.deliver({ id: 'original-delivery', sessionId: tester, root, message: 'Run assigned test', execution });
   const jobFile = runtime.jobFile(tester, 'original-delivery'), deadline = Date.now() + 10000;
   while (['starting', 'connecting', 'running'].includes((await readJSON(jobFile)).state)) {
     assert.ok(Date.now() < deadline, 'original owning turn must settle'); await pause(10);
   }
   await runtime.ownedTurns.get(jobFile)?.work.catch(() => {}); // Wait finish's Session commit, not only its preceding job write.
-  return { runtime, directory, root, profile, policyFile, policy, calls, job: await readJSON(jobFile), tester, baseline, sourceSha, config };
+  return { runtime, directory, root, profile, native, execution, policyFile, policy, calls, job: await readJSON(jobFile), tester, baseline, sourceSha, config };
 }
+
+// Native support/ACP, Docker and upstream approval/ACK are explicit synthetic
+// boundaries. Runtime, private profile, Discovery, source export, Runner,
+// HostProof and the result ledger all run product code. This is NOT native or
+// Cloud acceptance; no test field is added to the product authorization API.
+async function activatedCiFixture(t, { verdict = 'passed', mode = 'result', beforePrompt, commit, setup } = {}) {
+  const committed = [], docker = { status: 'created', cid: 'a'.repeat(64) };
+  let originalOwner;
+  const f = await heldCiPreparationFixture(t, undefined, async values => {
+    const { runtime, tester, native, profile, calls } = values;
+    const identity = { version: 'SYNTHETIC-NATIVE', distributionSha256: 'b'.repeat(64), command: process.execPath, args: [] };
+    const supportedProfile = { ...profile, verify: async () => ({ ...await profile.verify(), nativeIdentity: identity }),
+      verifyNative: async () => { await profile.verify(); return structuredClone(identity); } };
+    runtime.pendingCiProfiles.set(tester, supportedProfile);
+    native.prompt = async (_text, options) => {
+      calls.prompt++; assert.ok(options.timeoutMs > 0 && options.timeoutMs <= 1800000);
+      originalOwner = runtime.ownedTurns.get(runtime.jobFile(tester, 'original-delivery')).owner;
+      await beforePrompt?.({ ...values, owner: originalOwner });
+      if (mode === 'empty') return { stopReason: 'end_turn' };
+      const observed = await profile.discovery.call('context_guard_test', { id: 'original-test', testId: 'formal-test' });
+      assert.equal(observed.status, verdict);
+      const check = { testId: observed.testId, todoId: observed.todoId, status: observed.status, evidenceRef: observed.evidenceRef,
+        ...(verdict === 'failed' ? { reproductionRef: observed.reproductionRef } : {}) };
+      const result = { id: 'original-result', type: 'ci.result', payload: { taskId: 'original-task',
+        sourceSha: values.sourceSha, verdict, checks: [check] } };
+      if (mode === 'late') {
+        // Native finishes before its already accepted host callback/ACK does.
+        originalOwner.lateResult = profile.discovery.call('context_guard_exchange', result);
+        originalOwner.lateResult.catch(() => {});
+        await originalOwner.commitEntered;
+      } else await profile.discovery.call('context_guard_exchange', result);
+      return { stopReason: 'end_turn' };
+    };
+    await setup?.({ ...values, supportedProfile });
+  }, {
+    commit: async (message, options, values) => {
+      committed.push(structuredClone(message));
+      if (message.type === 'object.put') return { ref: message.payload.ref, version: 'host-evidence-v1' };
+      assert.equal(message.type, 'ci.result'); assert.equal(options.expectedEvidence.length, 1);
+      assert.equal(options.expectedEvidence[0].ref, message.payload.checks[0].evidenceRef);
+      await commit?.(message, values);
+      return { taskId: message.payload.taskId, verdict, stage: verdict === 'passed' ? 'awaiting-merge' : 'ci-failed',
+        ref: 'original-committed-result', version: 'host-result-v1' };
+    },
+    docker: async (fullArgs, { runtime, tester, policy, calls }) => {
+      const args = fullArgs.slice(2); calls.docker.push(args);
+      if (args[0] === 'info') return { stdout: JSON.stringify({ ID: policy.daemonId, OSType: 'linux', Architecture: 'arm64' }), stderr: '' };
+      if (args[0] === 'image') return { stdout: JSON.stringify({ Id: policy.imageId, Os: 'linux', Architecture: 'arm64', Config: { Env: policy.imageEnvironment } }), stderr: '' };
+      const owner = runtime.ownedTurns.get(runtime.jobFile(tester, 'original-delivery')).owner, runner = owner.runner;
+      if (args[0] === 'create') {
+        docker.name = args[args.indexOf('--name') + 1]; docker.labels = {};
+        for (let i = 0; i < args.length; i++) if (args[i] === '--label') { const [key, value] = args[++i].split('='); docker.labels[key] = value; }
+        return { stdout: docker.cid + '\n', stderr: '' };
+      }
+      if (args[0] === 'inspect') return { stdout: JSON.stringify({ Id: docker.cid, Name: '/' + docker.name, Image: policy.imageId,
+        Config: { Labels: docker.labels, User: `${runner.user.uid}:${runner.user.gid}`, WorkingDir: '/scratch', Tty: false,
+          Entrypoint: ['/usr/local/bin/node'], Cmd: policy.tests[0].argv, Env: policy.imageEnvironment },
+        HostConfig: { NetworkMode: 'none', Privileged: false, ReadonlyRootfs: true, CapDrop: ['ALL'], SecurityOpt: ['no-new-privileges'],
+          PidsLimit: 64, Memory: 256 * 1024 * 1024, NanoCpus: 1000000000, LogConfig: { Type: 'none' }, RestartPolicy: { Name: 'no' },
+          Tmpfs: { '/tmp': 'rw,nosuid,nodev,noexec,size=16m,mode=1777',
+            '/scratch': `rw,nosuid,nodev,size=64m,mode=700,uid=${runner.user.uid},gid=${runner.user.gid}` } },
+        Mounts: [{ Type: 'bind', Source: runner.source.snapshot, Destination: '/source', RW: false }],
+        State: { Running: false, Status: docker.status, ExitCode: verdict === 'failed' ? 1 : 0 } }), stderr: '' };
+      if (args[0] === 'start') {
+        docker.status = 'exited';
+        const stdout = verdict === 'passed'
+          ? 'TAP version 13\nok 1 - synthetic check\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n'
+          : 'synthetic output without a passing TAP result\n';
+        if (verdict === 'failed') throw Object.assign(new Error('synthetic test failed'), { code: 1, stdout, stderr: '' });
+        return { stdout, stderr: '' };
+      }
+      throw new Error('Unexpected synthetic Docker call');
+    },
+  });
+  return { ...f, committed, originalOwner };
+}
+
+for (const verdict of ['passed', 'failed', 'incomplete']) test(`original owning CI finishes only after private ${verdict} proof receipt and confirmed stop`, async t => {
+  const f = await activatedCiFixture(t, { verdict });
+  assert.equal(f.calls.activate, 1); assert.equal(f.calls.prompt, 1);
+  assert.equal(f.job.state, 'finished'); assert.equal(f.job.error, null);
+  assert.equal(f.job.ciReceipt.receipt.verdict, verdict); assert.equal(f.job.ciReceipt.resultId, 'original-result');
+  assert.equal(f.job.ciReceipt.receipt.stage, verdict === 'passed' ? 'awaiting-merge' : 'ci-failed');
+  assert.deepEqual(f.committed.map(message => message.type), ['object.put', 'ci.result']);
+  assert.equal(f.calls.docker.filter(args => args[0] === 'create').length, 1);
+  assert.equal(f.calls.docker.filter(args => args[0] === 'start').length, 1);
+  assert.equal((await readJSON(f.runtime.sessionFile(f.tester))).active, null);
+  assert.equal(f.runtime.pendingNative.has(f.tester), false); assert.equal(f.runtime.pendingCiProfiles.has(f.tester), false);
+  const ledger = await readJSON(path.join(f.originalOwner.runner.directory, 'host-proof.json'));
+  assert.equal(ledger.result.message.id, 'original-result'); assert.deepEqual(ledger.result.receipt, f.job.ciReceipt.receipt);
+  assert.equal(f.profile.discovery.signal.aborted, true);
+});
+
+for (const mode of ['empty', 'lost-ack']) test(`original activated CI preserves unknown ${mode} and cannot prompt or create another delivery`, async t => {
+  const f = await activatedCiFixture(t, { mode: mode === 'empty' ? 'empty' : 'result',
+    commit: mode === 'lost-ack' ? async () => { throw Object.assign(new Error('synthetic unknown ACK'), { code: 'UNAVAILABLE' }); } : undefined });
+  assert.equal(f.calls.activate, 1); assert.equal(f.calls.prompt, 1); assert.equal(f.job.state, 'unknown');
+  const file = f.runtime.jobFile(f.tester, 'original-delivery');
+  assert.equal((await readJSON(f.runtime.sessionFile(f.tester))).active, file);
+  assert.equal(f.runtime.ownedTurns.get(file).owner.uncertain, true);
+  assert.equal(f.job.ciReceipt, undefined);
+  await f.runtime.deliver({ id: 'original-delivery', sessionId: f.tester, root: f.root, message: 'Run assigned test', execution: f.execution });
+  await assert.rejects(f.runtime.deliver({ id: 'replacement', sessionId: f.tester, root: f.root,
+    message: 'Do not retry', execution: f.execution }), { code: 'RUNTIME_BUSY' });
+  assert.equal(f.calls.activate, 1); assert.equal(f.calls.prompt, 1);
+  assert.equal(f.profile.discovery.signal.aborted, true);
+});
+
+test('original CI cleanup waits for an already entered late ACK and durable HostProof instead of releasing early', async t => {
+  let entered, release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let stoppedDuringCommit = false;
+  const f = await activatedCiFixture(t, { mode: 'late',
+    beforePrompt: ({ owner, runtime, tester }) => {
+      owner.commitEntered = new Promise(resolve => { entered = resolve; });
+      const close = owner.profile.close;
+      owner.profile.close = async () => {
+        const stopping = close();
+        assert.equal(owner.outcome, undefined);
+        assert.equal((await readJSON(runtime.sessionFile(tester))).active, runtime.jobFile(tester, 'original-delivery'));
+        stoppedDuringCommit = true; release(); await stopping;
+      };
+    },
+    commit: async (_message, { runtime, tester }) => {
+      const owner = runtime.ownedTurns.get(runtime.jobFile(tester, 'original-delivery')).owner;
+      entered(); await gate; assert.equal(owner.stopping, true);
+    },
+  });
+  assert.equal(stoppedDuringCommit, true); assert.equal(f.job.state, 'finished');
+  assert.equal(f.job.ciReceipt.receipt.verdict, 'passed');
+  assert.equal(f.committed.filter(message => message.type === 'ci.result').length, 1);
+  assert.equal(f.calls.prompt, 1); assert.equal(f.calls.activate, 1);
+  const ledger = await readJSON(path.join(f.originalOwner.runner.directory, 'host-proof.json'));
+  assert.deepEqual(ledger.result.receipt, f.job.ciReceipt.receipt);
+});
+
+for (const resource of ['profile', 'native', 'runner']) test(`original activated CI ${resource} stop failure attempts every resource once and preserves active ownership`, async t => {
+  const stops = { profile: 0, native: 0, runner: 0 }; let owned;
+  const f = await activatedCiFixture(t, { mode: 'empty', beforePrompt: ({ owner, native }) => {
+    owned = owner;
+    for (const [name, target] of [['profile', owner.profile], ['native', native], ['runner', owner.runner]]) {
+      const close = target.close.bind(target);
+      target.close = async () => { stops[name]++; await close();
+        if (name === resource) throw new Error('SYNTHETIC PRIVATE CLOSE DETAILS'); };
+    }
+  } });
+  assert.equal(f.job.state, 'unknown'); assert.equal(f.job.error, 'CI_STOP_UNCONFIRMED');
+  assert.deepEqual(stops, { profile: 1, native: 1, runner: 1 });
+  assert.equal(owned.unconfirmed, true); assert.equal(JSON.stringify(f.job).includes('SYNTHETIC PRIVATE'), false);
+  assert.equal((await readJSON(f.runtime.sessionFile(f.tester))).active, f.runtime.jobFile(f.tester, 'original-delivery'));
+  assert.equal(f.runtime.ownedTurns.get(f.runtime.jobFile(f.tester, 'original-delivery')).owner, owned);
+  const close = f.runtime.close(); assert.equal(close, f.runtime.close());
+  await assert.rejects(close, { code: 'CURSOR_SHUTDOWN_UNCONFIRMED' });
+  assert.deepEqual(stops, { profile: 1, native: 1, runner: 1 }, 'runtime shutdown must reuse the original owner cleanup, not retry resources');
+});
+
+test('original CI observes an already aborted private client before its first context call and never activates', async t => {
+  const f = await activatedCiFixture(t, { mode: 'empty', setup: ({ runtime }) => {
+    const open = runtime.ciClientFactory;
+    runtime.ciClientFactory = async input => { const client = await open(input); client.close(); return client; };
+  } });
+  assert.equal(f.calls.activate, 0); assert.equal(f.calls.prompt, 0); assert.equal(f.calls.writes, 0);
+  assert.equal(f.job.state, 'failed'); assert.equal(f.job.error, 'CI_CAPABILITY_EXPIRED');
+  assert.equal(f.profile.discovery.signal.aborted, true);
+});
+
+test('original CI withdrawal inside activation preserves unknown intent and cannot reach the paid prompt', async t => {
+  const f = await activatedCiFixture(t, { mode: 'empty', setup: ({ profile }) => {
+    const activate = profile.discovery.activate;
+    profile.discovery.activate = async options => { await activate(options); await profile.close(); };
+  } });
+  assert.equal(f.calls.activate, 1); assert.equal(f.calls.prompt, 0); assert.equal(f.calls.writes, 0);
+  assert.equal(f.job.state, 'unknown'); assert.equal(f.job.ciActivation.state, 'attempted');
+  assert.equal((await readJSON(f.runtime.sessionFile(f.tester))).active, f.runtime.jobFile(f.tester, 'original-delivery'));
+  assert.equal(f.runtime.ownedTurns.get(f.runtime.jobFile(f.tester, 'original-delivery')).owner.uncertain, true);
+});
+
+test('original CI rechecks withdrawal after the final native identity await and before paid dispatch', async t => {
+  const f = await activatedCiFixture(t, { mode: 'empty', setup: ({ profile, supportedProfile }) => {
+    const verify = supportedProfile.verifyNative; let checks = 0;
+    supportedProfile.verifyNative = async () => { const identity = await verify();
+      if (++checks === 2) await profile.close(); return identity; };
+  } });
+  assert.equal(f.calls.activate, 1); assert.equal(f.calls.prompt, 0); assert.equal(f.calls.writes, 0);
+  assert.equal(f.job.state, 'unknown'); assert.equal(f.job.ciActivation.state, 'attempted');
+  assert.equal((await readJSON(f.runtime.sessionFile(f.tester))).active, f.runtime.jobFile(f.tester, 'original-delivery'));
+});
+
+for (const boundary of ['native-identity', 'running-write']) test(`original CI rechecks silently withdrawn Task after ${boundary} before paid dispatch`, async t => {
+  const f = await activatedCiFixture(t, { mode: 'empty', setup: ({ runtime, tester, supportedProfile, calls }) => {
+    if (boundary === 'native-identity') {
+      const verify = supportedProfile.verifyNative; let checks = 0;
+      supportedProfile.verifyNative = async () => { const identity = await verify();
+        if (++checks === 2) calls.authorityRevoked = true; return identity; };
+    } else {
+      const rename = fs.rename, jobFile = runtime.jobFile(tester, 'original-delivery');
+      fs.rename = async function (...args) {
+        const result = await rename.apply(this, args);
+        if (args[1] === jobFile && (await readJSON(jobFile)).state === 'running') calls.authorityRevoked = true;
+        return result;
+      };
+      t.after(() => { fs.rename = rename; });
+    }
+  } });
+  assert.equal(f.calls.authorityRevoked, true);
+  assert.equal(f.calls.activate, 1); assert.equal(f.calls.prompt, 0); assert.equal(f.calls.writes, 0);
+  assert.equal(f.job.state, 'unknown'); assert.equal(f.job.error, 'CI_TASK_CHANGED');
+  assert.equal(f.job.ciActivation.state, 'attempted');
+  assert.equal((await readJSON(f.runtime.sessionFile(f.tester))).active, f.runtime.jobFile(f.tester, 'original-delivery'));
+  assert.equal(f.runtime.ownedTurns.get(f.runtime.jobFile(f.tester, 'original-delivery')).owner.uncertain, true);
+});
 
 test('original held CI prepares full approved snapshot and host proof but never activates or prompts before isolation', async t => {
   const { runtime, profile, calls, job, tester, baseline, sourceSha } = await heldCiPreparationFixture(t);
   assert.equal(job.state, 'failed'); assert.equal(job.error, 'CI_NATIVE_ISOLATION_REQUIRED');
   assert.equal(calls.prompt, 0); assert.equal(calls.activate, 0); assert.equal(calls.writes, 0); assert.equal(calls.docker.length, 2);
+  assert.deepEqual(calls.nativeOptions.args, [], 'fixed default CI profile must not receive the vendor --model user-change flag');
   const state = await readJSON(runtime.sessionFile(tester)); assert.equal(state.active, null);
   assert.match(state.config.ciRunnerPolicySha256, /^[a-f0-9]{64}$/);
   assert.equal(job.ciPreparation.authorization, 'preparation-only');
@@ -578,7 +797,8 @@ test('new CI native creation discovers tools from a private native cwd and keeps
   assert.equal(calls[0].options.cwd, created[0].cwd);
   const state = await readJSON(runtime.sessionFile(tester));
   assert.equal(state.config.root, root); assert.equal(state.nativeSessionId, nativeSessionId);
-  assert.equal(state.config.model, 'default'); assert.deepEqual(created[0].args, ['--model', 'default']);
+  assert.equal(state.config.model, 'default');
+  assert.deepEqual(created[0].args, [], 'CI selects its fixed profile default, not the vendor user-change flag');
   assert.equal(state.ciProfile.nativeCwd, created[0].cwd); assert.equal(state.ciProfile.worktreeRoot, root);
   assert.equal(state.ciProfile.nativeSessionId, nativeSessionId);
   assert.equal(JSON.stringify(state).includes(provider), false);
@@ -941,15 +1161,16 @@ test('Cursor provisioning repairs a saved native creation without inventing or d
 
 test('Cursor newly provisioned Session keeps its original transport for the first real prompt', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cursor-first-turn-'));
-  const sessionId = randomUUID(); let clients = 0, prompts = 0;
+  const sessionId = randomUUID(); let clients = 0, prompts = 0, nativeOptions;
   const native = { initialized: false, sessionId, child: { pid: process.pid }, closed: false,
     async connect() { this.initialized = true; return { sessionId }; },
     async prompt(text) { prompts++; await this.onUpdate({ sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Native fixture: ' + text } } }); return { stopReason: 'end_turn' }; },
     async close() { this.closed = true; },
   };
-  const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: () => { clients++; return native; } });
-  const config = { command: process.execPath, root: directory, name: 'Fresh native Session' };
+  const runtime = new CursorRuntime(path.join(directory, 'runtime'), { acpFactory: options => { clients++; nativeOptions = options; return native; } });
+  const config = { command: process.execPath, root: directory, name: 'Fresh native Session', model: 'explicit-executor-model' };
   const created = await runtime.provision({ operationId: 'create', config });
+  assert.deepEqual(nativeOptions.args, ['--model', 'explicit-executor-model'], 'Executor keeps its explicit model flag');
   assert.equal(created.sessionId, sessionId); assert.equal(native.closed, false); assert.equal(prompts, 0, 'creation must not inject a billed bootstrap prompt');
   await assert.rejects(runtime.configure(sessionId, { ...config, model: 'different' }), { code: 'RUNTIME_BUSY' });
   await runtime.deliver({ id: 'first-turn', sessionId, root: directory, message: 'Actual first task' });

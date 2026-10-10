@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { once } from 'node:events';
 import { OriginalCursorCiClient, startCursorCiMcp } from '../scripts/workbench/cursor-ci-mcp.mjs';
 import * as ciTools from '../scripts/workbench/cursor-ci-mcp.mjs';
 import { exportCursorCiSource } from '../scripts/workbench/cursor-ci-source.mjs';
@@ -58,6 +59,25 @@ async function discoveryFixture(t, options = {}) {
   const activation = { ...config, client: { context: async () => structuredClone(state.context), exchange: async message => { state.exchanges.push(message); return { received: message.id }; } } };
   return { bridge, state, activation, request, call: (name, args = {}) => request('tools/call', { name, arguments: args }) };
 }
+
+test('original Discovery expiry notifies its owning host without waiting for a model tool request', { timeout: 5000 }, async t => {
+  const bridge = await ciTools.startCursorCiDiscovery({ ttlMs: 200 });
+  t.after(() => bridge.close());
+  const aborted = once(bridge.signal, 'abort');
+  assert.equal(bridge.signal.aborted, false);
+  await aborted;
+  assert.equal(bridge.signal.aborted, true);
+  await assert.rejects(bridge.activate({}), { code: 'CI_CAPABILITY_EXPIRED' });
+});
+
+test('original Discovery propagates active authority failure to permanent owning-host withdrawal', async t => {
+  const f = await discoveryFixture(t); await f.bridge.activate(f.activation);
+  assert.equal(f.bridge.signal.aborted, false);
+  f.state.context.sourceSha = 'd'.repeat(40);
+  await assert.rejects(f.bridge.call('context_guard_context', {}), { code: 'CI_TASK_CHANGED' });
+  assert.equal(f.bridge.signal.aborted, true);
+  await assert.rejects(f.bridge.activate(f.activation), { code: 'CI_CAPABILITY_EXPIRED' });
+});
 
 test('dormant MCP discovers the fixed tools without granting task reads, tests or writes', async t => {
   const f = await discoveryFixture(t);

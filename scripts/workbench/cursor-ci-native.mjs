@@ -16,6 +16,7 @@ const statIdentity = info => ({ dev: String(info.dev), ino: String(info.ino), mo
   uid: info.uid, gid: info.gid, nlink: info.nlink, size: info.size, mtime: info.mtimeMs, ctime: info.ctimeMs });
 const equalStat = (left, right) => canonical(statIdentity(left)) === canonical(statIdentity(right));
 const lexical = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+const trustedOwner = info => process.platform === 'win32' || info.uid === 0 || info.uid === process.getuid();
 
 // Snapshotting is only drift detection, not official provenance or permission.
 // Full manifests stay in the original host closure, never in model/IPC JSON.
@@ -48,7 +49,7 @@ export async function captureCursorCiNativeDistribution(command) {
   const scan = async (relative = '', depth = 0) => {
     if (depth > 16 || directories.size >= 512) fail();
     const directory = path.join(root, relative), before = await fs.lstat(directory);
-    if (!before.isDirectory() || before.isSymbolicLink() || before.mode & 0o022 ||
+    if (!before.isDirectory() || before.isSymbolicLink() || !trustedOwner(before) || before.mode & 0o022 ||
         await fs.realpath(directory) !== directory) fail();
     const names = (await fs.readdir(directory)).sort();
     directories.set(relative, { stat: statIdentity(before), names });
@@ -56,7 +57,7 @@ export async function captureCursorCiNativeDistribution(command) {
       const child = relative ? `${relative}/${name}` : name, file = path.join(root, child);
       const initial = await fs.lstat(file);
       if (initial.isDirectory() && !initial.isSymbolicLink()) { await scan(child, depth + 1); continue; }
-      if (!initial.isFile() || initial.isSymbolicLink() || initial.nlink !== 1 || initial.mode & 0o022 ||
+      if (!initial.isFile() || initial.isSymbolicLink() || !trustedOwner(initial) || initial.nlink !== 1 || initial.mode & 0o022 ||
           initial.size > 256 * 1024 * 1024 || files.size >= 2048 || (total += initial.size) > 1024 * 1024 * 1024) fail();
       const fd = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
       try {
