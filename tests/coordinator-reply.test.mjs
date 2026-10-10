@@ -1,7 +1,16 @@
 import '../.github/scripts/test-environment.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coordinatorReplyIssue, coordinatorTurnReplyIssue, coordinatorToolReplyTexts, coordinatorPresentationKey, coordinatorReplyProfile, visibleCharacters } from '../scripts/shared/coordinator-reply.mjs';
+import { COORDINATOR_REPLY_POLICY, coordinatorReplyIssue, coordinatorTurnReplyIssue, coordinatorToolReplyTexts, coordinatorPresentationKey, coordinatorReplyProfile, visibleCharacters } from '../scripts/shared/coordinator-reply.mjs';
+
+test('共享回复提示保留已确认业务选择和原需求恢复，同时不跳过审批或授权', () => {
+  assert.match(COORDINATOR_REPLY_POLICY, /当前对话和历史摘要中的人类决定/);
+  assert.match(COORDINATOR_REPLY_POLICY, /新增同一功能的细节不等于撤销这些选择/);
+  assert.match(COORDINATOR_REPLY_POLICY, /不代替挂载或brief审批/);
+  assert.match(COORDINATOR_REPLY_POLICY, /不要求用户重发需求或手动发起重试/);
+  assert.match(COORDINATOR_REPLY_POLICY, /需要授权、登录或补充确实缺失的信息/);
+  assert.match(COORDINATOR_REPLY_POLICY, /不承诺无限重试，不重做已完成写入/);
+});
 
 test('普通回复段落最多60个可见字符，不裁切原文或强凑最小长度', () => {
   assert.equal(coordinatorReplyIssue('好。'), null);
