@@ -282,7 +282,11 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     for (const action of message.actions || []) {
       if (action.kind === 'node-navigation' || action.kind === 'node-tour' || action.kind === 'node-read') continue;
       const actions = doc.createElement('div'); actions.className = 'coordinator-actions';
-      if (action.message && action.message !== cleanText) { const label = doc.createElement('p'); label.textContent = action.message; actions.append(label); }
+      if (action.message && action.message !== cleanText) {
+        for (const paragraph of String(action.message).split(/\n\s*\n/u).filter(value => value.trim())) {
+          const label = doc.createElement('p'); label.textContent = paragraph; actions.append(label);
+        }
+      }
       for (const node of (action.nodes || (action.node ? [action.node] : [])).slice(0, 3)) {
         if (Array.isArray(node.path) && node.path.length && action.kind !== 'binding-proposal') {
           const path = doc.createElement('p'); path.style.whiteSpace = 'pre-wrap';
