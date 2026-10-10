@@ -874,6 +874,16 @@ try {
   try {
     const port = staticServer.address().port;
     await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?preview=1`);
+    const cardParagraphs = await preview.evaluate(async () => {
+      const { conversationFragments } = await import('/coordinator-markdown.mjs');
+      const host = document.createElement('section');
+      host.append(conversationFragments([{ role: 'assistant', text: '', actions: [{
+        kind: 'node-references', message: '原事项已读。\n\n归属阅读模块。', nodes: [],
+      }] }], document).body);
+      return [...host.querySelectorAll('.coordinator-actions > p')].map(node => node.textContent);
+    });
+    assert.deepEqual(cardParagraphs, ['原事项已读。', '归属阅读模块。'], 'node card preserves validated paragraph boundaries without truncation');
+    recordCheck('coordinator-node-card-paragraph-boundaries');
     await preview.evaluate(async () => {
       const { conversationFragments } = await import('/coordinator-markdown.mjs');
       const host = document.createElement('section'); host.id = 'choice-acceptance'; document.body.append(host);
